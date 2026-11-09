@@ -98,48 +98,64 @@ export function render(agent, frame = 0) {
 
 /**
  * Accounts from quota-status.json that have at least one number to show. Numbers are REMAINING %.
- * `resets`: optional `resetsRemaining` count written by quota-monitor (Codex), shown as ↻N.
+ * Each window: [name, remaining %, resetsAt ms|null, reset label]. `resets`: Codex resetsRemaining.
  */
+const WINDOWS = [['session', '5h', 300], ['weekly', 'sem', 10080], ['monthly', 'mes', 43200]];
+const STRIPE = { anthropic: '#d97757', openai: '#10a37f', google: '#4285f4', opencode: '#8b5cf6', antigravity: '#14b8a6' };
+
 export function quotaItems(status) {
-  const left = (w) => (typeof w?.usedPercent === 'number' ? 100 - w.usedPercent : null);
   return (status?.items ?? [])
     .map((i) => ({
       key: i.id,
       label: i.shortName ?? i.name ?? i.id,
+      stripe: STRIPE[i.provider] ?? '#9ca3af',
       resets: typeof i.resetsRemaining === 'number' ? i.resetsRemaining : null,
-      bars: [['5h', left(i.session)], ['sem', left(i.weekly)], ['mes', left(i.monthly)]].filter(([, v]) => v !== null),
+      bars: WINDOWS.filter(([k]) => typeof i[k]?.usedPercent === 'number').map(([k, name, mins]) => {
+        const at = i[k].resetsAt ? Date.parse(i[k].resetsAt) || Number(i[k].resetsAt) : null;
+        return { name, left: 100 - i[k].usedPercent, at, mins, when: (i[k].resetsAtFormatted ?? '').replace(',', '').replace(/^-$/, '') };
+      }),
     }))
     .filter((i) => i.bars.length);
 }
 
 const leftColor = (p) => (p <= 10 ? '#ef4444' : p <= 30 ? '#f59e0b' : '#22c55e');
-const FONT = 'font-family="Segoe UI, Arial, sans-serif"';
+const SANS = 'font-family="Segoe UI, Arial, sans-serif"';
+const MONO = 'font-family="Consolas, Cascadia Mono, monospace"';
+const clamp = (v) => Math.min(100, Math.max(0, Math.round(v)));
 
-/** Quota key, black: name on top, then one row per window sized to fit 1-3 rows. */
-export function renderQuota(item, stale = false) {
+/**
+ * Card key: colour stripe per provider, NAME + window tag, big remaining % of the main window
+ * (5h when present), a second line (other windows, or the reset for a single window), a bar with a
+ * white marker = time left in the window, and the reset time at the bottom.
+ */
+export function renderQuota(item, stale = false, now = Date.now()) {
   if (!item) return render(undefined);
-  const label = item.label.length > 13 ? item.label.slice(0, 12) + '…' : item.label;
-  const size = label.length <= 8 ? 22 : label.length <= 11 ? 18 : 15;
-  const head = item.resets !== null ? `${label} ↻${item.resets}` : label;
-  const n = item.bars.length;
-  const rowH = 100 / n; // rows share y 40..140
-  const big = n === 1 ? 46 : n === 2 ? 34 : 24;
-  const barH = n === 1 ? 14 : n === 2 ? 9 : 7;
-  const rows = item.bars
-    .map(([name, p], k) => {
-      const base = 40 + (k + 1) * rowH - barH - 6 - (n === 1 ? 18 : 0); // baseline above the bar; one row: centred
-      const v = Math.min(100, Math.max(0, Math.round(p)));
-      return (
-        `<text x="10" y="${base}" ${FONT} font-size="${Math.round(big * 0.5)}" fill="#94a3b8">${name}</text>` +
-        `<text x="134" y="${base}" text-anchor="end" ${FONT} font-weight="800" font-size="${big}" fill="${leftColor(v)}">${v}<tspan font-size="${Math.round(big * 0.5)}">%</tspan></text>` +
-        `<rect x="10" y="${base + 4}" width="124" height="${barH}" rx="${barH / 2}" fill="#1f2937"/>` +
-        `<rect x="10" y="${base + 4}" width="${(124 * v) / 100}" height="${barH}" rx="${barH / 2}" fill="${leftColor(v)}"/>`
-      );
-    })
-    .join('');
+  const [main, ...rest] = item.bars;
+  const v = clamp(main.left);
+  const name = item.label.toUpperCase();
+  const nameTxt = name.length > 11 ? name.slice(0, 10) + '…' : name;
+  const tag = main.name.toUpperCase() + (item.resets !== null ? ` ↻${item.resets}` : '');
+  const tagW = tag.length * 8 + 10;
+  // Line 2: other windows (5h+week, 5h+week+month) or, for a single window, its reset.
+  const line2 = rest.length
+    ? rest.map((b) => `<tspan fill="${leftColor(clamp(b.left))}">${b.name} ${clamp(b.left)}%</tspan>`).join('<tspan fill="#555"> · </tspan>')
+    : `<tspan fill="#9ca3af">${esc(main.when ? `↺ ${main.when}` : '')}</tspan>`;
+  const line2Size = rest.length > 1 ? 12 : 16;
+  const timeLeft = main.at ? Math.min(1, Math.max(0, (main.at - now) / (main.mins * 60000))) : null;
+  const barX = 16, barW = 118, barY = 104;
+  const marker = timeLeft === null ? '' : `<rect x="${barX + barW * timeLeft - 2}" y="${barY - 5}" width="4" height="18" rx="2" fill="#fff"/>`;
+  const bottom = rest.length ? (main.when ? `↺ ${main.when}` : '') : '';
   return url(
     `<rect width="144" height="144" fill="#000"/><g opacity="${stale ? 0.4 : 1}">` +
-      `<text x="72" y="28" text-anchor="middle" ${FONT} font-weight="700" font-size="${size}" fill="#fff">${esc(head)}</text>${rows}</g>`,
+      `<rect x="0" y="0" width="6" height="144" fill="${item.stripe}"/>` +
+      `<text x="16" y="24" ${MONO} font-size="13" letter-spacing="1" fill="#e5e7eb">${esc(nameTxt)}</text>` +
+      `<rect x="${136 - tagW}" y="10" width="${tagW}" height="19" rx="4" fill="#262626"/>` +
+      `<text x="${136 - tagW / 2}" y="24" text-anchor="middle" ${MONO} font-size="12" fill="#a3a3a3">${esc(tag)}</text>` +
+      `<text x="14" y="76" ${SANS} font-weight="800" font-size="46" fill="#fff">${v}%</text>` +
+      `<text x="16" y="96" ${MONO} font-size="${line2Size}">${line2}</text>` +
+      `<rect x="${barX}" y="${barY}" width="${barW}" height="8" rx="4" fill="#262626"/>` +
+      `<rect x="${barX}" y="${barY}" width="${(barW * v) / 100}" height="8" rx="4" fill="${leftColor(v)}"/>${marker}` +
+      `<text x="16" y="134" ${SANS} font-size="14" fill="#9ca3af">${esc(bottom)}</text></g>`,
   );
 }
 

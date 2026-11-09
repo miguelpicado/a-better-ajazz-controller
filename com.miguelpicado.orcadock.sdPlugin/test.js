@@ -46,6 +46,6 @@ const q = quotaItems({ items: [
   { id: 'o', shortName: 'OpenCodeGo', session: { usedPercent: 0 }, weekly: { usedPercent: 0 }, monthly: { usedPercent: 71 } },
   { id: 'x', shortName: 'cursor', session: { usedPercent: null }, weekly: { usedPercent: null } },
 ] });
-assert.deepEqual(q.map((i) => [i.key, i.bars.map(([n]) => n).join('/')]), [['c', '5h/sem'], ['o', '5h/sem/mes']]);
+assert.deepEqual(q.map((i) => [i.key, i.bars.map((b) => b.name).join('/')]), [['c', '5h/sem'], ['o', '5h/sem/mes']]);
 assert.match(renderQuota(q[1], true), /^data:image\/svg\+xml/);
 console.log('ok quota');
