@@ -1,0 +1,7 @@
+{
+  "name": "orca-dock",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node test.js" },
+  "dependencies": { "ws": "8.18.0" }
+}

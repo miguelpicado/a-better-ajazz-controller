@@ -1,0 +1,56 @@
+{
+  "UUID": "com.miguelpicado.orcadock",
+  "Name": "Orca Deck",
+  "Version": "0.1.0.0",
+  "Author": "miguelpicado",
+  "Description": "Keys for Orca: one per main agent (repo, colour, state; press to focus) and one per AI account quota (5h, weekly, monthly).",
+  "Category": "Orca Deck",
+  "CategoryIcon": "imgs/category",
+  "Icon": "imgs/plugin",
+  "CodePath": "plugin.js",
+  "SDKVersion": 2,
+  "Nodejs": {
+    "Version": "20"
+  },
+  "Software": {
+    "MinimumVersion": "3.10"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Actions": [
+    {
+      "UUID": "com.miguelpicado.orcadock.agent",
+      "Name": "Orca agent",
+      "Tooltip": "Fills itself with the next main Orca agent. Press to focus its pane.",
+      "Icon": "imgs/action",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/action",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.miguelpicado.orcadock.quota",
+      "Name": "AI quota",
+      "Tooltip": "Fills itself with the next account from quota-status.json. Press to refresh.",
+      "Icon": "imgs/action",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/action",
+          "ShowTitle": false
+        }
+      ]
+    }
+  ]
+}
