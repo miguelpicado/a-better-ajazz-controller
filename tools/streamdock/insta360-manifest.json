@@ -1,0 +1,44 @@
+{
+  "UUID": "com.insta360.webcam",
+  "Name": "Insta360 Webcam",
+  "Version": "1.0.0.0",
+  "Author": "Insta360",
+  "Description": "Quickly control your Insta360 webcam.",
+  "Category": "Insta360 Webcam",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "Icon": "imgs/plugin/marketplace",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "Nodejs": { "Version": "20" },
+  "Software": { "MinimumVersion": "3.10" },
+  "OS": [{ "Platform": "windows", "MinimumVersion": "10" }],
+  "Actions": [
+    {
+      "UUID": "com.insta360.webcam.setter",
+      "Name": "Webcam Configuration",
+      "Tooltip": "Quickly control your webcam",
+      "Icon": "imgs/actions/setter/icon",
+      "PropertyInspectorPath": "ui/page.html",
+      "Controllers": ["Keypad"],
+      "States": [{ "Image": "imgs/actions/setter/default/connect", "ShowTitle": true }]
+    },
+    {
+      "UUID": "com.insta360.webcam.adjust",
+      "Name": "Adjust Webcam",
+      "Tooltip": "Customize webcam parameters",
+      "Icon": "imgs/actions/adjust/icon",
+      "PropertyInspectorPath": "ui/page.html",
+      "Controllers": ["Keypad", "Knob"],
+      "States": [{ "Image": "imgs/actions/adjust/default/on", "ShowTitle": true }]
+    },
+    {
+      "UUID": "com.insta360.webcam.reset",
+      "Name": "Reset Webcam",
+      "Tooltip": "Reset your webcam to default settings",
+      "Icon": "imgs/actions/reset/icon",
+      "PropertyInspectorPath": "ui/page.html",
+      "Controllers": ["Keypad"],
+      "States": [{ "Image": "imgs/actions/reset/default/on", "ShowTitle": true }]
+    }
+  ]
+}
