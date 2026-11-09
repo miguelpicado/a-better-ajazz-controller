@@ -37,6 +37,27 @@ assert.deepEqual([...m].sort(), [['k1', 't1:l1'], ['k2', 't1:l3']]);
 
 assert.match(render(a[0]), /^data:image\/svg\+xml/);
 assert.match(render(undefined), /^data:image\/svg\+xml/);
+
+// Workers badge: live workers of a run counted on its coordinator's key; worker panes use agentTerminalHandle.
+ps[0].agents[0].stateStartedAt = 1000;
+const runs = [{ id: 'run1', coordinator_handle: 'h1' }];
+const wk = [
+  { runId: 'run1', agentTerminalHandle: 'h5', projection: { outcome: 'in_progress' } },
+  { runId: 'run1', agentTerminalHandle: 'h9', projection: { outcome: 'succeeded' } },
+];
+const b = mainAgents(ps, terms, wk, repos, runs);
+assert.deepEqual(b.map((x) => [x.handle, x.workers]), [['h4', 0], ['h1', 1], ['h3', 0]]);
+assert.equal(b[1].since, 1000);
+const img = decodeURIComponent(render(b[1], 0, 1000 + 13 * 60000, true));
+assert.match(img, />13m</);
+assert.match(img, /⚙1/);
+assert.match(img, /stroke-width="7"/); // blink ring on frame 0
+assert.doesNotMatch(decodeURIComponent(render(b[1], 2, 0, true)), /stroke-width="7"/); // off half
+import { ago, agentCounts, renderSummary, renderClock } from './core.js';
+assert.deepEqual([ago(45e3), ago(12 * 60e3), ago(65 * 60e3), ago(50 * 3600e3)], ['45s', '12m', '1h05', '2d']);
+assert.deepEqual(agentCounts(ps), { working: 2, question: 1, done: 3 });
+assert.match(decodeURIComponent(renderSummary({ working: 2, question: 1, done: 3 })), />2<.*>1<.*>3</s);
+assert.match(decodeURIComponent(renderClock(new Date(2026, 10, 9, 9, 5))), /09:05/);
 console.log('ok');
 
 // Quota: accounts with no numbers are dropped; missing windows are skipped.

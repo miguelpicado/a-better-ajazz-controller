@@ -38,6 +38,22 @@
       ]
     },
     {
+      "UUID": "com.miguelpicado.orcadock.clock",
+      "Name": "Clock",
+      "Tooltip": "HH:MM and date. Fits the side panel (Information controller).",
+      "Icon": "imgs/action",
+      "Controllers": ["Information", "Keypad"],
+      "States": [{ "Image": "imgs/action", "ShowTitle": false }]
+    },
+    {
+      "UUID": "com.miguelpicado.orcadock.summary",
+      "Name": "Agent summary",
+      "Tooltip": "Live Orca agents: working / waiting / done. Fits the side panel (Information controller).",
+      "Icon": "imgs/action",
+      "Controllers": ["Information", "Keypad"],
+      "States": [{ "Image": "imgs/action", "ShowTitle": false }]
+    },
+    {
       "UUID": "com.miguelpicado.orcadock.quota",
       "Name": "AI quota",
       "Tooltip": "Fills itself with the next account from quota-status.json. Press to refresh.",

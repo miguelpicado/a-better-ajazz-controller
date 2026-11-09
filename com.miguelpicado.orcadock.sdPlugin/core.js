@@ -7,10 +7,17 @@ const STATE = { working: 'working', waiting: 'question', blocked: 'error', done:
  * Main agents: top-level agents (no parent pane) in a root worktree (no parent worktree) whose
  * terminal is alive and is not an orchestration worker.
  */
-export function mainAgents(ps, terminals, workers, repos) {
+export function mainAgents(ps, terminals, workers, repos, runs = []) {
   const term = new Map(terminals.map((t) => [`${t.tabId}:${t.leafId}`, t]));
-  const workerTerms = new Set(workers.map((w) => w.terminal).filter(Boolean));
+  const workerTerms = new Set(workers.map((w) => w.agentTerminalHandle ?? w.terminal).filter(Boolean));
   const repoById = new Map(repos.map((r) => [r.id, r]));
+  // Live workers per orchestrator: worker.runId -> run.coordinator_handle.
+  const coord = new Map(runs.map((r) => [r.id, r.coordinator_handle]));
+  const busy = {};
+  for (const w of workers) {
+    const h = coord.get(w.runId);
+    if (h && (w.projection?.outcome ?? 'in_progress') === 'in_progress') busy[h] = (busy[h] ?? 0) + 1;
+  }
   const out = [];
   for (const w of ps) {
     if (w.parentWorktreeId || w.isArchived) continue;
@@ -26,6 +33,8 @@ export function mainAgents(ps, terminals, workers, repos) {
         repo: repo?.displayName ?? w.repo ?? '?',
         color: repo?.badgeColor ?? '#444444',
         state: t.connected === false ? 'error' : (STATE[a.state] ?? 'idle'),
+        since: a.stateStartedAt ?? a.mainAgent?.stateStartedAt ?? null,
+        workers: busy[t.handle] ?? 0,
       });
     }
   }
@@ -80,19 +89,79 @@ const ICON = {
   idle: () => `<circle cx="12" cy="12" r="5" fill="#9ca3af"/>`,
 };
 
-/** 144x144 key image as an SVG data URL. `agent` undefined = empty key. */
-export function render(agent, frame = 0) {
+/** Time in state: 45s, 12m, 1h05, 2d. */
+export function ago(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+/**
+ * 144x144 key image as an SVG data URL. `agent` undefined = empty key.
+ * Bottom row: time in the current state (left), live workers badge (right).
+ * `blink` true + odd half-second: white ring, to catch the eye after waiting/done.
+ */
+export function render(agent, frame = 0, now = Date.now(), blink = false) {
   if (!agent) {
     return url(`<rect width="144" height="144" fill="#111"/><circle cx="72" cy="72" r="14" fill="none" stroke="#333" stroke-width="3" stroke-dasharray="5 6"/>`);
   }
   const fg = ink(agent.color);
   const label = agent.label.length > 12 ? agent.label.slice(0, 11) + '…' : agent.label;
   const size = label.length <= 7 ? 24 : label.length <= 10 ? 20 : 17;
+  const on = blink && Math.floor(frame / 2) % 2 === 0;
+  const time = agent.since ? ago(now - agent.since) : '';
+  const badge = agent.workers
+    ? `<rect x="${136 - (String(agent.workers).length * 11 + 26)}" y="110" width="${String(agent.workers).length * 11 + 26}" height="26" rx="13" fill="#fff"/>` +
+      `<text x="${123 - String(agent.workers).length * 5.5}" y="130" text-anchor="middle" ${SANS} font-weight="800" font-size="19" fill="#111">⚙${agent.workers}</text>`
+    : '';
   return url(
     `<rect width="144" height="144" fill="#000"/><rect x="2" y="2" width="140" height="140" rx="26" fill="${esc(agent.color)}"/>` +
-      `<text x="72" y="34" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="${size}" fill="${fg}">${esc(label)}</text>` +
-      `<circle cx="72" cy="90" r="38" fill="#000" fill-opacity=".55"/>` +
-      `<g transform="translate(46 64) scale(2.17)">${ICON[agent.state](frame)}</g>`,
+      `<text x="72" y="30" text-anchor="middle" ${SANS} font-weight="700" font-size="${size}" fill="${fg}">${esc(label)}</text>` +
+      `<circle cx="72" cy="74" r="32" fill="#000" fill-opacity=".55"/>` +
+      `<g transform="translate(50.4 52.4) scale(1.8)">${ICON[agent.state](frame)}</g>` +
+      (time ? `<text x="12" y="131" ${SANS} font-weight="700" font-size="20" fill="${fg}">${time}</text>` : '') +
+      badge +
+      (on ? `<rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#fff" stroke-width="7"/>` : ''),
+  );
+}
+
+/** Side panel tile: HH:MM and short date. */
+export function renderClock(d = new Date()) {
+  const hm = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const day = d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
+  return url(
+    `<rect width="144" height="144" fill="#000"/>` +
+      `<text x="72" y="82" text-anchor="middle" ${SANS} font-weight="800" font-size="50" fill="#fff">${hm}</text>` +
+      `<text x="72" y="118" text-anchor="middle" ${SANS} font-size="22" fill="#9ca3af">${esc(day)}</text>`,
+  );
+}
+
+/** Counts every live agent (main and workers) by state. */
+export function agentCounts(ps) {
+  const c = { working: 0, question: 0, done: 0 };
+  for (const w of ps) {
+    if (w.isArchived) continue;
+    for (const a of w.agents ?? []) {
+      const s = STATE[a.state];
+      if (a.hasLivePty !== false && s in c) c[s]++;
+    }
+  }
+  return c;
+}
+
+/** Side panel tile: working / waiting / done, one row each with its state colour. */
+export function renderSummary(c) {
+  const row = (y, color, label, n) =>
+    `<circle cx="22" cy="${y - 8}" r="9" fill="${color}"/>` +
+    `<text x="40" y="${y}" ${SANS} font-size="22" fill="#d4d4d4">${label}</text>` +
+    `<text x="134" y="${y + 1}" text-anchor="end" ${SANS} font-weight="800" font-size="30" fill="#fff">${n}</text>`;
+  return url(
+    `<rect width="144" height="144" fill="#000"/>` +
+      row(40, '#f97316', 'activos', c.working) +
+      row(84, '#60a5fa', 'espera', c.question) +
+      row(128, '#22c55e', 'hechos', c.done),
   );
 }
 

@@ -2,14 +2,14 @@
 //  - agent: one main Orca agent per key (repo name, repo colour, state icon); press = focus its pane.
 //  - quota: one account per key from quota-monitor's quota-status.json (5h / weekly / monthly bars).
 // Host runs `node plugin.js -port P -pluginUUID U -registerEvent E -info J`.
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
-import { mainAgents, assign, render, quotaItems, renderQuota } from './core.js';
+import { mainAgents, assign, render, quotaItems, renderQuota, renderClock, agentCounts, renderSummary } from './core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const LOG = join(here, 'plugin.log');
@@ -56,9 +56,14 @@ function rpcOnce(method, params) {
 /** One retry with a re-read runtime file (Orca restarted: new pipe and token). */
 const rpc = (method, params = {}) => rpcOnce(method, params).catch(() => ((meta = null), rpcOnce(method, params)));
 
-const keys = new Map(); // context -> { kind: 'agent'|'quota', device, row, col }
+const keys = new Map(); // context -> { kind: 'agent'|'quota'|'clock'|'summary', device, row, col }
 const slot = { agent: new Map(), quota: new Map() }; // context -> item key
 const items = { agent: new Map(), quota: new Map() }; // item key -> item
+// agent key -> blink end (ms). Set when an agent turns waiting/done; cleared on press, next change or timeout.
+const blinking = new Map();
+const BLINK_MS = { done: 20000, question: 60000 };
+const isBlinking = (k) => (blinking.get(k) ?? 0) > Date.now();
+let counts = { working: 0, question: 0, done: 0 };
 let quotaStale = false;
 let repos = [];
 let reposAt = 0;
@@ -68,17 +73,27 @@ let frame = 0;
 const ws = new WebSocket(`ws://127.0.0.1:${args.port}`);
 const send = (event, context, payload) => ws.readyState === 1 && ws.send(JSON.stringify({ event, context, payload }));
 
+function image(kind, context) {
+  if (kind === 'clock') return renderClock();
+  if (kind === 'summary') return renderSummary(counts);
+  const it = items[kind].get(slot[kind].get(context));
+  return kind === 'agent' ? render(it, frame, Date.now(), isBlinking(it?.key)) : renderQuota(it, quotaStale);
+}
+
 function paint(context) {
   const kind = keys.get(context)?.kind;
   if (!kind) return;
-  const it = items[kind].get(slot[kind].get(context));
-  const img = kind === 'agent' ? render(it, frame) : renderQuota(it, quotaStale);
+  const img = image(kind, context);
   if (shown.get(context) === img) return;
   shown.set(context, img);
   send('setImage', context, { image: img, target: 0 });
 }
 
 function relayout(kind) {
+  if (!slot[kind]) {
+    for (const [c, k] of keys) if (k.kind === kind) paint(c);
+    return;
+  }
   const slots = [...keys.entries()]
     .filter(([, k]) => k.kind === kind)
     .sort(([, a], [, b]) => a.device.localeCompare(b.device) || a.row - b.row || a.col - b.col)
@@ -87,12 +102,14 @@ function relayout(kind) {
   for (const c of slots) paint(c);
 }
 
-// workerList is slow (~450 ms) and changes rarely: refresh it at most every 10 s.
+// workerList is slow (~450 ms) and changes rarely: refresh it (and runs) at most every 10 s.
 let workers = { workers: [] };
+let runs = { runs: [] };
 let workersAt = 0;
 function workersPromise() {
   if (Date.now() - workersAt < 10000) return workers;
   workersAt = Date.now();
+  rpc('orchestration.runList').then((r) => (runs = r)).catch(() => {});
   return rpc('orchestration.workerList').then((w) => (workers = w)).catch(() => workers);
 }
 
@@ -107,14 +124,26 @@ async function pollAgents() {
       rpc('terminal.list'),
       workersPromise(),
     ]);
-    const before = [...items.agent.values()].map((x) => `${x.label}=${x.state}`).join(' ');
-    items.agent = new Map(mainAgents(ps.worktrees, tl.terminals, wl.workers ?? [], repos).map((a) => [a.key, a]));
-    const after = [...items.agent.values()].map((x) => `${x.label}=${x.state}`).join(' ');
+    const prev = items.agent;
+    const fmt = (m) => [...m.values()].map((x) => `${x.label}=${x.state}${x.workers ? `+${x.workers}w` : ''}`).join(' ');
+    const before = fmt(prev);
+    items.agent = new Map(mainAgents(ps.worktrees, tl.terminals, wl.workers ?? [], repos, runs.runs ?? []).map((a) => [a.key, a]));
+    for (const a of items.agent.values()) {
+      const was = prev.get(a.key)?.state;
+      if (was === undefined || was === a.state) continue;
+      if (BLINK_MS[a.state]) blinking.set(a.key, Date.now() + BLINK_MS[a.state]);
+      else blinking.delete(a.key);
+    }
+    for (const k of blinking.keys()) if (!items.agent.has(k) || !isBlinking(k)) blinking.delete(k);
+    counts = agentCounts(ps.worktrees);
+    const after = fmt(items.agent);
     if (after !== before) log(`agents: ${after}`);
     relayout('agent');
   } catch (e) {
     log(`agents poll failed: ${e.message}`);
   } finally {
+    relayout('clock');
+    relayout('summary');
     setTimeout(pollAgents, POLL_MS);
   }
 }
@@ -132,10 +161,10 @@ function pollQuota() {
   relayout('quota');
 }
 
-// Spinner: repaint only agent keys whose agent is working.
+// Spinner and blink: repaint only agent keys that are working or blinking.
 setInterval(() => {
   frame = (frame + 1) % 8;
-  for (const [c, k] of slot.agent) if (items.agent.get(k)?.state === 'working') paint(c);
+  for (const [c, k] of slot.agent) if (items.agent.get(k)?.state === 'working' || blinking.has(k)) paint(c); // has(): one last paint after timeout clears the ring
 }, SPIN_MS);
 
 /** Brings Orca to the front: restores it, switches virtual desktop. Long-lived raise.ps1 helper. */
@@ -155,11 +184,42 @@ function raiseOrca() {
   raiser.stdin.write('raise\n');
 }
 
+/**
+ * Forces a quota refresh: orca-dock-rs checks QUOTA_DIR/.wake every 5 s and refetches every source
+ * (its own timer only runs while Orca is maximized). Re-read the file every 3 s for up to 45 s.
+ */
+let waking = null;
+function forceQuota() {
+  try {
+    writeFileSync(join(QUOTA_DIR, '.wake'), new Date().toISOString());
+  } catch (e) {
+    log(`quota wake failed: ${e.message}`);
+  }
+  clearInterval(waking);
+  const before = (() => { try { return statSync(QUOTA_FILE).mtimeMs; } catch { return 0; } })();
+  let tries = 0;
+  waking = setInterval(() => {
+    pollQuota();
+    let now = 0;
+    try { now = statSync(QUOTA_FILE).mtimeMs; } catch {}
+    if (now !== before || ++tries >= 15) {
+      clearInterval(waking);
+      log(now !== before ? 'quota refreshed' : 'quota wake: no new data in 45 s (orca-dock-rs running?)');
+    }
+  }, 3000);
+}
+
 async function press(context) {
   const kind = keys.get(context)?.kind;
-  if (kind === 'quota') return pollQuota();
+  if (kind === 'quota') {
+    send('showOk', context);
+    return forceQuota();
+  }
+  if (kind !== 'agent') return;
   const a = items.agent.get(slot.agent.get(context));
   if (!a) return;
+  blinking.delete(a.key);
+  paint(context);
   const t0 = Date.now();
   try {
     raiseOrca();
@@ -181,15 +241,16 @@ ws.on('open', () => {
 });
 ws.on('message', (raw) => {
   const m = JSON.parse(raw);
-  const kind = m.action?.endsWith('.quota') ? 'quota' : 'agent';
+  const kind = m.action?.split('.').pop(); // agent | quota | clock | summary
   if (m.event === 'willAppear') {
     const { row = 0, column = 0 } = m.payload?.coordinates ?? {};
     keys.set(m.context, { kind, device: m.device ?? '', row, col: column });
+    log(`appear ${kind} col=${column} row=${row} controller=${m.payload?.controller ?? '-'}`);
     shown.delete(m.context);
     relayout(kind);
   } else if (m.event === 'willDisappear') {
     keys.delete(m.context);
-    slot[kind].delete(m.context);
+    slot[kind]?.delete(m.context);
     shown.delete(m.context);
   } else if (m.event === 'keyDown') { // keyDown: Stream Dock delivers keyUp late
     press(m.context);
