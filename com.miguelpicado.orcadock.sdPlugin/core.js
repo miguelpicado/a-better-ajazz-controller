@@ -101,13 +101,15 @@ export function render(agent, frame = 0) {
  * Each window: [name, remaining %, resetsAt ms|null, reset label]. `resets`: Codex resetsRemaining.
  */
 const WINDOWS = [['session', '5h', 300], ['weekly', 'sem', 10080], ['monthly', 'mes', 43200]];
+// Short key names (the key fits ~10 monospace chars next to the window tag).
+const SHORT = { 'claude-claude-anpa': 'ANPA', 'claude-claude-coordinacion': 'COORD', 'agy-gemini': 'GEMINI', 'agy-claude-gpt': 'C&GPT', 'orca-opencodeGo': 'OCODE', 'agy-argon': 'ARGON' };
 const STRIPE = { anthropic: '#d97757', openai: '#10a37f', google: '#4285f4', opencode: '#8b5cf6', antigravity: '#14b8a6' };
 
 export function quotaItems(status) {
   return (status?.items ?? [])
     .map((i) => ({
       key: i.id,
-      label: i.shortName ?? i.name ?? i.id,
+      label: SHORT[i.id] ?? i.shortName ?? i.name ?? i.id,
       stripe: STRIPE[i.provider] ?? '#9ca3af',
       resets: typeof i.resetsRemaining === 'number' ? i.resetsRemaining : null,
       bars: WINDOWS.filter(([k]) => typeof i[k]?.usedPercent === 'number').map(([k, name, mins]) => {
@@ -132,15 +134,16 @@ export function renderQuota(item, stale = false, now = Date.now()) {
   if (!item) return render(undefined);
   const [main, ...rest] = item.bars;
   const v = clamp(main.left);
-  const name = item.label.toUpperCase();
-  const nameTxt = name.length > 11 ? name.slice(0, 10) + '…' : name;
   const tag = main.name.toUpperCase() + (item.resets !== null ? ` ↻${item.resets}` : '');
-  const tagW = tag.length * 8 + 10;
+  const tagW = tag.length * 8.5 + 10;
+  const name = item.label.toUpperCase();
+  const fit = Math.floor((126 - tagW) / 8.5);
+  const nameTxt = name.length > fit ? name.slice(0, fit - 1) + '…' : name;
   // Line 2: other windows (5h+week, 5h+week+month) or, for a single window, its reset.
   const line2 = rest.length
-    ? rest.map((b) => `<tspan fill="${leftColor(clamp(b.left))}">${b.name} ${clamp(b.left)}%</tspan>`).join('<tspan fill="#555"> · </tspan>')
+    ? rest.map((b) => `<tspan fill="${leftColor(clamp(b.left))}">${b.name} ${clamp(b.left)}%</tspan>`).join(' ')
     : `<tspan fill="#9ca3af">${esc(main.when ? `↺ ${main.when}` : '')}</tspan>`;
-  const line2Size = rest.length > 1 ? 12 : 16;
+  const line2Size = rest.length > 1 ? 13 : 18;
   const timeLeft = main.at ? Math.min(1, Math.max(0, (main.at - now) / (main.mins * 60000))) : null;
   const barX = 16, barW = 118, barY = 104;
   const marker = timeLeft === null ? '' : `<rect x="${barX + barW * timeLeft - 2}" y="${barY - 5}" width="4" height="18" rx="2" fill="#fff"/>`;
@@ -148,14 +151,14 @@ export function renderQuota(item, stale = false, now = Date.now()) {
   return url(
     `<rect width="144" height="144" fill="#000"/><g opacity="${stale ? 0.4 : 1}">` +
       `<rect x="0" y="0" width="6" height="144" fill="${item.stripe}"/>` +
-      `<text x="16" y="24" ${MONO} font-size="13" letter-spacing="1" fill="#e5e7eb">${esc(nameTxt)}</text>` +
-      `<rect x="${136 - tagW}" y="10" width="${tagW}" height="19" rx="4" fill="#262626"/>` +
-      `<text x="${136 - tagW / 2}" y="24" text-anchor="middle" ${MONO} font-size="12" fill="#a3a3a3">${esc(tag)}</text>` +
-      `<text x="14" y="76" ${SANS} font-weight="800" font-size="46" fill="#fff">${v}%</text>` +
-      `<text x="16" y="96" ${MONO} font-size="${line2Size}">${line2}</text>` +
+      `<text x="16" y="24" ${MONO} font-size="15" fill="#e5e7eb">${esc(nameTxt)}</text>` +
+      `<rect x="${136 - tagW}" y="9" width="${tagW}" height="21" rx="4" fill="#262626"/>` +
+      `<text x="${136 - tagW / 2}" y="24" text-anchor="middle" ${MONO} font-size="14" fill="#a3a3a3">${esc(tag)}</text>` +
+      `<text x="14" y="68" ${SANS} font-weight="800" font-size="38" fill="#fff">${v}%</text>` +
+      `<text x="16" y="92" ${MONO} font-size="${line2Size}">${line2}</text>` +
       `<rect x="${barX}" y="${barY}" width="${barW}" height="8" rx="4" fill="#262626"/>` +
       `<rect x="${barX}" y="${barY}" width="${(barW * v) / 100}" height="8" rx="4" fill="${leftColor(v)}"/>${marker}` +
-      `<text x="16" y="134" ${SANS} font-size="14" fill="#9ca3af">${esc(bottom)}</text></g>`,
+      `<text x="16" y="136" ${SANS} font-size="18" fill="#9ca3af">${esc(bottom)}</text></g>`,
   );
 }
 
