@@ -102,3 +102,19 @@ MPL/GPL/sin licencia solo hechos).
 - Sigue ignorado en `app.rs` (no afecta al dibujo): `Output::{Settings, GlobalSettings, OpenUrl}`,
   títulos de más de 14 caracteres (se recortan con `…`) y estados sin imagen resoluble.
 - Sin dependencias nuevas; `target/release/orcadeck.exe` = 3.219.456 B (3,07 MiB).
+
+## app runtime (worker app-runtime)
+`daemon/src/app.rs` ya atiende lo que quedaba de los `Output` de plugin:
+- **Settings**: se escribe `Actions["<col>,<row>"].Settings` del manifiesto releyendo el fichero y cambiando solo ese
+  campo (`to_pretty` + `atomic_write`); máximo una escritura por segundo por tecla y ninguna si el valor no cambia.
+- **GlobalSettings**: `%APPDATA%\OrcaDeck\globals\<plugin>.json` (atómico; id validado con `safe_id`). Al arrancar se
+  siembra con `Host::load_global_settings`, que ahora crea el slot aunque el plugin no se haya lanzado todavía.
+- **OpenUrl**: solo http(s), con `cmd /c start "" "<url>"`; el URL va entrecomillado con `raw_arg` y se rechazan `"`,
+  `%`, espacios y controles (si no, `cmd` parte la URL por `&` o expande variables).
+- **Reinicio**: un hilo por plugin bloqueado en `Child::wait`; backoff 1, 2, 4… 60 s y reset tras 60 s de vida. `stop`
+  mata por pid (`taskkill`, sin crate ni unsafe) y no reinicia; las instancias se reenvían al registrarse.
+- **Feedback**: fuera el `thread::spawn` + sleep por aviso; el bucle del dispositivo comprueba una lista de vencimientos
+  en cada iteración (ya se despierta cada 30 ms para entrada).
+Sin dependencias nuevas. `target/release/orcadeck.exe` 3.219.456 → 3.259.392 B (+39.936 B, +1,2 %). Tests nuevos: debounce
+y no-escritura en `app.rs`/`profile.rs`, rechazo de URLs no http(s), backoff, reinicio real con node y `stop` sin reinicio en
+`host/tests/fake_plugin.rs`. `cargo test --release --workspace` verde. Sin probar con el dispositivo (no se tocó HID).

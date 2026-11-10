@@ -3,9 +3,10 @@
 use orcadeck_host::{Config, Device, Host, Instance, Key, Output, Plugin};
 use serde_json::{json, Value};
 use std::net::TcpStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::mpsc::{channel, Receiver};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tungstenite::client::IntoClientRequest;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
@@ -218,4 +219,100 @@ fn origins() {
     assert!(open(&host, Some("http://127.0.0.1:1")).is_err(), "unlisted loopback origin rejected");
     assert!(open(&host, Some(EDITOR)).is_ok(), "configured loopback origin accepted");
     assert!(open(&host, None).is_ok(), "no origin (native plugin) accepted");
+}
+
+fn tmp(name: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("orcadeck-host-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+/// A real node plugin: `body` runs as `p.js`; node ignores the SDK argv that follows the script.
+fn node_plugin(root: &Path, id: &str, body: &str) -> Plugin {
+    let dir = root.join(format!("{id}.sdPlugin"));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("p.js"), body).unwrap();
+    Plugin::from_manifest(&dir, json!({"UUID": id, "CodePath": "p.js"})).unwrap()
+}
+
+fn skip_without_node() -> bool {
+    if Command::new("node").arg("--version").output().is_ok() {
+        return false;
+    }
+    eprintln!("skipped: node not found");
+    true
+}
+
+/// Waits until the marker has `want` bytes (test-side polling is fine); returns the last size seen.
+fn wait_bytes(marker: &Path, want: u64, timeout: Duration) -> u64 {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let n = std::fs::metadata(marker).map(|m| m.len()).unwrap_or(0);
+        if n >= want || Instant::now() >= deadline {
+            return n;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+fn marker_len(marker: &Path) -> u64 {
+    std::fs::metadata(marker).map(|m| m.len()).unwrap_or(0)
+}
+
+#[test]
+fn global_settings_seed_before_launch() {
+    let (host, _out) = start();
+    // Seeded with no slot yet: launch/add must preserve it.
+    host.load_global_settings("com.fake", json!({"seed": 1}));
+    let uuid = host.add(&plugin());
+    let mut ws = connect(&host, None, json!({"event": "registerPlugin", "uuid": uuid}));
+    assert_eq!(recv(&mut ws)["event"], "deviceDidConnect");
+    send(&mut ws, json!({"event": "getGlobalSettings", "context": uuid}));
+    assert_eq!(recv(&mut ws)["payload"]["settings"], json!({"seed": 1}));
+}
+
+#[test]
+fn crashed_plugin_is_relaunched() {
+    if skip_without_node() {
+        return;
+    }
+    let root = tmp("restart");
+    let marker = root.join("marker");
+    let body = format!(
+        "require('fs').appendFileSync({}, 'x'); process.exit(1);",
+        json!(marker.to_str().unwrap())
+    );
+    let plugin = node_plugin(&root, "com.crash", &body);
+    let (host, _out) = start();
+    host.launch(plugin.clone()).unwrap();
+    // First run writes once, crashes, and the 1 s backoff must produce a second run.
+    let n = wait_bytes(&marker, 2, Duration::from_secs(10));
+    host.stop(&plugin.id);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(n >= 2, "crashed plugin was not relaunched (marker {n} B)");
+}
+
+#[test]
+fn stop_prevents_restart() {
+    if skip_without_node() {
+        return;
+    }
+    let root = tmp("stop");
+    let marker = root.join("marker");
+    let body = format!(
+        "const fs = require('fs'); fs.appendFileSync({m}, 'x'); setInterval(() => fs.appendFileSync({m}, 'x'), 100);",
+        m = json!(marker.to_str().unwrap())
+    );
+    let plugin = node_plugin(&root, "com.alive", &body);
+    let (host, _out) = start();
+    host.launch(plugin.clone()).unwrap();
+    assert!(wait_bytes(&marker, 2, Duration::from_secs(10)) >= 2, "plugin did not run");
+    host.stop(&plugin.id);
+    std::thread::sleep(Duration::from_millis(300)); // let an in-flight write land
+    let after_stop = marker_len(&marker);
+    std::thread::sleep(Duration::from_millis(1500)); // longer than the 1 s first backoff
+    let later = marker_len(&marker);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(after_stop, later, "plugin kept running or was restarted after stop");
 }

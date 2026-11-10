@@ -18,6 +18,7 @@ use hidapi::HidApi;
 use image::{imageops, DynamicImage};
 use orcadeck_builtin as bi;
 use orcadeck_host as host;
+use serde_json::Value;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -182,62 +183,213 @@ fn out_key(out: &host::Output) -> Option<&host::Key> {
     }
 }
 
-/// Turns one plugin output into at most one image on the shared paint channel. Called on socket
-/// threads; the HID stays with the main loop.
-fn handle_output(tx: &mpsc::Sender<(u8, DynamicImage)>, view: &View, out: host::Output) {
-    let Some(k) = out_key(&out).and_then(|key| key_index(key.column as u8, key.row as u8)) else { return };
-    let (ok, px) = (matches!(&out, host::Output::ShowOk(_)), image_px(k));
-    let mut v = view.lock().unwrap_or_else(|e| e.into_inner());
-    let mut image = None;
-    match out {
-        host::Output::Image { image: uri, .. } => {
-            if let Some(img) = decode_uri(&uri, px) {
-                v.base.insert(k, img);
-                image = Some(v.effective(k));
+/// Settings writes are coalesced: a burst from one key causes at most one manifest write per second.
+const SETTINGS_WRITE_MS: u64 = 1000;
+
+/// State shared by plugin socket threads, the builtin thread and the device loop. Plugin outputs
+/// only touch this; the device loop drains it in `tick`, so nothing else writes the device.
+struct Runtime {
+    tx: mpsc::Sender<(u8, DynamicImage)>,
+    view: View,
+    /// Key -> deadline of its ok/alert restore.
+    restores: Mutex<HashMap<u8, Instant>>,
+    /// Action settings waiting for the debounce window.
+    settings: Mutex<SettingsPending>,
+    /// Scene manifest the settings belong to.
+    manifest: PathBuf,
+    /// `<APPDATA>/OrcaDeck`, holds `globals/<plugin>.json`.
+    data: PathBuf,
+}
+
+#[derive(Default)]
+struct SettingsPending {
+    /// Plugin context -> scene cell, filled while placing actions.
+    cells: HashMap<String, (u8, u8)>,
+    /// Cell -> latest value not written yet.
+    pending: HashMap<(u8, u8), Value>,
+    /// Last write attempt, for the debounce.
+    last: Option<Instant>,
+}
+
+impl Runtime {
+    /// Registers where a plugin instance's context lives in the scene.
+    fn set_cell(&self, context: &str, cell: (u8, u8)) {
+        self.settings.lock().unwrap_or_else(|e| e.into_inner()).cells.insert(context.to_string(), cell);
+    }
+
+    /// One plugin output, on a socket thread. Images go over the paint channel; settings, globals
+    /// and URLs are side effects that never touch the device.
+    fn output(&self, out: host::Output) {
+        let Some(k) = out_key(&out).and_then(|key| key_index(key.column as u8, key.row as u8)) else {
+            match out {
+                host::Output::Settings { context, settings } => self.queue_settings(&context, settings),
+                host::Output::GlobalSettings { plugin, settings } => save_global(&self.data, &plugin, &settings),
+                host::Output::OpenUrl(url) => open_url(&url),
+                _ => {}
             }
-        }
-        host::Output::Title { title, .. } => {
-            v.title.remove(&k);
-            if !title.is_empty() {
-                if let Some(top) = raster(&title_svg(&title, px), px) {
-                    v.title.insert(k, top);
+            return;
+        };
+        let (ok, px) = (matches!(&out, host::Output::ShowOk(_)), image_px(k));
+        let mut v = self.view.lock().unwrap_or_else(|e| e.into_inner());
+        let mut image = None;
+        match out {
+            host::Output::Image { image: uri, .. } => {
+                if let Some(img) = decode_uri(&uri, px) {
+                    v.base.insert(k, img);
+                    image = Some(v.effective(k));
                 }
             }
-            image = Some(v.effective(k));
-        }
-        host::Output::State { state, .. } => {
-            if v.state.insert(k, state) == Some(state) {
-                return;
-            }
-            let path = v.states.get(&k).and_then(|s| s.get(state as usize)).cloned().flatten();
-            if let Some(img) = path.and_then(|p| load_img(&p).ok()) {
-                v.base.insert(k, img);
+            host::Output::Title { title, .. } => {
+                v.title.remove(&k);
+                if !title.is_empty() {
+                    if let Some(top) = raster(&title_svg(&title, px), px) {
+                        v.title.insert(k, top);
+                    }
+                }
                 image = Some(v.effective(k));
             }
+            host::Output::State { state, .. } => {
+                if v.state.insert(k, state) == Some(state) {
+                    return;
+                }
+                let path = v.states.get(&k).and_then(|s| s.get(state as usize)).cloned().flatten();
+                if let Some(img) = path.and_then(|p| load_img(&p).ok()) {
+                    v.base.insert(k, img);
+                    image = Some(v.effective(k));
+                }
+            }
+            host::Output::ShowOk(_) | host::Output::ShowAlert(_) => {
+                let base = v.effective(k);
+                drop(v);
+                self.feedback(k, ok, base);
+                return;
+            }
+            _ => {}
         }
-        host::Output::ShowOk(_) | host::Output::ShowAlert(_) => {
-            let base = v.effective(k);
-            drop(v);
-            feedback(tx, view, k, ok, base);
+        drop(v);
+        if let Some(img) = image {
+            let _ = self.tx.send((k, img));
+        }
+    }
+
+    /// Overlay now; the device loop restores the key after [`FEEDBACK_MS`] (no timer thread).
+    fn feedback(&self, key: u8, ok: bool, base: DynamicImage) {
+        let _ = self.tx.send((key, compose_feedback(&base, ok, image_px(key))));
+        let deadline = Instant::now() + Duration::from_millis(FEEDBACK_MS);
+        self.restores.lock().unwrap_or_else(|e| e.into_inner()).insert(key, deadline);
+    }
+
+    /// Builtin images go through the same channel and view as plugin images.
+    fn paint(&self, key: u8, img: DynamicImage) {
+        self.view.lock().unwrap_or_else(|e| e.into_inner()).base.insert(key, img.clone());
+        let _ = self.tx.send((key, img));
+    }
+
+    /// Deadline work for the device loop, which already wakes every 30 ms for input: pending
+    /// feedback restores and debounced settings writes.
+    fn tick(&self) {
+        self.tick_at(Instant::now());
+    }
+
+    fn tick_at(&self, now: Instant) {
+        let due: Vec<u8> = {
+            let mut m = self.restores.lock().unwrap_or_else(|e| e.into_inner());
+            let due = m.iter().filter(|(_, t)| **t <= now).map(|(k, _)| *k).collect();
+            m.retain(|_, t| *t > now);
+            due
+        };
+        for k in due {
+            let img = self.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
+            let _ = self.tx.send((k, img));
+        }
+        self.flush_settings(now);
+    }
+
+    fn queue_settings(&self, context: &str, settings: Value) {
+        let mut p = self.settings.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(&cell) = p.cells.get(context) {
+            p.pending.insert(cell, settings);
+        }
+    }
+
+    /// Writes pending settings once the debounce window has passed. Errors are retried in the next
+    /// window; a value the manifest already has is never rewritten.
+    fn flush_settings(&self, now: Instant) {
+        let mut p = self.settings.lock().unwrap_or_else(|e| e.into_inner());
+        if p.pending.is_empty() || p.last.is_some_and(|t| now.duration_since(t) < Duration::from_millis(SETTINGS_WRITE_MS)) {
             return;
         }
-        _ => {}
-    }
-    drop(v);
-    if let Some(img) = image {
-        let _ = tx.send((k, img));
+        p.last = Some(now);
+        let pending = std::mem::take(&mut p.pending);
+        drop(p);
+        for (cell, settings) in pending {
+            match profile::save_action_settings(&self.manifest, cell.0, cell.1, &settings) {
+                Ok(true) => eprintln!("settings {},{} saved", cell.0, cell.1),
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("settings {},{}: {e}", cell.0, cell.1);
+                    self.settings.lock().unwrap_or_else(|e| e.into_inner()).pending.entry(cell).or_insert(settings);
+                }
+            }
+        }
     }
 }
 
-/// Two paints on the shared channel: the badge over `base`, then the key's current image.
-fn feedback(tx: &mpsc::Sender<(u8, DynamicImage)>, view: &View, key: u8, ok: bool, base: DynamicImage) {
-    let _ = tx.send((key, compose_feedback(&base, ok, image_px(key))));
-    let (tx, view) = (tx.clone(), Arc::clone(view));
-    thread::spawn(move || {
-        thread::sleep(Duration::from_millis(FEEDBACK_MS));
-        let img = view.lock().unwrap_or_else(|e| e.into_inner()).effective(key);
-        let _ = tx.send((key, img));
-    });
+/// `%APPDATA%\OrcaDeck\globals\<plugin>.json`, or `None` for an id unsafe as a file name.
+fn globals_path(data: &Path, plugin: &str) -> Option<PathBuf> {
+    orcadeck_web::store::safe_id(plugin).then(|| data.join("globals").join(format!("{plugin}.json")))
+}
+
+fn save_global(data: &Path, plugin: &str, settings: &Value) {
+    let Some(path) = globals_path(data, plugin) else { return };
+    if let Some(dir) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            return eprintln!("globals {plugin}: {e}");
+        }
+    }
+    if let Err(e) = orcadeck_web::store::atomic_write(&path, &orcadeck_web::store::to_pretty(settings), false) {
+        eprintln!("globals {plugin}: {e}");
+    }
+}
+
+fn load_global(data: &Path, plugin: &str) -> Option<Value> {
+    let bytes = std::fs::read(globals_path(data, plugin)?).ok()?;
+    serde_json::from_slice(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes)).ok()
+}
+
+/// `http(s)` only, and nothing that could break out of the quoting or be expanded by `cmd`
+/// (`"`, `%`, whitespace, control characters).
+fn is_web_url(url: &str) -> bool {
+    let u = url.to_ascii_lowercase();
+    (u.starts_with("http://") || u.starts_with("https://"))
+        && !url.contains(['"', '%'])
+        && !url.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+/// Opens `url` in the default browser with `cmd /c start "" "<url>"`. The URL is validated and
+/// passed pre-quoted (`CommandExt::raw_arg`) so `&` and friends stay inside the browser URL.
+#[cfg(windows)]
+fn open_url(url: &str) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    if !is_web_url(url) {
+        return eprintln!("ignored url {url:?}");
+    }
+    if let Err(e) = std::process::Command::new("cmd")
+        .args(["/c", "start", ""])
+        .raw_arg(format!("\"{url}\""))
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+    {
+        eprintln!("open {url}: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+fn open_url(url: &str) {
+    if is_web_url(url) {
+        let _ = std::process::Command::new("cmd").args(["/c", "start", "", url]).spawn();
+    }
 }
 
 /// Where a scene cell's action runs.
@@ -269,14 +421,21 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     // Plugin host: only plugins the scene uses are launched.
     let data_root = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("OrcaDeck");
     let found = host::discover(&[plugins.to_path_buf()], Some(&data_root));
-    let events_tx = tx.clone();
-    let events_view = Arc::clone(&view);
+    let runtime = Arc::new(Runtime {
+        tx: tx.clone(),
+        view: Arc::clone(&view),
+        restores: Mutex::new(HashMap::new()),
+        settings: Mutex::new(SettingsPending::default()),
+        manifest: profile.join("manifest.json"),
+        data: data_root.clone(),
+    });
+    let events = Arc::clone(&runtime);
     let host = host::Host::start(
         host::Config {
             devices: vec![host::Device { id: DEVICE.into(), name: "AKP153E".into(), columns: 5, rows: 3, kind: 0 }],
             ..Default::default()
         },
-        move |out: host::Output| handle_output(&events_tx, &events_view, out),
+        move |out: host::Output| events.output(out),
     )
     .map_err(|e| format!("plugin host: {e}"))?;
 
@@ -296,7 +455,9 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
             let mut inst = host::Instance::new(&p.id, &a.uuid, DEVICE, *c as u32, *r as u32);
             inst.settings = a.settings.clone();
             inst.state = a.state as u32;
-            by_key.insert(key, Target::Plugin(host.appear(inst)));
+            let ctx = host.appear(inst);
+            runtime.set_cell(&ctx, (*c, *r));
+            by_key.insert(key, Target::Plugin(ctx));
             if !used.iter().any(|u| u.id == p.id) {
                 used.push(p);
             }
@@ -305,6 +466,9 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         }
     }
     for p in used {
+        if let Some(settings) = load_global(&data_root, &p.id) {
+            host.load_global_settings(&p.id, settings);
+        }
         match host.launch(p.clone()) {
             Ok(()) => eprintln!("plugin {} started", p.id),
             Err(e) => eprintln!("plugin {}: {e}", p.id),
@@ -312,16 +476,14 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     }
 
     // Built-in actions on their own thread: Orca RPC blocks for ~450 ms now and then.
-    let builtin_tx = tx.clone();
-    let builtin_view = Arc::clone(&view);
+    let builtin = Arc::clone(&runtime);
     thread::Builder::new()
         .name("builtin".into())
         .spawn(move || loop {
             for (ctx, svg) in registry.tick(bi::now_ms()) {
                 let Some(&k) = ctx_key.get(&ctx) else { continue };
                 if let Some(img) = svg_image(&svg, image_px(k)) {
-                    builtin_view.lock().unwrap_or_else(|e| e.into_inner()).base.insert(k, img.clone());
-                    let _ = builtin_tx.send((k, img));
+                    builtin.paint(k, img);
                 }
             }
             match press_rx.recv_timeout(Duration::from_millis(400)) {
@@ -329,8 +491,8 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
                     let fb = registry.key_down(&ctx, bi::now_ms());
                     if fb != bi::Feedback::None {
                         if let Some(&k) = ctx_key.get(&ctx) {
-                            let base = builtin_view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
-                            feedback(&builtin_tx, &builtin_view, k, fb == bi::Feedback::Ok, base);
+                            let base = builtin.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
+                            builtin.feedback(k, fb == bi::Feedback::Ok, base);
                         }
                     }
                 }
@@ -347,10 +509,11 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         latest.entry(k).or_insert_with(|| black.clone());
     }
     loop {
-        match session(n, &rx, &mut latest, &by_key, &host, &press_tx) {
+        match session(n, &rx, &mut latest, &by_key, &host, &press_tx, &runtime) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 eprintln!("device: {e}; retrying in 2 s");
+                runtime.tick();
                 thread::sleep(Duration::from_secs(2));
             }
         }
@@ -365,6 +528,7 @@ fn session(
     by_key: &HashMap<u8, Target>,
     host: &host::Host,
     press_tx: &mpsc::Sender<String>,
+    rt: &Runtime,
 ) -> Result<(), String> {
     let api = HidApi::new().map_err(|e| e.to_string())?;
     let dock = Dock::open(&api, n)?;
@@ -397,6 +561,7 @@ fn session(
                 _ => {}
             }
         }
+        rt.tick();
         while let Ok((key, img)) = rx.try_recv() {
             latest.insert(key, img.clone());
             pending.insert(key, img);
@@ -425,9 +590,117 @@ fn session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn white(px: u32) -> DynamicImage {
         DynamicImage::ImageRgb8(image::RgbImage::from_pixel(px, px, image::Rgb([255, 255, 255])))
+    }
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("orcadeck-app-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn runtime(dir: &Path) -> (Runtime, mpsc::Receiver<(u8, DynamicImage)>) {
+        let (tx, rx) = mpsc::channel();
+        let rt = Runtime {
+            tx,
+            view: Arc::new(Mutex::new(ViewState::default())),
+            restores: Mutex::new(HashMap::new()),
+            settings: Mutex::new(SettingsPending::default()),
+            manifest: dir.join("manifest.json"),
+            data: dir.to_path_buf(),
+        };
+        (rt, rx)
+    }
+
+    fn settings_at(path: &Path) -> Value {
+        let doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        doc["Actions"]["2,1"]["Settings"].clone()
+    }
+
+    #[test]
+    fn settings_are_debounced_and_unchanged_is_not_written() {
+        let dir = tmp("settings");
+        let path = dir.join("manifest.json");
+        std::fs::write(&path, r#"{"Actions":{"2,1":{"UUID":"a","Settings":{"v":0}}}}"#).unwrap();
+        let (rt, _rx) = runtime(&dir);
+        rt.set_cell("CTX", (2, 1));
+        let t0 = Instant::now();
+
+        rt.queue_settings("CTX", json!({"v": 1}));
+        rt.flush_settings(t0);
+        assert_eq!(settings_at(&path), json!({"v": 1}));
+
+        rt.queue_settings("CTX", json!({"v": 2}));
+        rt.queue_settings("UNKNOWN", json!({"v": 9}));
+        rt.flush_settings(t0 + Duration::from_millis(400));
+        assert_eq!(settings_at(&path), json!({"v": 1}), "debounced");
+
+        rt.queue_settings("CTX", json!({"v": 3}));
+        rt.flush_settings(t0 + Duration::from_millis(1100));
+        assert_eq!(settings_at(&path), json!({"v": 3}), "latest value wins");
+
+        let stamp = std::fs::metadata(&path).unwrap().modified().unwrap();
+        rt.queue_settings("CTX", json!({"v": 3}));
+        rt.flush_settings(t0 + Duration::from_millis(2500));
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), stamp, "unchanged value is not rewritten");
+    }
+
+    #[test]
+    fn feedback_restores_after_its_deadline() {
+        let dir = tmp("feedback");
+        let (rt, rx) = runtime(&dir);
+        let base = white(KEY_PX);
+        rt.view.lock().unwrap().base.insert(1, base.clone());
+        let t0 = Instant::now();
+        rt.feedback(1, true, base.clone());
+        let (k, overlay) = rx.try_recv().expect("overlay");
+        assert_eq!(k, 1);
+        assert_ne!(overlay.to_rgba8(), base.to_rgba8());
+
+        rt.tick_at(t0 + Duration::from_millis(FEEDBACK_MS - 50));
+        assert!(rx.try_recv().is_err(), "restored before the deadline");
+        // The deadline is recorded after the overlay is rasterised, so read it instead of guessing.
+        let deadline = *rt.restores.lock().unwrap().get(&1).unwrap();
+        rt.tick_at(deadline - Duration::from_millis(1));
+        assert!(rx.try_recv().is_err(), "restored just before the deadline");
+        rt.tick_at(deadline);
+        let (k, restored) = rx.try_recv().expect("restore");
+        assert_eq!(k, 1);
+        assert_eq!(restored.to_rgba8(), base.to_rgba8());
+    }
+
+    #[test]
+    fn global_settings_round_trip() {
+        let dir = tmp("globals");
+        save_global(&dir, "com.foo.bar", &json!({"b": 2, "a": 1}));
+        assert_eq!(load_global(&dir, "com.foo.bar"), Some(json!({"a": 1, "b": 2})));
+        assert_eq!(load_global(&dir, "missing"), None);
+        let raw = std::fs::read_to_string(dir.join("globals").join("com.foo.bar.json")).unwrap();
+        assert!(raw.starts_with("{\n    \"a\": 1"), "4-space sorted file: {raw}");
+        assert!(globals_path(&dir, "../evil").is_none(), "path traversal rejected");
+    }
+
+    #[test]
+    fn only_web_urls_pass() {
+        for ok in ["http://x", "HTTPS://example.com/a?b=1&c=2", "https://127.0.0.1:8080/"] {
+            assert!(is_web_url(ok), "{ok}");
+        }
+        for bad in [
+            "file:///C:/x",
+            "javascript:alert(1)",
+            "ftp://x",
+            "mailto:a@b",
+            "https://x/\"",
+            "https://x/%PATH%",
+            "https://x/a b",
+            "",
+        ] {
+            assert!(!is_web_url(bad), "{bad}");
+        }
     }
 
     #[test]
