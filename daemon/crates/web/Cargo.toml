@@ -1,0 +1,20 @@
+[package]
+name = "orcadeck-web"
+version = "0.1.0"
+edition = "2021"
+description = "Local web editor (HTTP API + embedded SPA) for the OrcaDeck daemon"
+
+# Standalone for now; the daemon will pull it in as a path dependency later.
+[workspace]
+
+[dependencies]
+serde = "1"
+serde_json = "1"
+getrandom = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

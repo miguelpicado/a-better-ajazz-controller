@@ -1,0 +1,12 @@
+[package]
+name = "orcadeck-builtin"
+version = "0.1.0"
+edition = "2021"
+description = "Built-in Orca Deck actions for the orcadeck daemon (port of the Node plugin com.miguelpicado.orcadock)"
+
+# Standalone for now: not a member of daemon/Cargo.toml.
+[workspace]
+
+[dependencies]
+serde_json = "1"
+resvg = { version = "0.49", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }

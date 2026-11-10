@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OrcaDeck</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="/icon.svg" alt="" width="22" height="22"><span>OrcaDeck</span></div>
+  <nav class="views" aria-label="Vista">
+    <button type="button" data-view="keys" aria-pressed="true">Teclas</button>
+    <button type="button" data-view="plugins" aria-pressed="false">Plugins</button>
+  </nav>
+  <div class="device-ctl">
+    <span id="dev-status" class="dot" title="Estado del dispositivo"></span>
+    <label class="bright"><span>Brillo</span><input id="bright" type="range" min="0" max="100" step="5"></label>
+    <output id="bright-val" for="bright"></output>
+    <button type="button" id="theme" class="icon-btn" aria-label="Cambiar tema" title="Cambiar tema">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 2a8 8 0 1 0 0 16z" fill="currentColor"/><circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="keys-view" class="layout">
+  <aside class="library" aria-label="Acciones disponibles">
+    <input id="search" type="search" placeholder="Buscar acción" autocomplete="off">
+    <p class="hint">Arrastra una acción a una tecla, o selecciona una tecla y pulsa la acción.</p>
+    <div id="lib"></div>
+  </aside>
+
+  <section class="stage" aria-label="Escena">
+    <div class="scenes">
+      <ol id="scene-tabs" aria-label="Escenas del dispositivo, en orden"></ol>
+      <div class="scene-tools">
+        <select id="other-scenes" aria-label="Abrir otra escena"></select>
+        <button type="button" id="new-scene">Nueva escena</button>
+      </div>
+    </div>
+    <div class="deck-wrap">
+      <div id="deck" class="deck" role="grid" aria-label="Teclas del dispositivo">
+        <div id="keys" class="keys"></div>
+        <div id="side" class="side" aria-label="Panel lateral"></div>
+      </div>
+      <p class="model" id="model"></p>
+    </div>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <aside class="inspector" id="inspector" aria-label="Propiedades"></aside>
+</main>
+
+<main id="plugins-view" class="layout plugins" hidden>
+  <section class="plist-wrap" aria-label="Plugins instalados">
+    <div class="plist-head">
+      <h1>Plugins</h1>
+      <label class="check"><input type="checkbox" id="only-problems"> Solo con problemas</label>
+    </div>
+    <ul id="plist" class="plist"></ul>
+  </section>
+  <aside class="inspector" id="pdetail" aria-label="Detalle del plugin"></aside>
+</main>
+
+<div id="locked" class="locked" hidden>
+  <h1>Sesión no iniciada</h1>
+  <p>Abre el editor desde el enlace que muestra OrcaDeck. El enlace lleva la clave de esta sesión; sin ella el editor no puede leer ni cambiar nada.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,15 @@
+[package]
+name = "orcadeck-plugman"
+version = "0.1.0"
+edition = "2021"
+description = "Stream Deck plugin installer for Orca Deck (Rust port of tools/plugin-install/install.mjs)"
+publish = false
+
+# Standalone: not a member of daemon/Cargo.toml.
+[workspace]
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+zip = { version = "9.5", default-features = false, features = ["deflate-flate2"] }
+# zip enables flate2 without a backend; pick the pure-Rust one (miniz_oxide).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
