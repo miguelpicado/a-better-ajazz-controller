@@ -9,9 +9,9 @@ Objetivo rector en `docs/HANDOFF.md` ("ultraligero, todo Rust, UI web bajo deman
 | 1 | `run`: driver + host + builtin, lotes, reconexión | hecho, probado en vivo | main |
 | 2 | Títulos, estados, ok/alert | hecho (mergeado `cacec39`), sin prueba física | main |
 | 3 | Límites zip + overlay obsoleto en `plugman` | hecho (`bef44ad`) | main |
-| 4 | `orcadeck edit` (editor web bajo demanda) | en curso, agy `miguelpicado/web-editor` (sin supervisión Orca: revisar terminal y `git log` de la rama) | worker |
-| 5 | `Scene Shift` | diseño en curso (`miguelpicado/scene-shift` → `docs/research/scene-shift.md`); implementar tras leerlo | worker |
-| 6 | `Settings`/`GlobalSettings` persistidos en el perfil, `OpenUrl`, reinicio de plugins caídos con backoff | por lanzar (`miguelpicado/app-runtime`; dueño de `daemon/src/app.rs` y `crates/host/**`) | worker |
+| 4 | `orcadeck edit` (editor web bajo demanda) | hecho (`08bf0d9`+`846bcdf`; 0 s CPU y 7 MB RSS en reposo, medido) | main |
+| 5 | `Scene Shift` | diseño hecho (`docs/research/scene-shift.md`); implementación por lanzar (`miguelpicado/scene-shift-impl`) | worker |
+| 6 | `Settings`/`GlobalSettings` persistidos, `OpenUrl`, reinicio de plugins con backoff, feedback sin hilo | hecho (`c1e22f3`; exe 3 422 720 B tras merge de todo) | main |
 | 7 | Inspector de propiedades (PI) desde el editor: el editor vive en otro proceso que el host → decidir: `edit` dentro del daemon en marcha (puerto 18618 ya es del host) o proceso aparte con IPC mínimo | sin diseñar | coordinador |
 | 8 | Instalar/quitar plugins desde la UI con `plugman` + vigilar `Downloads` | sin empezar | worker tras 4 |
 | 9 | Autoarranque (`tools/autostart/orcadeck-task.ps1`) | tarea `OrcaDeck` instalada DESACTIVADA; activar exige consola elevada: `schtasks /change /tn StreamDock /disable` y luego `.\orcadeck-task.ps1 enable` | usuario + mañana |
