@@ -9,6 +9,14 @@ README.md modificado). Commit solo con rutas explícitas y push solo si el usuar
 2. Nunca borrar nada que no se haya nombrado por ruta exacta. Los ficheros grandes de la raíz son del usuario: no moverlos/borrarlos.
 3. Preguntas al usuario con `AskUserQuestion` (regla global).
 
+## Objetivo rector (pegar en CADA spec de worker)
+Sustituto **extremadamente ligero y optimizado** de la app oficial: misma funcionalidad útil, sin la morralla. Todo en Rust (un
+binario, sin runtime async ni Electron/Qt/CEF), sin dependencias nuevas salvo necesidad demostrada, 0 % CPU en reposo (hilos
+bloqueantes, nada de polling), memoria mínima (decodificar/rasterizar solo lo que cambia, cachear por hash, sin copias
+innecesarias), tráfico HID mínimo (lotes, solo teclas cambiadas; ver hallazgo del firmware). La UI es web, servida por el daemon
+bajo demanda y no residente (`orcadeck edit` la levanta y se apaga); el daemon normal no carga UI. Medir antes de dar por buena una
+optimización (tamaño del exe, RSS, CPU en reposo) y anotar el número.
+
 ## Entorno de compilación (Windows, sin admin)
 ```
 cd C:\Users\migue\Github\orca-stream-dock\daemon
