@@ -14,9 +14,9 @@ Objetivo rector en [`HANDOFF.md`](HANDOFF.md). Estado verificado en [`STATUS.md`
 | 6 | Property Inspector | servidor e iframe integrados en `edit`; pendiente prueba con plugins reales |
 | 7 | Instalar/quitar plugins desde `edit` | hecho, con escaneo de Descargas bajo demanda; falta prueba en vivo |
 | 8 | `edit` dentro de `run` (`ctl.rs`) + recarga en caliente de una tecla | hecho, con fallback standalone; sin prueba física |
-| 9 | Retirada de plugins sin uso al cambiar de escena | pendiente, opcional (2 s de gracia) |
+| 9 | Retirada de plugins sin uso al cambiar de escena | hecho (2 s de gracia, +7 168 B); sin prueba física |
 | 10 | Autoarranque (`tools/autostart/orcadeck-task.ps1`) | tarea `OrcaDeck` instalada DESACTIVADA; activar exige consola elevada |
-| 11 | P0–P2 de [`REPO-AUDIT.md`](REPO-AUDIT.md) | pendiente: rutas absolutas del usuario, código muerto, metadatos Cargo, dependencias duplicadas, `cargo fmt`, CI propuesto |
+| 11 | P0–P2 de [`REPO-AUDIT.md`](REPO-AUDIT.md) | hecho: rutas de usuario, código muerto, metadatos Cargo, `.github/workflows/ci.yml` (sin verificar en GitHub). Pendiente: `base64`/`getrandom` duplicados, `cargo fmt` (28 ficheros), licencia (decide el usuario), clippy no instalado en el toolchain local |
 | 12 | Huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2 | pendiente |
 | 13 | Medidas de ligereza: exe, RSS y CPU en reposo con el dispositivo | pendiente (necesita dispositivo) |
 

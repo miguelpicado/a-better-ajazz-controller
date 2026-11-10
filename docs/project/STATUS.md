@@ -30,11 +30,12 @@ el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue
 
 ## Pendiente sin dispositivo
 
-1. Retirada opcional de plugins sin uso al cambiar de escena (2 s de gracia).
-2. P0–P2 de [`REPO-AUDIT.md`](REPO-AUDIT.md): rutas absolutas del usuario en
-   `builtin/actions.rs` y `host/tests/real_plugin.rs`, código muerto `wait_ack`/`screen_off`,
-   metadatos de Cargo (`publish = false`, `rust-version`, licencia), `base64`/`getrandom`
-   duplicados, `cargo fmt` tras estabilizar el árbol y el workflow de CI propuesto.
+1. Verificar el primer run de `.github/workflows/ci.yml` en GitHub (usa el toolchain MSVC del
+   runner con `RUSTUP_TOOLCHAIN=stable`; no se pudo probar en local).
+2. Restos de [`REPO-AUDIT.md`](REPO-AUDIT.md): `base64`/`getrandom` duplicados, `cargo fmt`
+   (28 ficheros, diff grande: hacerlo en un commit aparte), licencia (decide el usuario) y clippy
+   (no está instalado en el toolchain `gnullvm-local`). Hechos: rutas de usuario, código muerto,
+   metadatos de Cargo, retirada de plugins.
 3. Huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2: desconexión HID en caliente, caída de
    la tubería de Orca, SQLite ocupado, traversal en iconos de perfil, tramas WebSocket enormes y
    carrera entre Scene Shift y pintado.

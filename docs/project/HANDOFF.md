@@ -29,8 +29,12 @@ runtime async ni UI residente, 0 % de CPU en reposo, memoria y tráfico HID mín
 
 ## Siguiente, en orden
 
-1. Sin dispositivo: P0-P2 de [`REPO-AUDIT.md`](REPO-AUDIT.md), los huecos de tests de §4.2 y la
-   retirada opcional de plugins sin uso al cambiar de escena (2 s de gracia).
+1. Sin dispositivo: ver el primer run de CI en GitHub (`.github/workflows/ci.yml`, sin probar),
+   los huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2, `cargo fmt` aparte, `base64`/
+   `getrandom` duplicados y la licencia (decide el usuario). Hecho: retirada de plugins, rutas de
+   usuario, código muerto, metadatos Cargo.
+   **Cuidado:** sin `QUOTA_DIR` las teclas de cuota leen `%APPDATA%\OrcaDeck\quota` y quedan
+   vacías; definir `QUOTA_DIR=C:\Users\migue\Github\quota-monitor` (entorno o tarea de autoarranque).
 2. Con dispositivo y OK del usuario: parar Stream Dock (`schtasks /end /tn StreamDock`), probar
    `run`, `edit`, Scene Shift, PI e instalación de plugins en vivo; medir exe/RSS/CPU; autoarranque.
 3. Pulsación larga: solo investigación/emulación de firmware. **No flashear** sin plan de
