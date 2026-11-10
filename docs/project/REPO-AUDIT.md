@@ -1,5 +1,10 @@
 # Auditoría Integral de Salud del Repositorio: orca-stream-dock (orcadeck)
 
+> **Nota (2026-11-10, posterior):** las rutas `file:///...repo-audit` y `docs/*.md` de este informe
+> son del worktree y del árbol anterior a la reorganización de `docs/`; se conservan como evidencia.
+> Varias acciones se han hecho después (documentación alineada, legacy archivado); lo que sigue
+> pendiente está en [`STATUS.md`](STATUS.md) y [`ROADMAP.md`](ROADMAP.md).
+
 - **Fecha:** 2026-11-10
 - **Repositorio:** `C:\Users\migue\orca\workspaces\orca-stream-dock\repo-audit` (worktree de `C:\Users\migue\Github\orca-stream-dock`)
 - **Rama:** `miguelpicado/repo-audit`

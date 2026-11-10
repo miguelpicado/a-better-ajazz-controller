@@ -1,5 +1,11 @@
 ﻿# Inspector de Propiedades (Property Inspector) y Arquitectura de `orcadeck edit`
 
+> **Nota (2026-11-10, implementado):** la versión mergeada usa iframe con sandbox **sin**
+> `allow-same-origin`, token de un solo uso por `postMessage`, CSP sin red externa y aceptación de
+> `Origin: null` solo con una sesión de PI abierta. Las propuestas de §1/§7 sobre `allow-same-origin`
+> y CSP con `https:` quedan superadas; se conservan como registro. El estado real está en
+> [`../project/STATUS.md`](../project/STATUS.md).
+
 Investigación y propuesta de diseño para `orcadeck edit` y su integración con `orcadeck run`.  
 Fecha: 2026-11-10. Autor: Worker de investigación (`task_68efc43b2e65`).  
 Etiquetas:
@@ -22,12 +28,12 @@ Etiquetas:
 
 ## 2. Contexto y Estado del Arte
 
-- **Stream Dock / Elgato SDK v2 (OBSERVED en `docs/research/plugin-host-protocol.md:277-307`)**:
+- **Stream Dock / Elgato SDK v2 (OBSERVED en `docs/research/plugins/plugin-host-protocol.md:277-307`)**:
   Los plugins suministran su interfaz de configuración mediante páginas HTML locales (`PropertyInspectorPath` en `manifest.json`). La aplicación anfitriona embebe dicha página y evalúa `connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, "registerPropertyInspector", inInfo, inActionInfo)`. La página abre un WebSocket a `ws://127.0.0.1:<inPort>` e intercambia ajustes en tiempo real (`setSettings`, `sendToPlugin`, `sendToPropertyInspector`).
 - **Estado actual en OrcaDeck**:
   - `daemon/src/app.rs`: Subcomando `run`. Posee el handle HID exclusivo del AKP153E (`app.rs:534`), gestiona el pintado en lotes cada 400 ms (`app.rs:32`) y arranca `orcadeck_host::Host` en `127.0.0.1:18618` (`app.rs:433-440`).
   - `daemon/crates/host/src/host.rs`: Ya implementa la mitad servidora del Property Inspector: `Host::open_inspector` (`host.rs:452`), handshake `registerPropertyInspector` con tokens de un solo uso (`host.rs:606-616`), routing de `setSettings` / `getSettings` (`host.rs:700-710`), `sendToPlugin` / `sendToPropertyInspector` (`host.rs:711-718`) y eventos de ciclo de vida `propertyInspectorDidAppear` / `Disappear`.
-  - `daemon/src/edit.rs` y `daemon/crates/web`: Subcomando `edit`. Servidor web HTTP ultraligero (`orcadeck_web::Server`, `lib.rs:51-101`) que sirve una SPA en loopback con token de sesión, consumiendo 7 MB RSS y 0 s de CPU en reposo (`HANDOFF.md:106-112`). Actualmente `app.js:379-450` ofrece un inspector estático básico con inputs para títulos y JSON crudo, sin cargar el HTML del plugin.
+  - `daemon/src/edit.rs` y `daemon/crates/web`: Subcomando `edit`. Servidor web HTTP ultraligero (`orcadeck_web::Server`, `lib.rs:51-101`) que sirve una SPA en loopback con token de sesión, consumiendo 7 MB RSS y 0 s de CPU en reposo (`HANDOFF.md:106-112`). En el momento del diseño, `app.js:379-450` ofrecía un inspector estático básico con inputs para títulos y JSON crudo, sin cargar el HTML del plugin.
 
 ---
 
@@ -97,7 +103,7 @@ No debe crearse ningún "puente websocket mínimo". Toda la infraestructura ya e
        3. El bucle de `session` en `app.rs:569` la envía al dispositivo en el siguiente lote respetando `batch_gap()` (400 ms).
        4. Solo se escribe al HID la tecla afectada (~25 ms de tráfico HID).
      - Si la escena modificada **NO es la activa**: solo se persiste en disco, sin tráfico HID ni perturbación en el dispositivo.
-     - Si se cambia la escena actual (`PUT /api/scenes/current`): reutiliza directamente la función `switch_scene` diseñada en `docs/research/scene-shift.md:94-105`.
+     - Si se cambia la escena actual (`PUT /api/scenes/current`): reutiliza directamente la función `switch_scene` diseñada en `docs/design/scene-shift.md:94-105`.
 
 ---
 

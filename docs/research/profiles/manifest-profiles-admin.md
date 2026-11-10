@@ -16,7 +16,7 @@ Tags:
 - **DECOMPILED**: read from Ghidra pseudocode of the binary (function address given).
 - **INFERRED**: a conclusion drawn from the above, not verified at runtime.
 
-Companion doc: `docs/research/plugin-host-protocol.md` (WebSocket protocol, launch command line, plugin manifest keys).
+Companion doc: `docs/research/plugins/plugin-host-protocol.md` (WebSocket protocol, launch command line, plugin manifest keys).
 
 ---
 

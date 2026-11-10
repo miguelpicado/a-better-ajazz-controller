@@ -100,7 +100,7 @@ La mitad servidora está implementada:
 - al cerrar el socket se manda `propertyInspectorDidDisappear`.
 
 Falta la integración en el editor web (iframe y llamada a `connectElgatoStreamDeckSocket`); está en
-desarrollo. Ver `docs/research/inspector.md`. `run` arranca con `origins` vacío, así que un PI de
+desarrollo. Ver `docs/design/inspector.md`. `run` arranca con `origins` vacío, así que un PI de
 navegador no puede conectar todavía.
 
 ## Seguridad

@@ -3,7 +3,7 @@
 `install.mjs` installs a `.streamDeckPlugin` (zip) or `.sdPlugin` folder without the Elgato app.
 
 Handoff for the app integration (data model, Rust port, acceptance criteria):
-`../../docs/design/plugin-install-handoff.md`.
+`../../../docs/design/plugin-install-handoff.md`.
 
 It does **not** decrypt Marketplace manifests. When `manifest.json` starts with `ELGATO`, it rebuilds
 the host manifest from the plugin's own plaintext files and writes an overlay to
@@ -14,21 +14,21 @@ downloaded package stay intact.
 
 ```powershell
 # Show what the reconstructor can recover from an installed plugin
-node tools/plugin-install/install.mjs inspect "$env:APPDATA\HotSpot\StreamDock\plugins\com.elgato.camerahub.sdPlugin"
+node tools/legacy/plugin-install/install.mjs inspect "$env:APPDATA\HotSpot\StreamDock\plugins\com.elgato.camerahub.sdPlugin"
 
 # Verify a browser download before installing it
-node tools/plugin-install/install.mjs inspect "$env:USERPROFILE\Downloads\plugin.streamDeckPlugin"
+node tools/legacy/plugin-install/install.mjs inspect "$env:USERPROFILE\Downloads\plugin.streamDeckPlugin"
 
 # Install a package into the host plugin folder
-node tools/plugin-install/install.mjs install .\com.example.plugin.streamDeckPlugin `
+node tools/legacy/plugin-install/install.mjs install .\com.example.plugin.streamDeckPlugin `
   --plugins "$env:APPDATA\OrcaDeck\plugins" --data "$env:APPDATA\OrcaDeck"
 
 # Install every .streamDeckPlugin already in a folder, then keep watching it
-node tools/plugin-install/install.mjs watch "$env:USERPROFILE\Downloads" `
+node tools/legacy/plugin-install/install.mjs watch "$env:USERPROFILE\Downloads" `
   --plugins "$env:APPDATA\OrcaDeck\plugins" --data "$env:APPDATA\OrcaDeck"
 
 # Use a plain manifest published by the vendor when reconstruction is not enough
-node tools/plugin-install/install.mjs install .\plugin.streamDeckPlugin `
+node tools/legacy/plugin-install/install.mjs install .\plugin.streamDeckPlugin `
   --plugins .\plugins --data .\data --manifest .\vendor-manifest.json
 ```
 
@@ -87,10 +87,10 @@ to a new machine:
 
 ```powershell
 # On the old machine, after installing the plugins
-node tools/plugin-install/install.mjs export --data "$env:APPDATA\OrcaDeck" --out .\overlays
+node tools/legacy/plugin-install/install.mjs export --data "$env:APPDATA\OrcaDeck" --out .\overlays
 
 # On the new machine, before or after installing the packages
-node tools/plugin-install/install.mjs import .\overlays --data "$env:APPDATA\OrcaDeck"
+node tools/legacy/plugin-install/install.mjs import .\overlays --data "$env:APPDATA\OrcaDeck"
 ```
 
 Most plugins reconstruct from the package alone (`en.json` or code literals). Advanced Launcher is
@@ -101,5 +101,5 @@ manifest, so export its overlay on the old machine or use a vendor manifest.
 ## Test
 
 ```powershell
-node --test tools/plugin-install/install.test.mjs
+node --test tools/legacy/plugin-install/install.test.mjs
 ```

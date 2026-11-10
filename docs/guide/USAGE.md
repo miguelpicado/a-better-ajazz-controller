@@ -3,10 +3,10 @@
 `orcadeck` es el sustituto ligero de «Stream Dock AJAZZ» para el teclado AKP153E. Lee los perfiles
 de Stream Dock tal cual y ejecuta plugins del SDK v2 (`.exe` y Node) y acciones Orca integradas.
 
-- Arquitectura y por qué de los tiempos: [ARCHITECTURE.md](ARCHITECTURE.md).
+- Arquitectura y por qué de los tiempos: [ARCHITECTURE.md](../design/ARCHITECTURE.md).
 - Compilar y probar: [DEVELOPMENT.md](DEVELOPMENT.md).
 - Fallos y mensajes de error: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
-- Estado y pendientes: [HANDOFF.md](HANDOFF.md), [STATUS.md](STATUS.md), [ROADMAP.md](ROADMAP.md).
+- Estado y pendientes: [HANDOFF.md](../project/HANDOFF.md), [STATUS.md](../project/STATUS.md), [ROADMAP.md](../project/ROADMAP.md).
 
 ## 1. Antes de empezar
 
@@ -28,8 +28,8 @@ de Stream Dock tal cual y ejecuta plugins del SDK v2 (`.exe` y Node) y acciones 
 
 ## 2. Subcomandos
 
-Todos se implementan en [`daemon/src/main.rs`](../daemon/src/main.rs); `run` y `edit` delegan en
-[`app.rs`](../daemon/src/app.rs) y [`edit.rs`](../daemon/src/edit.rs).
+Todos se implementan en [`daemon/src/main.rs`](../../daemon/src/main.rs); `run` y `edit` delegan en
+[`app.rs`](../../daemon/src/app.rs) y [`edit.rs`](../../daemon/src/edit.rs).
 
 | Comando | Sintaxis | Qué hace | ¿Toca el dispositivo? |
 |---|---|---|---|
@@ -96,16 +96,16 @@ fichero de configuración para ellas.
 
 | Variable | Por defecto | Efecto | Dónde se lee |
 |---|---|---|---|
-| `ORCADECK_REPORT_LEN` | descriptor HID; si falla, 512 | Fuerza el tamaño `N` del payload de salida. Útil si el descriptor no se puede leer. | [`daemon/src/main.rs`](../daemon/src/main.rs) |
-| `ORCADECK_PLUGINS` | `%APPDATA%\HotSpot\StreamDock\plugins` | Carpeta de plugins para `run`, `render`, `scene` y `watch`; también la raíz de plugins del editor. | [`main.rs`](../daemon/src/main.rs), [`edit.rs`](../daemon/src/edit.rs) |
-| `ORCADECK_PROFILES` | `%APPDATA%\HotSpot\StreamDock\profiles` | Carpeta de perfiles **solo para `edit`**. `run` recibe el perfil por argumento. | [`edit.rs`](../daemon/src/edit.rs) |
-| `ORCADECK_DATA` | `%APPDATA%\OrcaDeck` | `state.json` y overlays **solo para `edit`**. `run` usa siempre `%APPDATA%\OrcaDeck`. | [`edit.rs`](../daemon/src/edit.rs) |
-| `ORCADECK_BUILTIN_PLUGINS` | vacío; se añaden las carpetas `plugins` de Stream Dock si existen | Raíces de plugins de solo lectura extra para `edit`, separadas por `;`. | [`edit.rs`](../daemon/src/edit.rs) |
-| `ORCADECK_GAP_MS` | `400` | Mínimo de milisegundos entre lotes de pintado. Se lee al abrir cada sesión del dispositivo. **No bajar.** | [`app.rs`](../daemon/src/app.rs) |
-| `ORCADECK_TRACE` | desactivado (cualquier valor lo activa) | Escribe a stderr cada entrada HID y la duración de cada lote. | [`app.rs`](../daemon/src/app.rs) |
-| `ORCADECK_CMD` | desactivado | Hook de experimento de `watch`: `VERBO:0a=01,0b=00` (offsets y valores en hexadecimal). Envía un `CRT` y sigue. | [`main.rs`](../daemon/src/main.rs) |
-| `ORCADECK_SCENE` | desactivado | Con `ORCADECK_CMD`: tras el comando, envía `LIG`, `CLE`, las imágenes de ese perfil (con `STP` por tecla) y `CONNECT`. | [`main.rs`](../daemon/src/main.rs) |
-| `QUOTA_DIR` | `C:/Users/migue/Github/quota-monitor` | Carpeta de `quota-status.json` y `.wake` para las teclas de cuota. | [`builtin/src/actions.rs`](../daemon/crates/builtin/src/actions.rs) |
+| `ORCADECK_REPORT_LEN` | descriptor HID; si falla, 512 | Fuerza el tamaño `N` del payload de salida. Útil si el descriptor no se puede leer. | [`daemon/src/main.rs`](../../daemon/src/main.rs) |
+| `ORCADECK_PLUGINS` | `%APPDATA%\HotSpot\StreamDock\plugins` | Carpeta de plugins para `run`, `render`, `scene` y `watch`; también la raíz de plugins del editor. | [`main.rs`](../../daemon/src/main.rs), [`edit.rs`](../../daemon/src/edit.rs) |
+| `ORCADECK_PROFILES` | `%APPDATA%\HotSpot\StreamDock\profiles` | Carpeta de perfiles **solo para `edit`**. `run` recibe el perfil por argumento. | [`edit.rs`](../../daemon/src/edit.rs) |
+| `ORCADECK_DATA` | `%APPDATA%\OrcaDeck` | `state.json` y overlays **solo para `edit`**. `run` usa siempre `%APPDATA%\OrcaDeck`. | [`edit.rs`](../../daemon/src/edit.rs) |
+| `ORCADECK_BUILTIN_PLUGINS` | vacío; se añaden las carpetas `plugins` de Stream Dock si existen | Raíces de plugins de solo lectura extra para `edit`, separadas por `;`. | [`edit.rs`](../../daemon/src/edit.rs) |
+| `ORCADECK_GAP_MS` | `400` | Mínimo de milisegundos entre lotes de pintado. Se lee al abrir cada sesión del dispositivo. **No bajar.** | [`app.rs`](../../daemon/src/app.rs) |
+| `ORCADECK_TRACE` | desactivado (cualquier valor lo activa) | Escribe a stderr cada entrada HID y la duración de cada lote. | [`app.rs`](../../daemon/src/app.rs) |
+| `ORCADECK_CMD` | desactivado | Hook de experimento de `watch`: `VERBO:0a=01,0b=00` (offsets y valores en hexadecimal). Envía un `CRT` y sigue. | [`main.rs`](../../daemon/src/main.rs) |
+| `ORCADECK_SCENE` | desactivado | Con `ORCADECK_CMD`: tras el comando, envía `LIG`, `CLE`, las imágenes de ese perfil (con `STP` por tecla) y `CONNECT`. | [`main.rs`](../../daemon/src/main.rs) |
+| `QUOTA_DIR` | `C:/Users/migue/Github/quota-monitor` | Carpeta de `quota-status.json` y `.wake` para las teclas de cuota. | [`builtin/src/actions.rs`](../../daemon/crates/builtin/src/actions.rs) |
 | `APPDATA` | la del usuario de Windows | Base de todas las rutas por defecto. | `main.rs`, `app.rs`, `edit.rs`, `orca.rs` |
 
 `ORCADECK_CMD` y `ORCADECK_SCENE` son herramientas de sondeo, no opciones de uso normal. `watch`
@@ -114,7 +114,8 @@ también hace `init`, así que pueden aparecer imágenes o limpieza de pantalla.
 ## 5. `run` en detalle
 
 - **Puerto**: 18618 fijo, sin opción. Si está ocupado, `run` falla al arrancar el host.
-- **Perfil**: se lee una vez al arrancar. Las ediciones del editor no se recargan en caliente.
+- **Perfil**: se lee al arrancar y al cambiar de escena. Las ediciones del editor no se recargan solas,
+  salvo la recarga en caliente de una tecla cuando `edit` corre dentro de `run` (ver §7).
 - **Escena Shift**: sí recarga el manifiesto de la escena destino (ver §6).
 - **Lotes**: hasta el gap de espera entre lotes (400 ms por defecto, `ORCADECK_GAP_MS`). Es
   deliberado: el firmware pierde pulsaciones si se le pinta sin pausas.
@@ -151,8 +152,8 @@ Monitorización).
 - Si el destino es la escena actual, no hace nada. No hay soporte de páginas múltiples:
   `PageIndex` se ignora.
 - **Estado**: implementado y con tests unitarios; pendiente la prueba física con el teclado (ver
-  [ROADMAP](ROADMAP.md)). El diseño y las evidencias están en
-  [`research/scene-shift.md`](research/scene-shift.md).
+  [ROADMAP](../project/ROADMAP.md)). El diseño y las evidencias están en
+  [`design/scene-shift.md`](../design/scene-shift.md).
 
 Para cambiar el destino desde el editor: selecciona la tecla y usa **Ir a la escena** (Siguiente escena
 o una escena concreta), o edita `Settings.ProfileUUID` en **Ajustes en JSON**. El desplegable no
@@ -180,14 +181,16 @@ cd daemon
 - La URL impresa lleva un token de sesión; se cambia por una cookie `HttpOnly` y se exige en cada
   llamada a la API. No compartas esa URL.
 - Ctrl+C detiene el servidor y libera el puerto.
-- No toca el HID y no necesita el teclado. Puede convivir con `run`, pero **los cambios no se
-  recargan en el `run` en marcha**.
+- No toca el HID directamente y no necesita el teclado. Si `run` está vivo, `edit` se ejecuta dentro
+  de `run` (named pipe `ctl.rs`); si no, arranca standalone. En el primer caso, guardar una celda
+  recarga en caliente esa tecla; en el segundo, los cambios no se recargan.
 - Dos vistas: **Teclas** (escenas, cuadrícula 5×3 + panel lateral, arrastrar acciones, inspector de
   título/JSON, brillo) y **Plugins** (estado, manifest, instalar/quitar).
 - El brillo que guarda el editor es un stub: `run` arranca a 80 y el brillo real se cambia con
   `orcadeck bright`.
-- El inspector de propiedades del plugin (iframe del PI) está **en desarrollo**; hoy el inspector
-  muestra título y JSON de ajustes.
+- El Property Inspector del plugin se carga en un iframe aislado (sandbox sin `allow-same-origin`)
+  con token de un solo uso por `postMessage`; si el plugin no trae PI, el inspector muestra título
+  y JSON de ajustes.
 
 Para probar sin tocar tus perfiles reales, apunta el editor a copias:
 
@@ -220,12 +223,12 @@ El editor usa `orcadeck-plugman`; no necesita la app de Elgato ni descifra manif
    usando, para `run` primero.
 
 Los `.js` necesitan `node` en `PATH`; los `.html` no se ejecutan. Detalle del formato y del
-instalador de referencia: [`design/plugin-install-handoff.md`](design/plugin-install-handoff.md) y
-[`tools/plugin-install/README.md`](../tools/plugin-install/README.md).
+instalador de referencia: [`design/plugin-install-handoff.md`](../design/plugin-install-handoff.md) y
+[`tools/legacy/plugin-install/README.md`](../../tools/legacy/plugin-install/README.md).
 
 ## 9. Autoarranque
 
-[`tools/autostart/orcadeck-task.ps1`](../tools/autostart/orcadeck-task.ps1) registra una tarea de
+[`tools/autostart/orcadeck-task.ps1`](../../tools/autostart/orcadeck-task.ps1) registra una tarea de
 usuario normal (sin admin) que arranca `orcadeck run` al iniciar sesión.
 
 ```powershell

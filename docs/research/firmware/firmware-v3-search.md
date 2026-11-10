@@ -35,7 +35,7 @@ Niveles de confianza: ALTA = verificado en fichero/fuente primaria; MEDIA = infe
 - `%APPDATA%\HotSpot\StreamDock\update\AKP153E.bin`, 96 496 bytes, fecha 20-feb-2024. Contiene la cadena `V2.293S.00` y `HOTSPOTEK %s Stat!!!`; cabecera con tabla de vectores Cortex-M (base de flash 0x08000000, SP 0x200321C0). Es la imagen V2 de la línea 293S, coherente con el firmware de tu unidad `V2.293S.00.003` (ALTA). No es V3.
 - En el mismo directorio está el instalador de la app (377 MB, 10-jun-2025).
 - Logs de la app (`%APPDATA%\HotSpot\StreamDock\logs\`): líneas `SDSetting::updateFirmware` los días 2024-02-20, 22 y 26, 2024-03-25, 2024-04-30 y 2025-01-22, y en 2025-06-10 `Get firmware version : "V2.293S.00.003"`. Estas líneas indican que el botón de actualizar se activó varias veces; el resultado no queda registrado (los textos salen ilegibles).
-- Herramienta auxiliar `FirmwareUpgradeTool.exe` (misma carpeta de instalación): acepta ficheros `*.img` y usa USB directo (`__cmd_upgrade_image2`, "fwc upgrade", FirmwareUpdater2). Es el mecanismo de la familia `d13x` (MBox-N1/VSD_M18), no el del AKP153E (.bin). Confianza MEDIA.
+- Herramienta auxiliar `FirmwareUpgradeTool.exe` (misma carpeta de instalación): tiene dos modos. Con ficheros `*.img` usa USB directo (`__cmd_upgrade_image2`, "fwc upgrade", FirmwareUpdater2) para la familia `d13x` (MBox-N1/VSD_M18); con 4 argumentos (`768 4112 <bin> <icono>`) flashea el AKP153E por HID. Ver `updatetool-origin.md`. Confianza ALTA.
 
 Conclusión 1: el servidor público no ofrece V3 para AKP153E. Confianza ALTA para "no está en los manifiestos hoy"; no se descarta que exista fuera de ellos (canal "Custom" u OEM).
 
