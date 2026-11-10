@@ -6,7 +6,6 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +90,8 @@ pub fn resolve_paths() -> EditPaths {
 }
 
 static STOPPED: AtomicBool = AtomicBool::new(false);
+/// Thread parked in `run`; Ctrl+C unparks it, so waiting costs no CPU (no polling).
+static WAITER: std::sync::OnceLock<thread::Thread> = std::sync::OnceLock::new();
 
 #[cfg(windows)]
 mod ctrl_c {
@@ -99,6 +100,9 @@ mod ctrl_c {
     unsafe extern "system" fn handler(ctrl_type: u32) -> i32 {
         if ctrl_type == 0 || ctrl_type == 1 || ctrl_type == 2 {
             STOPPED.store(true, Ordering::SeqCst);
+            if let Some(t) = WAITER.get() {
+                t.unpark();
+            }
             1
         } else {
             0
@@ -200,9 +204,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
 
+    let _ = WAITER.set(thread::current());
     ctrl_c::set_handler();
     while !is_stopped() {
-        thread::sleep(Duration::from_millis(100));
+        thread::park();
     }
 
     println!("\nDeteniendo el editor...");
