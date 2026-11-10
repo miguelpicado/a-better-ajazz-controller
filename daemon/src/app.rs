@@ -445,9 +445,7 @@ fn scene_dir(rt: &Runtime) -> Option<PathBuf> {
 }
 
 /// Live bridge from the web editor to the plugin host: a one-use inspector token for the plugin
-/// action on a cell of the scene now on the deck. `crates/web` exposes its `InspectorBridge` trait
-/// in a parallel branch; the coordinator turns this into that implementation, which is why it does
-/// not import it.
+/// action on a cell of the scene now on the deck (`orcadeck_web::InspectorBridge`).
 pub(crate) struct RunInspector {
     rt: Arc<Runtime>,
     host: host::Host,
@@ -455,14 +453,12 @@ pub(crate) struct RunInspector {
 }
 
 impl RunInspector {
-    #[allow(dead_code)] // crates/web's InspectorBridge merge constructs it; exercised by tests
     fn new(rt: Arc<Runtime>, host: host::Host) -> RunInspector {
         let port = host.port();
         RunInspector { rt, host, port }
     }
 
     /// `(token, host port, action context)` to bootstrap the PI, or why there is none.
-    #[allow(dead_code)] // called through crates/web's InspectorBridge after its merge; exercised by tests
     fn open(&self, scene: &str, key: &str) -> Result<(String, u16, String), String> {
         if current_scene(&self.rt) != scene {
             return Err(format!("scene {scene:?} is not the one on the deck"));
@@ -483,6 +479,13 @@ impl RunInspector {
             .ok_or_else(|| format!("no plugin action at {key}"))?;
         let token = self.host.open_inspector(&ctx).ok_or_else(|| format!("action at {key} is not live"))?;
         Ok((token, self.port, ctx))
+    }
+}
+
+impl orcadeck_web::InspectorBridge for RunInspector {
+    fn open(&self, scene: &str, key: &str) -> Result<orcadeck_web::InspectorSession, String> {
+        let (token, port, context) = RunInspector::open(self, scene, key)?;
+        Ok(orcadeck_web::InspectorSession { token, port, context })
     }
 }
 
@@ -801,7 +804,14 @@ fn reload_cell(
 
 /// `orcadeck edit` inside `run`: the web server lives exactly as long as the client stays
 /// connected, and it uses the plugin host that already has the plugins running.
-fn serve_edit(conn: &mut ctl::Conn, profile: &Path, plugins: &Path, data: &Path, host: &host::Host) {
+fn serve_edit(
+    conn: &mut ctl::Conn,
+    profile: &Path,
+    plugins: &Path,
+    data: &Path,
+    host: &host::Host,
+    inspector: Option<Arc<dyn orcadeck_web::InspectorBridge>>,
+) {
     let Some(port) = conn.read_line().as_deref().and_then(ctl::parse_edit) else {
         conn.write_line("ERR expected: EDIT <port>");
         return;
@@ -818,8 +828,8 @@ fn serve_edit(conn: &mut ctl::Conn, profile: &Path, plugins: &Path, data: &Path,
         data: data.to_path_buf(),
         legacy_config,
         downloads: None,
+        inspector,
     };
-    // The editor's InspectorBridge plugs into this call once `crates/web` exposes it.
     match orcadeck_web::Server::start(Arc::new(store), port) {
         Ok(server) => {
             // The PI connects to the plugin host from the editor page, whose port is only known now.
@@ -870,7 +880,10 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let ctl_plugins = plugins.to_path_buf();
     let ctl_data = data_root.clone();
     let ctl_host = host.clone();
-    ctl::spawn(ctl::NAME, move |conn| serve_edit(conn, &ctl_profile, &ctl_plugins, &ctl_data, &ctl_host));
+    let ctl_inspector: Arc<dyn orcadeck_web::InspectorBridge> = Arc::new(RunInspector::new(Arc::clone(&runtime), host.clone()));
+    ctl::spawn(ctl::NAME, move |conn| {
+        serve_edit(conn, &ctl_profile, &ctl_plugins, &ctl_data, &ctl_host, Some(Arc::clone(&ctl_inspector)))
+    });
 
     // Built-in actions on their own thread: Orca RPC blocks for ~450 ms now and then.
     let mut registry = bi::Registry::new(bi::Deck::new(Box::new(bi::PipeOrca::from_env()), bi::Deck::default_quota_dir()));
@@ -1308,7 +1321,7 @@ mod tests {
         let listener = ctl::Listener::new(&name).expect("pipe instance");
         let (profile, plugins, data) = (scene.clone(), root.join("plugins"), root.clone());
         let server = std::thread::spawn(move || {
-            assert!(listener.accept(|conn| serve_edit(conn, &profile, &plugins, &data, &host)));
+            assert!(listener.accept(|conn| serve_edit(conn, &profile, &plugins, &data, &host, None)));
         });
 
         let session = ctl::request_at(&name, 0).expect("daemon present").expect("editor url");
