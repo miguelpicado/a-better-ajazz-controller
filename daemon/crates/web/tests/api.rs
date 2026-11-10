@@ -64,6 +64,15 @@ fn fixture(name: &str) -> PathBuf {
         "States": [{ "Image": "" }] }] }).to_string());
     w(t.join("builtin/com.hotspot.streamdock.profile.rotate.sdPlugin/Images/switchProfile.png"), PNG);
 
+    // Downloads candidates for the on-demand inbox scan: a folder package, an archive (never opened by the scan),
+    // a text file that must be ignored, and a package outside Downloads for the traversal tests.
+    let inbox = t.join("downloads");
+    w(inbox.join("com.test.inbox.sdPlugin/manifest.json"), json!({ "Name": "Inbox", "Version": "0.1", "Author": "T",
+        "Actions": [{ "UUID": "com.test.inbox.go", "Name": "Go" }] }).to_string());
+    w(inbox.join("bundle.zip"), b"PK\x03\x04not a real zip");
+    w(inbox.join("notes.txt"), "ignore me");
+    w(t.join("outside/com.test.evil.sdPlugin/manifest.json"), json!({ "Name": "Evil" }).to_string());
+
     w(t.join("legacy/StreamDockConfig.ini"), format!(
         "[StreamDockCurrentDevice]\nDevice=AKP153E\nAKP153E\\SerialNumber=355499441494\n\n\
          [AKP153E355499441494DeviceConfig]\nsdProfileName={ORCA}.sdProfile\n\n[DeviceBrightness]\nAKP153E355499441494=70\n"));
@@ -78,6 +87,7 @@ fn start(t: &Path) -> Server {
         builtin_plugins: vec![t.join("builtin")],
         data: t.join("data"),
         legacy_config: Some(t.join("legacy")),
+        downloads: Some(t.join("downloads")),
     };
     Server::start(Arc::new(store), 0).unwrap()
 }
@@ -332,6 +342,72 @@ fn plugins_actions_images_device() {
     assert_eq!(call(&s, "PUT", "/api/device", Some(json!({ "brightness": 40 }))).json()["brightness"], 40);
     assert_eq!(call(&s, "PUT", "/api/device", Some(json!({ "brightness": 140 }))).status, 400);
     assert_eq!(call(&s, "GET", "/api/nope", None).status, 404);
+    s.stop();
+    let _ = fs::remove_dir_all(&t);
+}
+
+#[test]
+fn plugins_inbox_install_remove() {
+    let t = fixture("inbox");
+    let s = start(&t);
+
+    // On-demand scan: recent installable candidates only, newest first.
+    let inbox = call(&s, "GET", "/api/plugins/inbox", None).json();
+    assert_eq!(inbox["dir"].as_str(), Some(t.join("downloads").to_string_lossy().as_ref()));
+    let items = inbox["items"].as_array().unwrap();
+    let names: Vec<&str> = items.iter().map(|i| i["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"com.test.inbox.sdPlugin") && names.contains(&"bundle.zip"), "{names:?}");
+    assert!(!names.iter().any(|n| n.ends_with(".txt")), "{names:?}");
+    let ms: Vec<u64> = items.iter().map(|i| i["modified"].as_u64().unwrap()).collect();
+    assert!(ms.windows(2).all(|w| w[0] >= w[1]), "newest first");
+
+    let pkg = t.join("downloads/com.test.inbox.sdPlugin");
+    let inspect = |p: &Path| call(&s, "POST", "/api/plugins/inspect", Some(json!({ "path": p.to_string_lossy() })));
+    let r = inspect(&pkg);
+    assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+    let j = r.json();
+    assert_eq!((j["uuid"].as_str(), j["name"].as_str(), j["actions"].as_u64()), (Some("com.test.inbox"), Some("Inbox"), Some(1)));
+    assert_eq!((j["kind"].as_str(), j["installed"].as_bool()), (Some("folder"), Some(false)));
+    // The SPA installs with the path returned by inspect (canonicalized, verbatim prefix on Windows).
+    let inspected_path = j["path"].as_str().unwrap().to_string();
+
+    // Only a package that canonicalizes inside Downloads reaches plugman.
+    assert_eq!(inspect(&t.join("outside/com.test.evil.sdPlugin")).status, 400);
+    assert_eq!(inspect(&t.join("downloads/../outside/com.test.evil.sdPlugin")).status, 400);
+    assert_eq!(inspect(&t.join("downloads/notes.txt")).status, 400);
+    assert_eq!(inspect(&t.join("downloads/nope.zip")).status, 404);
+
+    // Install copies the folder and records it as ours.
+    let install = |force: bool| call(&s, "POST", "/api/plugins/install", Some(json!({ "path": inspected_path, "force": force })));
+    let r = install(false);
+    assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+    let j = r.json();
+    assert_eq!((j["replaced"].as_bool(), j["needsManifest"].as_bool()), (Some(false), Some(false)));
+    let dest = t.join("plugins/com.test.inbox.sdPlugin");
+    assert!(dest.join("manifest.json").is_file());
+    let plugins = call(&s, "GET", "/api/plugins", None).json();
+    let find = |u: &str| plugins.as_array().unwrap().iter().find(|p| p["uuid"] == u).unwrap().clone();
+    let origin = |u: &str| (find(u)["origin"].as_str().unwrap().to_string(), find(u)["removable"].as_bool().unwrap());
+    assert_eq!(origin("com.test.inbox"), ("orcadeck".into(), true));
+    assert_eq!(origin("com.test.demo"), ("streamdock".into(), false));
+    assert_eq!(origin("com.hotspot.streamdock.profile.rotate"), ("builtin".into(), false));
+
+    // Replacing needs an explicit confirmation in the request.
+    assert_eq!(install(false).status, 409);
+    let r = install(true);
+    assert_eq!(r.status, 200);
+    assert_eq!(r.json()["replaced"], true);
+
+    // Deletion: only what this editor installed. Built-in and Stream Dock's plugin stay untouched.
+    let del = |u: &str| call(&s, "DELETE", &format!("/api/plugins/{u}"), None).status;
+    assert_eq!(del("com.test.demo"), 403);
+    assert!(t.join("plugins/com.test.demo.sdPlugin").is_dir());
+    assert_eq!(del("com.hotspot.streamdock.profile.rotate"), 403);
+    assert_eq!(call(&s, "DELETE", "/api/plugins/..%2F..%2Fsecret", None).status, 400);
+    assert_eq!(del("com.test.inbox"), 200);
+    assert!(!dest.exists());
+    assert_eq!(del("com.test.inbox"), 403);
+    assert!(!call(&s, "GET", "/api/plugins", None).json().as_array().unwrap().iter().any(|p| p["uuid"] == "com.test.inbox"));
     s.stop();
     let _ = fs::remove_dir_all(&t);
 }

@@ -58,7 +58,11 @@
     <div class="plist-head">
       <h1>Plugins</h1>
       <label class="check"><input type="checkbox" id="only-problems"> Solo con problemas</label>
+      <button type="button" id="scan-downloads" class="btn scan-btn">Buscar en Descargas</button>
     </div>
+    <p id="pstatus" class="status" role="status" aria-live="polite"></p>
+    <p id="inbox-note" class="sub" hidden></p>
+    <ul id="inbox" class="inbox" hidden></ul>
     <ul id="plist" class="plist"></ul>
   </section>
   <aside class="inspector" id="pdetail" aria-label="Detalle del plugin"></aside>
