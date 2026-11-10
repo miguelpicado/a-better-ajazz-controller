@@ -47,6 +47,7 @@ impl SceneSet {
             builtin_plugins: Vec::new(),
             data: data.to_path_buf(),
             legacy_config,
+            downloads: None,
         };
         let scenes = store.scenes().map_err(|e| e.msg)?;
         let order = scenes.iter().filter(|s| s.listed && s.device == device).map(|s| s.id.clone()).collect();
