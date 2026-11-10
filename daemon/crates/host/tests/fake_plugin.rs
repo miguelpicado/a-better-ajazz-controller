@@ -202,6 +202,29 @@ fn pi_without_token_is_rejected() {
     assert!(closed(&mut pi));
 }
 
+/// The editor serves the PI in a sandboxed iframe: its WebSocket arrives with `Origin: null`.
+#[test]
+fn a_sandboxed_pi_needs_an_open_inspector_and_its_token() {
+    let (host, _out) = start();
+    // No inspector session: an opaque origin cannot even open the socket.
+    assert!(open(&host, Some("null")).is_err(), "null origin without an inspector session");
+
+    let c1 = host.appear(Instance::new("com.fake", "com.fake.act", "DEV", 0, 0));
+    let token = host.open_inspector(&c1).unwrap();
+    // A session exists: the sandboxed iframe connects and registers with its single-use token.
+    let mut pi = connect(&host, Some("null"), json!({"event": "registerPropertyInspector", "uuid": token}));
+    assert_eq!(recv(&mut pi)["event"], "didReceiveSettings");
+    drop(pi);
+
+    // Same opaque origin and a session open, but no valid token: the socket is dropped.
+    let _token = host.open_inspector(&c1).unwrap();
+    let mut bad = connect(&host, Some("null"), json!({"event": "registerPropertyInspector", "uuid": "NOPE"}));
+    assert!(closed(&mut bad));
+
+    // A foreign origin is still refused while the session is open.
+    assert!(open(&host, Some("https://evil.example")).is_err(), "foreign origin rejected");
+}
+
 #[test]
 fn unknown_plugin_uuid_is_rejected() {
     let (host, _out) = start();

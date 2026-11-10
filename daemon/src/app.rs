@@ -8,6 +8,7 @@
 //! two sends (overlay, then the current image ~600 ms later), never a direct device write.
 //! The AKP153E reports a press only on release, so a press is delivered as a click (down + up).
 use crate::{
+    ctl,
     load_img,
     profile::{self, Scene},
     proto::*,
@@ -200,10 +201,19 @@ struct Paint {
     ctx: String,
 }
 
+/// An editor save the deck has to reflect. Only the scene currently on the deck is repainted;
+/// edits to any other scene stay on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReloadCmd {
+    Cell { scene: String, cell: (u8, u8) },
+}
+
 /// State shared by plugin socket threads, the builtin thread and the device loop. Plugin outputs
 /// only touch this; the device loop drains it in `tick`, so nothing else writes the device.
 struct Runtime {
     tx: mpsc::Sender<Paint>,
+    /// Editor saves waiting for the device loop.
+    reload_tx: mpsc::Sender<ReloadCmd>,
     view: View,
     /// Bumped on every scene switch; paints tagged with an older generation are stale.
     gen: Arc<AtomicU64>,
@@ -245,6 +255,20 @@ impl Runtime {
     /// One paint, tagged so the device loop can drop it after a scene switch.
     fn send(&self, key: u8, img: DynamicImage, context: &str) {
         let _ = self.tx.send(Paint { key, img, gen: self.gen.load(Ordering::Relaxed), ctx: context.to_string() });
+    }
+
+    /// Tells the device loop that the editor saved a cell of `scene` (see [`ReloadCmd`]).
+    #[allow(dead_code)] // crates/web's mutation hook sends these once its merge lands
+    fn reload(&self, scene: &str, cell: (u8, u8)) {
+        let _ = self.reload_tx.send(ReloadCmd::Cell { scene: scene.to_string(), cell });
+    }
+
+    /// Forgets a plugin context whose cell is about to hold another action.
+    fn forget(&self, context: &str) {
+        let mut p = self.settings.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(cell) = p.cells.remove(context) {
+            p.pending.remove(&cell);
+        }
     }
 
     /// Points settings writes at the scene now on the deck.
@@ -402,6 +426,66 @@ impl Runtime {
     }
 }
 
+/// Scene id of the manifest now on the deck (`<id>.sdProfile`), empty when unknown.
+fn current_scene(rt: &Runtime) -> String {
+    rt.manifest
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .trim_end_matches(".sdProfile")
+        .to_string()
+}
+
+/// Directory of the scene now on the deck.
+fn scene_dir(rt: &Runtime) -> Option<PathBuf> {
+    rt.manifest.lock().unwrap_or_else(|e| e.into_inner()).parent().map(Path::to_path_buf)
+}
+
+/// Live bridge from the web editor to the plugin host: a one-use inspector token for the plugin
+/// action on a cell of the scene now on the deck. `crates/web` exposes its `InspectorBridge` trait
+/// in a parallel branch; the coordinator turns this into that implementation, which is why it does
+/// not import it.
+pub(crate) struct RunInspector {
+    rt: Arc<Runtime>,
+    host: host::Host,
+    port: u16,
+}
+
+impl RunInspector {
+    #[allow(dead_code)] // crates/web's InspectorBridge merge constructs it; exercised by tests
+    fn new(rt: Arc<Runtime>, host: host::Host) -> RunInspector {
+        let port = host.port();
+        RunInspector { rt, host, port }
+    }
+
+    /// `(token, host port, action context)` to bootstrap the PI, or why there is none.
+    #[allow(dead_code)] // called through crates/web's InspectorBridge after its merge; exercised by tests
+    fn open(&self, scene: &str, key: &str) -> Result<(String, u16, String), String> {
+        if current_scene(&self.rt) != scene {
+            return Err(format!("scene {scene:?} is not the one on the deck"));
+        }
+        let cell: (u8, u8) = key
+            .split_once(',')
+            .and_then(|(c, r)| Some((c.parse().ok()?, r.parse().ok()?)))
+            .ok_or_else(|| format!("bad cell {key:?}"))?;
+        let ctx = self
+            .rt
+            .settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cells
+            .iter()
+            .find(|(_, c)| **c == cell)
+            .map(|(ctx, _)| ctx.clone())
+            .ok_or_else(|| format!("no plugin action at {key}"))?;
+        let token = self.host.open_inspector(&ctx).ok_or_else(|| format!("action at {key} is not live"))?;
+        Ok((token, self.port, ctx))
+    }
+}
+
 /// `%APPDATA%\OrcaDeck\globals\<plugin>.json`, or `None` for an id unsafe as a file name.
 fn globals_path(data: &Path, plugin: &str) -> Option<PathBuf> {
     orcadeck_web::store::safe_id(plugin).then(|| data.join("globals").join(format!("{plugin}.json")))
@@ -460,7 +544,7 @@ fn open_url(url: &str) {
 }
 
 /// Where a scene cell's action runs.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 enum Target {
     Builtin(String),
     Plugin(String),
@@ -471,6 +555,9 @@ enum Target {
 enum BuiltinMsg {
     Press(String),
     Scene(SceneCmd),
+    /// One cell was re-placed by the editor: drop `old` and/or register `new` at `key`, leaving
+    /// the rest of the scene's builtin keys untouched.
+    Cell { key: u8, old: Option<String>, new: Option<bi::Key> },
 }
 
 /// Builtin half of a scene switch: the registry stays on its thread, only its keys change.
@@ -617,10 +704,139 @@ fn switch_scene(
     Ok(paints)
 }
 
+/// One cell the editor saved: rebuild it from the file the editor just wrote and repaint only that
+/// key. It runs on the device thread, so a Scene Shift cannot interleave, and the paint goes
+/// through the single batch channel like every other image (batch gap included): no new thread, no
+/// extra HID writer.
+#[allow(clippy::too_many_arguments)]
+fn reload_cell(
+    scene_id: &str,
+    cell: (u8, u8),
+    rt: &Runtime,
+    by_key: &mut HashMap<u8, Target>,
+    host: &host::Host,
+    found: &[host::Plugin],
+    running: &mut HashSet<String>,
+    msg_tx: &mpsc::Sender<BuiltinMsg>,
+    builtins: &HashSet<&'static str>,
+    plugins: &Path,
+) -> Option<(u8, DynamicImage)> {
+    let key = key_index(cell.0, cell.1)?;
+    let dir = scene_dir(rt)?;
+    if dir.file_name().and_then(|n| n.to_str()).unwrap_or_default().trim_end_matches(".sdProfile") != scene_id {
+        return None; // another scene: only its file changed
+    }
+    let scene = match Scene::load(&dir) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("reload {scene_id}: {e}");
+            return None;
+        }
+    };
+    let action = scene.actions.iter().find(|((c, r), _)| (*c, *r) == cell).map(|(_, a)| a);
+
+    // The action that was here goes away: a plugin instance is retired and re-created with the
+    // settings the editor wrote (`willAppear` carries them), a builtin is re-registered below.
+    let mut old_builtin = None;
+    match by_key.get(&key) {
+        Some(Target::Plugin(old)) => {
+            host.disappear(old);
+            rt.retire(old);
+            rt.forget(old);
+        }
+        Some(Target::Builtin(old)) => old_builtin = Some(old.clone()),
+        _ => {}
+    }
+
+    let mut new_builtin = None;
+    match action {
+        None => {
+            by_key.remove(&key);
+        }
+        Some(a) => {
+            if let Some(target) = scenes::target_of(a) {
+                by_key.insert(key, Target::Scene(target));
+            } else if builtins.contains(a.uuid.as_str()) {
+                let ctx = format!("{},{}", cell.0, cell.1);
+                new_builtin = Some(bi::Key {
+                    uuid: a.uuid.clone(),
+                    context: ctx.clone(),
+                    device: DEVICE.into(),
+                    row: cell.1 as u32,
+                    col: cell.0 as u32,
+                });
+                by_key.insert(key, Target::Builtin(ctx));
+            } else if let Some(plugin) = found.iter().filter(|p| a.uuid.starts_with(&format!("{}.", p.id))).max_by_key(|p| p.id.len()) {
+                let mut inst = host::Instance::new(&plugin.id, &a.uuid, DEVICE, cell.0 as u32, cell.1 as u32);
+                inst.settings = a.settings.clone();
+                inst.state = a.state as u32;
+                let ctx = host.appear(inst);
+                rt.set_cell(&ctx, cell);
+                let used: HashMap<String, usize> = HashMap::from([(plugin.id.clone(), 1)]);
+                launch_plugins(&used, found, host, &rt.data, running);
+                by_key.insert(key, Target::Plugin(ctx));
+            } else {
+                eprintln!("reload {scene_id}: no handler for {} at {cell:?}", a.uuid);
+                by_key.remove(&key);
+            }
+        }
+    }
+    if old_builtin.is_some() || new_builtin.is_some() {
+        let _ = msg_tx.send(BuiltinMsg::Cell { key, old: old_builtin, new: new_builtin });
+    }
+
+    // Placeholder from the profile and the state the editor left selected; a plugin repaints on
+    // its own right after `willAppear`.
+    let mut v = rt.view.lock().unwrap_or_else(|e| e.into_inner());
+    v.title.remove(&key);
+    v.base.remove(&key);
+    if let Some(img) = action.and_then(|a| scene.image_of(a, plugins)).and_then(|path| load_img(&path).ok()) {
+        v.base.insert(key, img);
+    }
+    let states = action.map(|a| (0..a.states.len()).map(|i| state_path(&scene, a, plugins, i)).collect()).unwrap_or_default();
+    v.states.insert(key, states);
+    v.state.insert(key, action.map_or(0, |a| a.state as u32));
+    Some((key, v.effective(key)))
+}
+
+/// `orcadeck edit` inside `run`: the web server lives exactly as long as the client stays
+/// connected, and it uses the plugin host that already has the plugins running.
+fn serve_edit(conn: &mut ctl::Conn, profile: &Path, plugins: &Path, data: &Path, host: &host::Host) {
+    let Some(port) = conn.read_line().as_deref().and_then(ctl::parse_edit) else {
+        conn.write_line("ERR expected: EDIT <port>");
+        return;
+    };
+    // Same file layout as the standalone editor, but the profile `run` was started with wins over
+    // the editor's default profiles directory.
+    let parent = profile.parent().unwrap_or(Path::new(""));
+    let profiles = if parent.as_os_str().is_empty() { PathBuf::from(".") } else { parent.to_path_buf() };
+    let legacy_config = profiles.parent().filter(|p| !p.as_os_str().is_empty()).map(|p| p.join("config")).filter(|p| p.is_dir());
+    let store = orcadeck_web::FsStore {
+        profiles,
+        plugins: plugins.to_path_buf(),
+        builtin_plugins: crate::edit::resolve_paths().builtin_plugins,
+        data: data.to_path_buf(),
+        legacy_config,
+        downloads: None,
+    };
+    // The editor's InspectorBridge plugs into this call once `crates/web` exposes it.
+    match orcadeck_web::Server::start(Arc::new(store), port) {
+        Ok(server) => {
+            // The PI connects to the plugin host from the editor page, whose port is only known now.
+            host.allow_origin(format!("http://127.0.0.1:{}", server.addr.port()));
+            conn.write_line(&format!("OK {}", server.url()));
+            conn.wait_close();
+            server.stop();
+        }
+        Err(e) => conn.write_line(&format!("ERR {e}")),
+    }
+}
+
 pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), String> {
     let scene = Scene::load(profile)?;
     let (tx, rx) = mpsc::channel::<Paint>();
     let (msg_tx, msg_rx) = mpsc::channel::<BuiltinMsg>();
+    let (reload_tx, reload_rx) = mpsc::channel::<ReloadCmd>();
 
     // Plugin host: only plugins the scene uses are launched.
     let data_root = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("OrcaDeck");
@@ -629,6 +845,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let view: View = Arc::new(Mutex::new(ViewState::default()));
     let runtime = Arc::new(Runtime {
         tx: tx.clone(),
+        reload_tx,
         view: Arc::clone(&view),
         gen: Arc::new(AtomicU64::new(0)),
         retired: Mutex::new(HashSet::new()),
@@ -646,6 +863,14 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         move |out: host::Output| events.output(out),
     )
     .map_err(|e| format!("plugin host: {e}"))?;
+
+    // `orcadeck edit` attaches here. The worker thread blocks in the named pipe, so it costs no
+    // CPU, and it only starts the web server while an edit client is connected.
+    let ctl_profile = profile.to_path_buf();
+    let ctl_plugins = plugins.to_path_buf();
+    let ctl_data = data_root.clone();
+    let ctl_host = host.clone();
+    ctl::spawn(ctl::NAME, move |conn| serve_edit(conn, &ctl_profile, &ctl_plugins, &ctl_data, &ctl_host));
 
     // Built-in actions on their own thread: Orca RPC blocks for ~450 ms now and then.
     let mut registry = bi::Registry::new(bi::Deck::new(Box::new(bi::PipeOrca::from_env()), bi::Deck::default_quota_dir()));
@@ -681,6 +906,17 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
                         }
                         ctx_key = ctx_keys;
                     }
+                    Ok(BuiltinMsg::Cell { key, old, new }) => {
+                        if let Some(old) = old {
+                            registry.disappear(&old);
+                            ctx_key.remove(&old);
+                        }
+                        if let Some(k) = new {
+                            let ctx = k.context.clone();
+                            registry.appear(k);
+                            ctx_key.insert(ctx, key);
+                        }
+                    }
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 }
@@ -702,7 +938,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         latest.entry(k).or_insert_with(|| black.clone());
     }
     loop {
-        let s = session(n, &rx, &mut latest, &mut by_key, &host, &msg_tx, &runtime, &mut scenes, plugins, &found, &mut running, &builtins);
+        let s = session(n, &rx, &reload_rx, &mut latest, &mut by_key, &host, &msg_tx, &runtime, &mut scenes, plugins, &found, &mut running, &builtins);
         match s {
             Ok(()) => return Ok(()),
             Err(e) => {
@@ -719,6 +955,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
 fn session(
     n: Option<usize>,
     rx: &mpsc::Receiver<Paint>,
+    reload: &mpsc::Receiver<ReloadCmd>,
     latest: &mut HashMap<u8, DynamicImage>,
     by_key: &mut HashMap<u8, Target>,
     host: &host::Host,
@@ -772,6 +1009,13 @@ fn session(
             }
         }
         rt.tick();
+        // Editor saves: repaint just that key, through the same pending batch as everything else.
+        while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
+            if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
+                latest.insert(key, img.clone());
+                pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
+            }
+        }
         while let Ok(p) = rx.try_recv() {
             if p.gen < rt.gen.load(Ordering::Relaxed) || rt.retired(&p.ctx) {
                 continue;
@@ -822,8 +1066,10 @@ mod tests {
 
     fn runtime(dir: &Path) -> (Runtime, mpsc::Receiver<Paint>) {
         let (tx, rx) = mpsc::channel();
+        let (reload_tx, _) = mpsc::channel();
         let rt = Runtime {
             tx,
+            reload_tx,
             view: Arc::new(Mutex::new(ViewState::default())),
             gen: Arc::new(AtomicU64::new(0)),
             retired: Mutex::new(HashSet::new()),
@@ -963,5 +1209,114 @@ mod tests {
             let (b, o) = (base.to_rgba8(), out.to_rgba8());
             assert_ne!(b.get_pixel(KEY_PX / 4, KEY_PX / 2), o.get_pixel(KEY_PX / 4, KEY_PX / 2), "badge missing (ok={ok})");
         }
+    }
+
+    /// A real image file, so `Scene::image_of` and `load_img` run exactly as on disk.
+    fn png(path: &Path, rgb: [u8; 3]) {
+        image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb(rgb)).save(path).expect("png");
+    }
+
+    #[test]
+    fn an_editor_reload_repaints_only_the_changed_cell() {
+        let root = tmp("reload");
+        let dir = root.join("A.sdProfile");
+        std::fs::create_dir_all(dir.join("Images")).unwrap();
+        png(&dir.join("Images/old.png"), [255, 0, 0]);
+        png(&dir.join("Images/new.png"), [0, 255, 0]);
+        let manifest = dir.join("manifest.json");
+        std::fs::write(&manifest, r#"{"Actions":{"0,0":{"UUID":"com.x.action","States":[{"Image":"old.png"}]}}}"#).unwrap();
+
+        let (rt, _paints) = runtime(&root);
+        *rt.manifest.lock().unwrap() = manifest.clone();
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let old = host.appear(host::Instance::new("com.x", "com.x.action", DEVICE, 0, 0));
+        rt.set_cell(&old, (0, 0));
+        rt.view.lock().unwrap().base.insert(13, white(KEY_PX));
+
+        let (tx, rx) = mpsc::channel();
+        let mut by_key = HashMap::from([(13, Target::Plugin(old.clone()))]);
+        let mut running = HashSet::new();
+        let builtins: HashSet<&'static str> = ["com.test.builtin"].into_iter().collect();
+        let found: Vec<host::Plugin> = Vec::new();
+
+        assert!(
+            reload_cell("B", (0, 0), &rt, &mut by_key, &host, &found, &mut running, &tx, &builtins, &root).is_none(),
+            "a scene that is not on the deck is only written to disk"
+        );
+
+        // The editor replaces the action and its image; only key 13 is repainted.
+        std::fs::write(&manifest, r#"{"Actions":{"0,0":{"UUID":"com.test.builtin","States":[{"Image":"new.png"}]}}}"#).unwrap();
+        let (key, img) = reload_cell("A", (0, 0), &rt, &mut by_key, &host, &found, &mut running, &tx, &builtins, &root)
+            .expect("reload");
+        assert_eq!(key, 13);
+        assert_eq!(*img.to_rgb8().get_pixel(0, 0), image::Rgb([0, 255, 0]), "placeholder from the fresh manifest");
+        assert!(rt.retired(&old), "the old plugin instance gets no more paints");
+        assert_eq!(by_key.get(&13), Some(&Target::Builtin("0,0".into())));
+        match rx.try_recv().unwrap() {
+            BuiltinMsg::Cell { key: k, old: gone, new: Some(new) } => {
+                assert_eq!((k, gone), (13, None), "a plugin has no builtin registration to drop");
+                assert_eq!((new.uuid.as_str(), new.context.as_str(), new.row, new.col), ("com.test.builtin", "0,0", 0, 0));
+            }
+            _ => panic!("the builtin thread is not told about the new action"),
+        }
+
+        // A builtin replaced by another builtin keeps the same context and re-registers in place.
+        let builtins: HashSet<&'static str> = ["com.test.builtin", "com.test.builtin2"].into_iter().collect();
+        std::fs::write(&manifest, r#"{"Actions":{"0,0":{"UUID":"com.test.builtin2","States":[{"Image":"old.png"}]}}}"#).unwrap();
+        assert!(reload_cell("A", (0, 0), &rt, &mut by_key, &host, &found, &mut running, &tx, &builtins, &root).is_some());
+        match rx.try_recv().unwrap() {
+            BuiltinMsg::Cell { key: 13, old: Some(gone), new: Some(new) } => {
+                assert_eq!((gone.as_str(), new.uuid.as_str()), ("0,0", "com.test.builtin2"));
+            }
+            _ => panic!("the old builtin is not dropped"),
+        }
+    }
+
+    #[test]
+    fn inspector_tokens_need_the_scene_on_the_deck() {
+        let root = tmp("inspector");
+        let dir = root.join("A.sdProfile");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("manifest.json"), "{}").unwrap();
+        let (rt, _paints) = runtime(&root);
+        *rt.manifest.lock().unwrap() = dir.join("manifest.json");
+
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let ctx = host.appear(host::Instance::new("com.x", "com.x.action", DEVICE, 2, 1));
+        rt.set_cell(&ctx, (2, 1));
+        let inspector = RunInspector::new(Arc::new(rt), host.clone());
+
+        let (token, port, got) = inspector.open("A", "2,1").expect("token");
+        assert!(!token.is_empty());
+        assert_eq!((got.as_str(), port), (ctx.as_str(), host.port()));
+        assert!(inspector.open("B", "2,1").is_err(), "scene not on the deck");
+        assert!(inspector.open("A", "0,0").is_err(), "no plugin action in that cell");
+        assert!(inspector.open("A", "2,1").is_ok(), "each request gets its own single-use token");
+    }
+
+    /// Task 4 end to end, without a device: a client asks the daemon for the editor, the server
+    /// appears inside this process and goes away when the client disconnects (Ctrl+C).
+    #[cfg(windows)]
+    #[test]
+    fn edit_inside_run_lives_only_while_its_client_does() {
+        let root = tmp("serve-edit");
+        let scene = root.join("profiles").join("A.sdProfile");
+        std::fs::create_dir_all(&scene).unwrap();
+        std::fs::write(scene.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let name = format!(r"\\.\pipe\orcadeck-ctl-test-edit-{}", std::process::id());
+        let listener = ctl::Listener::new(&name).expect("pipe instance");
+        let (profile, plugins, data) = (scene.clone(), root.join("plugins"), root.clone());
+        let server = std::thread::spawn(move || {
+            assert!(listener.accept(|conn| serve_edit(conn, &profile, &plugins, &data, &host)));
+        });
+
+        let session = ctl::request_at(&name, 0).expect("daemon present").expect("editor url");
+        let rest = session.url().trim_start_matches("http://127.0.0.1:");
+        let port: u16 = rest.split('/').next().unwrap().parse().unwrap();
+        std::net::TcpStream::connect(("127.0.0.1", port)).expect("the embedded editor listens");
+
+        drop(session); // Ctrl+C in `orcadeck edit`
+        server.join().expect("serve_edit returns and stops the server");
     }
 }

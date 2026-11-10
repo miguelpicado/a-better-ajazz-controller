@@ -35,7 +35,8 @@ pub struct Config {
     /// Browser origins allowed to open a socket, matched exactly, e.g. the web editor's
     /// `http://127.0.0.1:<port>`. Sockets without an Origin header (native plugin processes) are
     /// always allowed. `"null"` (file:// pages, sandboxed frames) is rejected unless listed here;
-    /// even then a property inspector still needs a token from [`Host::open_inspector`].
+    /// the daemon also admits it while an inspector session exists (a sandboxed PI iframe), and
+    /// even then the socket needs a single-use inspector token from [`Host::open_inspector`].
     pub origins: Vec<String>,
 }
 
@@ -138,6 +139,8 @@ struct Inner {
     port: u16,
     events: Box<dyn Events>,
     state: Mutex<State>,
+    /// Browser origins, seeded from [`Config::origins`] and extendable at runtime.
+    origins: Mutex<Vec<String>>,
     next_id: AtomicU64,
 }
 
@@ -242,6 +245,7 @@ impl Host {
         let port = listener.local_addr()?.port();
         let host = Host {
             inner: Arc::new(Inner {
+                origins: Mutex::new(cfg.origins.clone()),
                 cfg,
                 port,
                 events: Box::new(events),
@@ -267,6 +271,16 @@ impl Host {
     /// The port actually bound.
     pub fn port(&self) -> u16 {
         self.inner.port
+    }
+
+    /// Allows a browser origin after the host started. The web editor binds a random port, so its
+    /// origin cannot be in [`Config::origins`] at startup. Exact match, like the configured list.
+    pub fn allow_origin(&self, origin: impl Into<String>) {
+        let origin = origin.into();
+        let mut origins = self.inner.origins.lock().unwrap_or_else(|e| e.into_inner());
+        if !origins.contains(&origin) {
+            origins.push(origin);
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -530,9 +544,19 @@ impl Host {
         stream.set_nodelay(true)?;
         let writer = WebSocket::from_raw_socket(stream.try_clone()?, WsRole::Server, None);
         let raw = stream.try_clone()?;
-        let origins = &self.inner.cfg.origins;
+        // A sandboxed PI iframe has an opaque origin (`null`). Admit that literal only while an
+        // inspector session exists; registering still requires the single-use token, so a page
+        // that learns nothing from the editor cannot reach a plugin.
+        let inspector_open = {
+            let st = self.lock();
+            !st.pi_tokens.is_empty() || !st.pis.is_empty()
+        };
+        let mut allowed = self.inner.origins.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if inspector_open {
+            allowed.push("null".into());
+        }
         let mut reader = tungstenite::accept_hdr(Muted { s: stream, mute: false }, |req: &Request, resp| {
-            check_origin(origins, req, resp)
+            check_origin(&allowed, req, resp)
         })
         .map_err(|e| e.to_string())?;
         // From here the reader only reads; its automatic pong/close replies are discarded and
@@ -725,8 +749,9 @@ fn command(st: &mut State, conn: &Arc<Conn>, role: Role, event: &str, msg: &Valu
 }
 
 /// Browsers send an Origin header; native plugin processes do not. A browser socket is accepted
-/// only from an origin listed in [`Config::origins`] (exact match), so neither a web page, a
-/// file:// page nor a sandboxed frame (`null`) open in the user's browser can reach plugins.
+/// only from an origin listed in [`Config::origins`] (exact match) or, while an inspector session
+/// exists, from the opaque `null` origin of a sandboxed PI iframe. Registering as a PI still
+/// requires its single-use token, so an unrelated page cannot reach plugins.
 fn check_origin(allowed: &[String], req: &Request, resp: Response) -> Result<Response, ErrorResponse> {
     let mut origins = req.headers().get_all("origin").iter();
     let Some(origin) = origins.next() else { return Ok(resp) };
@@ -817,5 +842,18 @@ mod tests {
         assert!(!origin(&editor, Some("file://")));
         assert!(!origin(&editor, Some("https://evil.example")));
         assert!(origin(&["null"], Some("null")), "explicit opt-in");
+    }
+
+    #[test]
+    fn an_editor_origin_can_be_allowed_after_start() {
+        let host = Host::start(Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        host.allow_origin("http://127.0.0.1:4321");
+        host.allow_origin("http://127.0.0.1:4321");
+        let allowed = host.inner.origins.lock().unwrap().clone();
+        assert_eq!(allowed, ["http://127.0.0.1:4321"], "no duplicates");
+        let req = Request::builder().uri("ws://127.0.0.1/").header("Origin", "http://127.0.0.1:4321").body(()).unwrap();
+        assert!(check_origin(&allowed, &req, Response::default()).is_ok());
+        let req = Request::builder().uri("ws://127.0.0.1/").header("Origin", "http://127.0.0.1:9999").body(()).unwrap();
+        assert!(check_origin(&allowed, &req, Response::default()).is_err());
     }
 }

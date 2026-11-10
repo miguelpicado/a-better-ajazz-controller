@@ -1,4 +1,5 @@
 mod app;
+mod ctl;
 mod edit;
 mod proto;
 mod profile;
