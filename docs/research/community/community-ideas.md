@@ -156,7 +156,7 @@ Puente para AKP05E (0300:3004) → Bitfocus Companion. MIT. **Su perfil AKP153E 
 - **Perfil por dispositivo basado en datos** (`devices.js:117-126`): id, VID/PID, usage page, packet, init, `tested:false`
   que emite aviso al abrir. `matchesProfile` (`:215-219`): en Windows exige usage page exacta; en Linux/macOS la acepta
   desconocida.
-- **Cola de imágenes** (`session.js:232-307`, `docs/ARCHITECTURE.md` "Data flow"): descarta tramas idénticas a la última
+- **Cola de imágenes** (`session.js:232-307`, `docs/design/ARCHITECTURE.md` "Data flow"): descarta tramas idénticas a la última
   (`lastQueued`), conserva solo la más nueva por tecla, **un único trabajo en vuelo**, y reintenta una vez si el worker
   murió; los trozos de tira se agrupan 20 ms.
 - **Escritura** (`:161-192`): un `HID_WRITE_DELAY_MS` configurable (0 por defecto; "probar 1, 2, 5 si se ve rasgado");

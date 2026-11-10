@@ -1,7 +1,7 @@
 # orcadeck-plugman
 
 Instalador de plugins de Stream Deck/Stream Dock sin la app de Elgato. Es el port a Rust de
-`tools/plugin-install/install.mjs` y lo usan el editor web y el binario `orcadeck-plugman`.
+`tools/legacy/plugin-install/install.mjs` y lo usan el editor web y el binario `orcadeck-plugman`.
 
 No descifra manifests del Marketplace. Cuando `manifest.json` empieza por `ELGATO`, reconstruye el
 manifest funcional desde los ficheros en claro del plugin y lo guarda como **overlay** aparte; el
@@ -84,7 +84,7 @@ el instalador Node.
 
 ## Relación con el instalador Node
 
-`tools/plugin-install/install.mjs` sigue siendo la implementación de referencia y sirve para
+`tools/legacy/plugin-install/install.mjs` sigue siendo la implementación de referencia y sirve para
 inspeccionar paquetes a mano. `plugman` busca el mismo resultado en los 20 plugins de esta máquina;
 si cambias una regla de reconstrucción, contrasta ambos y actualiza
 `docs/design/plugin-install-handoff.md` si el contrato cambia.

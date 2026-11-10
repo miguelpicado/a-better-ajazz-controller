@@ -14,19 +14,19 @@ mientras se edita.
 |---|---|
 | `orcadeck run` (driver + host + acciones integradas) | probado en vivo con el perfil Orca (2026-11-10): pintado, spinner, pulsaciones y cuota |
 | Acciones integradas: agente, cuota, reloj, resumen | funcionando; mismas UUID que el plugin Node |
-| Editor web `orcadeck edit` | funcionando en loopback; escenas, celdas, plugins y brillo (persistido; el real va por `bright`) |
-| Scene Shift (`profile.rotate`) | implementado y con tests; pendiente la prueba física |
-| Instalación de plugins (`.streamDeckPlugin`, `.sdPlugin`) | funcionando; reconstruye manifests cifrados sin descifrarlos |
-| Property Inspector en el editor | en desarrollo |
+| Editor web `orcadeck edit` | funcionando en loopback; escenas, celdas, plugins, brillo y Property Inspector; `edit` corre dentro de `run` si está vivo (con fallback) |
+| Scene Shift (`profile.rotate`) | mergeado en `main` (`scenes.rs`); pendiente la prueba física en el dispositivo |
+| Instalación de plugins (`.streamDeckPlugin`, `.sdPlugin`) | funcionando desde `edit`, con escaneo de Descargas bajo demanda; reconstruye manifests cifrados sin descifrarlos |
+| Property Inspector en el editor | servidor y iframe integrados en `edit`; pendiente la prueba con plugins reales |
 | Parche de firmware pulsar/soltar | diseñado y emulado; **nunca flasheado** |
 
-Detalle y pendientes: [ROADMAP](docs/ROADMAP.md) y [HANDOFF](docs/HANDOFF.md).
+Detalle y pendientes: [ROADMAP](docs/project/ROADMAP.md) y [HANDOFF](docs/project/HANDOFF.md).
 
 ## Requisitos
 
 - Windows 10/11 x64.
 - El AKP153E conectado (los monitores encendidos: cuelga de su hub USB).
-- Para compilar: Rust gnullvm y llvm-mingw portable. Ver [DEVELOPMENT](docs/DEVELOPMENT.md).
+- Para compilar: Rust gnullvm y llvm-mingw portable. Ver [DEVELOPMENT](docs/guide/DEVELOPMENT.md).
 - Para ejecutar: `libunwind.dll` en `PATH` o junto al `.exe`.
 
 ## Inicio rápido
@@ -45,7 +45,7 @@ schtasks /end /tn StreamDock
 # 4. Arrancar con tu perfil
 .\target\release\orcadeck.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\<ID>.sdProfile"
 
-# 5. Editar escenas en el navegador (proceso aparte, no toca el HID)
+# 5. Editar escenas en el navegador (si `run` está vivo, dentro de `run`)
 .\target\release\orcadeck.exe edit
 ```
 
@@ -66,7 +66,7 @@ oficial. No ejecutes las dos a la vez.
 | `poll [input\|feature]` | `GET_REPORT` periódico (experimental) |
 | `hidwatch` | enumera HID y marca el bootloader (solo lectura) |
 
-Sintaxis, variables `ORCADECK_*` y flujos completos: [docs/USAGE.md](docs/USAGE.md).
+Sintaxis, variables `ORCADECK_*` y flujos completos: [docs/guide/USAGE.md](docs/guide/USAGE.md).
 
 ## Qué pinta
 
@@ -89,35 +89,39 @@ daemon/                 workspace Rust y binario orcadeck
   crates/builtin/       acciones Orca integradas
   crates/plugman/       instalador de plugins y overlays
   crates/web/           servidor y SPA del editor
-docs/                   guías, estado, diseño e investigación
-tools/                  autoarranque, instalador Node de referencia, perfiles de ejemplo
-com.miguelpicado.orcadock.sdPlugin/   plugin Node antiguo (legado)
+docs/                   guías, diseño, estado e investigación (índice en docs/README.md)
+  guide/                uso, desarrollo y diagnóstico
+  design/               arquitectura vigente y diseños
+  project/              estado, roadmap, handoff y auditoría
+  research/             evidencias por tema (hid, firmware, plugins, perfiles, comunidad)
+tools/                  autoarranque y legacy/ (plugin Node e instalador de referencia)
+vendor/                 paquetes de terceros del usuario (gitignorado)
 ```
 
 ## Documentación
 
 - [docs/README.md](docs/README.md) — índice completo.
-- [docs/USAGE.md](docs/USAGE.md) — uso, subcomandos, variables, Scene Shift, plugins, autoarranque.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — hilos, canales, lotes, formato de escena, estado.
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — compilar, tests, probar sin dispositivo.
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — errores y diagnóstico.
+- [docs/guide/USAGE.md](docs/guide/USAGE.md) — uso, subcomandos, variables, Scene Shift, plugins, autoarranque.
+- [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) — hilos, canales, lotes, formato de escena, estado.
+- [docs/guide/DEVELOPMENT.md](docs/guide/DEVELOPMENT.md) — compilar, tests, probar sin dispositivo.
+- [docs/guide/TROUBLESHOOTING.md](docs/guide/TROUBLESHOOTING.md) — errores y diagnóstico.
 
 ## Reglas
 
 - **No flashear el firmware** ni lanzar `FirmwareUpgradeTool.exe` con 4 argumentos: flashea al
   instante. Tampoco enviar `CRT\0\0APP NEW`. Solo con orden explícita y plan de recuperación.
 - **No ejecutar Stream Dock y OrcaDeck a la vez**: mismo HID y puerto 18618.
-- Los ficheros grandes de la raíz (zips, instalador, `.rar`, carpeta del driver) son del usuario: no
-  se tocan.
+- Los paquetes de terceros del usuario (zips, `.rar`, instalador y carpeta del driver) están en
+  `vendor/`, fuera de git: no se tocan ni se commitean.
 
 ## Legado y créditos
 
-`com.miguelpicado.orcadock.sdPlugin/` es el plugin Node original para la app oficial (agente, cuota,
-reloj y resumen). Sus acciones se migraron a `orcadeck-builtin`; el plugin sigue en el repo como
-referencia y para usar con Stream Dock. `deploy.ps1` lo copia a la app oficial y
-`node com.miguelpicado.orcadock.sdPlugin/test.js` ejecuta sus tests. `tools/streamdock/` contiene el
-alta puntual del perfil y los manifiestos de ejemplo; `tools/plugin-install/` es el instalador Node
-de referencia.
+`tools/legacy/com.miguelpicado.orcadock.sdPlugin/` es el plugin Node original para la app oficial
+(agente, cuota, reloj y resumen). Sus acciones se migraron a `orcadeck-builtin`; el plugin sigue en
+el repo como referencia y para usar con Stream Dock. `tools/legacy/deploy.ps1` lo copia a la app
+oficial y `node tools/legacy/com.miguelpicado.orcadock.sdPlugin/test.js` ejecuta sus tests.
+`tools/streamdock/` contiene el alta puntual del perfil y los manifiestos de ejemplo;
+`tools/legacy/plugin-install/` es el instalador Node de referencia.
 
-Los iconos del plugin Node (`com.miguelpicado.orcadock.sdPlugin/imgs/`) vienen de
+Los iconos del plugin Node (`tools/legacy/com.miguelpicado.orcadock.sdPlugin/imgs/`) vienen de
 [1am/orca-agent-deck](https://github.com/1am/orca-agent-deck) (MIT).

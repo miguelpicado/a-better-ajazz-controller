@@ -1,5 +1,12 @@
 # UpDateTool / mecanismo de actualización del AKP153E — análisis estático
 
+> **Corrección (2026-11-10):** este informe partió de que `FirmwareUpgradeTool.exe` era solo el
+> actualizador `usbupg` del SoC Actions y de que hacía falta `UpDateToolV2`. Es falso:
+> `FirmwareUpgradeTool.exe` tiene dos modos y, con 4 argumentos (`768 4112 <bin> <icono>`), es el
+> actualizador HID del AKP153E; `UpDateToolV2` es para N1/N4/S1/S3. Ver
+> [`updatetool-origin.md`](updatetool-origin.md). Las frases corregidas llevan nota; el resto se
+> conserva como evidencia del estado del análisis en esa fecha.
+
 Fecha: 2026-11-10. **Análisis estático, solo lectura.** No se ejecutó ningún binario (ni el
 instalador, ni UpDateTool, ni los binarios extraídos, ni la app Stream Dock). No se abrió el HID,
 no se escribió al dispositivo, no se flasheó nada. Todo lo extraído se trató como dato no confiable.
@@ -17,8 +24,8 @@ sin prueba directa. Direcciones `0x080…`/`0x200…` = firmware AKP153E. `0x14�
 | `%APPDATA%\HotSpot\StreamDock\update\Stream-Dock-AJAZZ-Installer_Windows_global.exe` | 377 741 944 B | `61b104dc…1625` (registrado; tamaño verificado) | Instalador de la app. Localizado. No se ejecutó |
 | `C:\Program Files (x86)\Stream Dock AJAZZ Global\Stream Dock AJAZZ.exe` | 41 226 728 B | — | EXE instalado. Contiene `SDSetting::updateFirmware` |
 | `…\Stream Dock AJAZZ Global\SDLibrary1.dll` | 10 934 248 B | — | Capa HID (hidapi). NO flashea |
-| `…\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe` | 1 809 384 B | — | Para el SoC Actions (familia d13x), **no** AKP153E |
-| `UpDateToolV2\UpDateTool11-11.exe` | — | — | **Ausente en todo el disco y en el instalador** (ver §1) |
+| `…\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe` | 1 809 384 B | — | Actualizador oficial del AKP153E con 4 argumentos; con otro número de argumentos, modo `usbupg` (SoC Actions). Ver `updatetool-origin.md` |
+| `UpDateToolV2\UpDateTool11-11.exe` | — | — | **Ausente en todo el disco y en el instalador** (ver §1). No interviene en el flasheo del AKP153E; es de N1/N4/S1/S3 |
 | `backup/AKP153E.bin` = `update\AKP153E.bin` (idénticos) | 96 496 B | `15e03f5b…4f6f` | Firmware app actual. SP=`0x200321C0`, Reset=`0x08004159` |
 | `work/AKP153E_pressrelease_NO_PROBADO.bin` | 96 496 B | `a7ea1549…48fc4` | Parche NO PROBADO. 50 bytes distintos, sin cambio de tamaño |
 | `C:\Users\migue\Downloads\AJAZZ_ak820_pro_2.4G_upgrade.zip` | 863 766 B | `dffb09a6…6351` | Herramienta oficial de OTRO dispositivo (referencia) |
@@ -45,7 +52,12 @@ descarga `https://cdn1.key123.vip/StreamDock/firmware/firmware-version-libcef.js
 `CurrentVersion`/`ServerVersion`/`LocalVersion` (si no está el modelo → `ServerNotFindDev`) → `taskkill`/`pkill`
 → lanza **`UpDateToolV2\UpDateTool11-11.exe StreamDockUpDate`** por ruta relativa al directorio de la app.
 
-> **Conclusión §1:** el EXE **delega** el flasheo en `UpDateTool11-11.exe`, que **no se instala con este build
+> **Conclusión §1 (corregida 2026-11-10):** la app **2.10.185** no delega en `UpDateTool`: lanza
+> `FirmwareUpgradeTool.exe` con VID/PID, fichero e icono, y esa herramienta flashea por HID
+> (`updatetool-origin.md` §4). `UpDateToolV2` es el actualizador de N1/N4/S1/S3 en la app actual
+> 3.10.191. Se conserva la conclusión original como evidencia de la hipótesis descartada:
+>
+> **Conclusión original (superada):** el EXE **delega** el flasheo en `UpDateTool11-11.exe`, que **no se instala con este build
 > ni viene como cadena en el instalador**. Versión, firma Authenticode, dependencias (hidapi/libusb/WinUSB),
 > soporte de PID `0x1010` y otros modelos de UpDateTool son **NO DETERMINABLES** (binario ausente).
 > El payload principal del instalador (EXE/DLL/UpDateToolV2) está comprimido en el formato propio del instalador
@@ -68,25 +80,30 @@ La hipótesis de "la actualización ya está en la instalación, sin herramienta
 | Lo que **sí** hay | `Get firmware version :` (`0x181640`), `FirmwareVersion(` (`0x181e4b`), `openHidDevice`/`closeHidDevice`, `hid_get_*` → **solo lee la versión** y hace el protocolo HID de pantalla/teclas |
 
 > **Conclusión §2:** `SDLibrary1.dll` **no flashea**, no transfiere la imagen y no construye `APP`+`NEW`.
-> El informe previo que decía "la app no construye APP/NEW y delega" queda **reconfirmado**, no refutado.
-> Que la unidad llegara a `V2.293S.00.003` (log `2025-06-10`) es compatible con que `UpDateTool11-11.exe`
+> El disparo lo construye `FirmwareUpgradeTool.exe`, no la app. Que la unidad llegara a `V2.293S.00.003` (log `2025-06-10`) es compatible con que `UpDateTool11-11.exe`
 > **estuviera presente en el momento de actualizar y se quitara/no se conservara** después, o con que esa línea
 > de log sea solo la lectura de versión al arrancar (INFERRED). Los logs actuales (`debug.log` = CEF/Chromium;
 > los logs de firmware citados antes ya no existen) **no registran** el proceso de flasheo.
+>
+> **Nota (2026-11-10):** la hipótesis de `UpDateTool11-11.exe` quedó descartada; el flasheo de 2024 lo hizo
+> `FirmwareUpgradeTool.exe`, ya instalada entonces. Ver `updatetool-origin.md` §5.
 
 ---
 
 ## 3. Protocolo de transferencia al bootloader (parcial — lo verificable)
 
-Con UpDateTool ausente, la **secuencia HID exacta hacia el bootloader del AKP153E no es reconstruible**
+> **Nota (2026-11-10):** el protocolo sí se reconstruyó después con `FirmwareUpgradeTool.exe`; ver
+> `updatetool-origin.md` §3. Lo que sigue es el estado del análisis cuando aún se buscaba UpDateTool.
+
+En el momento de este análisis, con UpDateTool ausente, la **secuencia HID exacta hacia el bootloader del AKP153E no era reconstruible**
 (tamaño de paquete, VID/PID en modo bootloader, formato de bloque, direcciones, verificación). Lo conocido:
 
 | Elemento | Estado | Evidencia |
 |---|---|---|
 | Disparo de actualización | `CRT\0\0APP` con `[8..10]="NEW"` → el firmware de la app pone `[0x0807E010]=0x21436587` y resetea (dispatcher `0x08006870`, flash `0x08004C4C`) | OBSERVED (firmware, informe previo) |
-| Quién envía ese disparo | **Desconocido**: ni EXE ni DLL lo construyen → lo haría UpDateTool | OBSERVED (ausencia) |
+| Quién envía ese disparo | `FirmwareUpgradeTool.exe` al no encontrar el bootloader (`updatetool-origin.md` §3.2) | OBSERVED (allí) |
 | Recepción de la imagen | La hace el **bootloader** `0x08000000–0x08003FFF`, que **no está en el `.bin`** | INFERRED |
-| VID/PID en modo bootloader, bloque, CRC/firma, versión | **NO DETERMINABLE** | — |
+| VID/PID en modo bootloader, bloque, CRC/firma, versión | Determinados después: `EEEF:2929`, bloques de 60 B, CRC-16/ARC (`updatetool-origin.md` §3); el bootloader real no se ha volcado | OBSERVED (allí) |
 
 ---
 
@@ -107,7 +124,7 @@ Con UpDateTool ausente, la **secuencia HID exacta hacia el bootloader del AKP153
 
 ## 5. ¿Validación criptográfica? (OBSERVED donde hay binario)
 
-- **En UpDateTool:** NO DETERMINABLE (ausente).
+- **En FirmwareUpgradeTool:** CRC-16/ARC sobre la imagen, sin firma (`updatetool-origin.md` §3.3).
 - **En la imagen:** no hay firma ni hash embebidos (§4).
 - **En el bootloader:** desconocido (no está en el `.bin`).
 - **Referencia del mismo proveedor (AK820, §7):** el motor de actualización `McuProgramIAP_*` **no tiene ningún
@@ -136,11 +153,11 @@ y `0x0807E000`). No se ha abierto la unidad ni verificado pads.
 del teclado AK820 Pro**. Es útil como **modelo del diseño de actualizador del proveedor**, no como herramienta
 reutilizable para el AKP153E.
 
-| Aspecto | AK820 `2.4G_upgrade.exe` (OBSERVED) | UpDateTool del AKP153E |
+| Aspecto | AK820 `2.4G_upgrade.exe` (OBSERVED) | FirmwareUpgradeTool del AKP153E |
 |---|---|---|
 | Transporte | **HID Win32 directo**: `SETUPAPI` (`SetupDiGetClassDevs`/`EnumDeviceInterfaces`/`GetDeviceInterfaceDetail`) + `HID.DLL` (`HidD_GetAttributes`, `HidP_GetCaps`) + `CreateFileW`/`WriteFile`/`ReadFile`. **Sin libusb/WinUSB** | Desconocido (ausente). La app AKP153E usa hidapi+libusb |
 | Motor | API con nombres `McuProgramIAP_*` (`HFD_IAPTool_230823`, build 2023-08-23) | Desconocido |
-| Secuencia de flasheo | `SearchDev`→`SetVIDPID`→`SetChannel`/`SetPower`/`SetCapacitance`→`Erase`→`Program`→`Verify`→`GetProgress`→`Restart`/`CloseDevice` | Desconocida |
+| Secuencia de flasheo | `SearchDev`→`SetVIDPID`→`SetChannel`/`SetPower`/`SetCapacitance`→`Erase`→`Program`→`Verify`→`GetProgress`→`Restart`/`CloseDevice` | `EEEF:2929` o `APP NEW` → `D2` borrar, `D1` escribir 60 B, `D3` verificar CRC, `AA 02` reiniciar (`updatetool-origin.md` §3.2) |
 | Parametrización | **Genérica**: `SetVIDPID` (VID/PID por parámetro), canal RF, potencia; firmware elegido por el usuario (`COMDLG32 GetFileTitle`) | — |
 | Firma criptográfica | **No** (0 símbolos cripto; solo `Verify`=CRC/relectura) | Desconocida |
 | Chip objetivo | MCU del **receptor 2.4G HFD** (no Cortex-M) | AKP153E = Cortex-M4F C\*Core |
@@ -149,7 +166,7 @@ reutilizable para el AKP153E.
 pero el **conjunto de comandos del bootloader es específico del chip HFD** del receptor 2.4G, **distinto** del
 Cortex-M4F del AKP153E. Cambiar el VID/PID **no** hace compatible el protocolo de bootloader. Además, la DLL del
 motor (`McuProgramIAPDll`) **no viene en el zip** (solo el `.exe`), así que los bytes exactos de la transferencia
-tampoco están en claro aquí. **No es un sustituto del UpDateTool del AKP153E**, pero confirma el patrón del
+tampoco están en claro aquí. **No es un sustituto de `FirmwareUpgradeTool.exe`**, pero confirma el patrón del
 proveedor: **actualizador HID por IAP, sin firma, verificación por CRC**.
 
 ---
@@ -191,19 +208,22 @@ propio de RAR. **No se pudo extraer:**
 > **7-Zip** (abre el RAR y suele poder abrir los datos de componente del instalador Qt) o **WinRAR/UnRAR** en una
 > máquina de análisis y repetir; alternativamente, pedir `UpDateToolV2` directamente a soporte AJAZZ/Mirabox. No
 > se instaló nada. Los originales no se movieron ni se borraron.
+>
+> **Nota (2026-11-10):** esta búsqueda quedó superada. El actualizador del AKP153E es `FirmwareUpgradeTool.exe`,
+> ya instalada, y `UpDateToolV2` no interviene; no hace falta extraerlo. Ver `updatetool-origin.md`.
 
 ---
 
 ## 8. Veredicto
 
 **No flasheable hoy de forma segura.** El parche (`work/AKP153E_pressrelease_NO_PROBADO.bin`) es correcto de
-formato (binario plano, 50 bytes en zona de código, sin CRC/firma que recalcular), pero **falta el medio de
-carga**: `UpDateTool11-11.exe` no está en el equipo ni (como cadena) en el instalador, `SDLibrary1.dll` no
-flashea, y el bootloader del AKP153E no está volcado, así que su protocolo y su verificación son desconocidos.
+formato (binario plano, 50 bytes en zona de código, sin CRC/firma que recalcular). La herramienta de carga
+**sí existe** (`FirmwareUpgradeTool.exe`, 4 argumentos; protocolo en `updatetool-origin.md`), pero **no se ha
+probado** ni hay red de recuperación: el bootloader del AKP153E no está volcado y no se ha verificado SWD.
 
 | Aspecto | Valoración |
 |---|---|
-| ¿Herramienta de flasheo disponible? | **No** (UpDateTool ausente; no extraíble del instalador con lo presente) |
+| ¿Herramienta de flasheo disponible? | **Sí**: `FirmwareUpgradeTool.exe` instalada (4 argumentos). No se ha ejecutado |
 | ¿La app flashea en proceso? | **No** (SDLibrary1.dll solo lee versión + HID de pantalla/teclas) |
 | ¿Imagen con firma/CRC interno? | **No** (verificado) |
 | ¿El bootloader exige firma? | **Desconocido.** Por la referencia AK820 (sin firma, CRC), *probable que no* (INFERRED, confianza media) |
@@ -211,6 +231,8 @@ flashea, y el bootloader del AKP153E no está volcado, así que su protocolo y s
 | Riesgo con SWD verificado | Bajo |
 
 **Pruebas sin riesgo que quedan (ninguna ejecutada):**
+> **Nota (2026-11-10):** el punto 1 original (conseguir `UpDateToolV2`) quedó descartado; la herramienta y su
+> protocolo están en `updatetool-origin.md`. Se conserva el texto como evidencia de la línea abandonada.
 1. Conseguir `UpDateToolV2\UpDateTool11-11.exe` (y, si aplica, `McuProgramIAPDll`) de soporte AJAZZ/Mirabox y
    analizarlo en estático: comandos HID, VID/PID de bootloader, bloque, CRC/firma. **PARADA 1** si exige firma.
 2. Emulación "en seco" del bucle de teclas parcheado (`0x08006EF4`) con Unicorn/QEMU — sin dispositivo.
@@ -228,3 +250,6 @@ Sin ejecutar nada y sin el binario `UpDateTool11-11.exe`, la secuencia HID de fl
 del bootloader **no son reconstruibles**. El instalador de 377 MB no se pudo descomprimir (formato propio Qt, sin
 7-Zip/innoextract en el equipo); solo se enumeró su ZIP de tienda embebido. Las inferencias sobre "sin firma" se
 apoyan en la referencia AK820 (otro chip) y en la ausencia de firma en la imagen, no en el bootloader real.
+
+> **Nota (2026-11-10):** el protocolo se reconstruyó después con `FirmwareUpgradeTool.exe`; sigue sin verificarse
+> el bootloader real ni la recuperación. Ver `updatetool-origin.md`.

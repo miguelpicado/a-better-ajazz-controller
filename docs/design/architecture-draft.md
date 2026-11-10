@@ -2,7 +2,7 @@
 
 Objetivo: sustituir "Stream Dock AJAZZ" (Qt + CEF, 12 procesos, ~330 MB en el proceso principal, elevado a admin) por
 un demonio mínimo. Prioridad del usuario: ágil, ligero, ultraoptimizado, sin interfaz nativa. Fuentes:
-`docs/research/hid-protocol.md`, `plugin-host-protocol.md`, `manifest-profiles-admin.md`, `elgato-plugin-encryption.md`.
+`docs/research/hid/hid-protocol.md`, `plugin-host-protocol.md`, `manifest-profiles-admin.md`, `elgato-plugin-encryption.md`.
 
 ## Decisiones
 

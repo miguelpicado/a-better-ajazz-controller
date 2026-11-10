@@ -1,10 +1,13 @@
 # Handoff: instalación nativa de plugins de Stream Deck
 
+> **Nota (2026-11-10):** portado a `orcadeck-plugman` e integrado en `edit`; se conserva como contrato
+> funcional del instalador. Estado en [`../project/STATUS.md`](../project/STATUS.md).
+
 Fecha: 2026-11-09. Para el worker que está construyendo la app (demonio Rust).
 Documento autocontenido. La implementación de referencia está en
-`tools/plugin-install/install.mjs`; las evidencias de investigación, en
-`docs/research/elgato-plugin-encryption.md`, `docs/research/manifest-profiles-admin.md` y
-`docs/research/plugin-host-protocol.md`.
+`tools/legacy/plugin-install/install.mjs`; las evidencias de investigación, en
+`docs/research/plugins/elgato-plugin-encryption.md`, `docs/research/profiles/manifest-profiles-admin.md` y
+`docs/research/plugins/plugin-host-protocol.md`.
 
 Si eres el worker: §0–§6 son el contexto y las decisiones; §7–§9 son el contrato de implementación;
 §11 es el orden de trabajo sugerido; §13 es el criterio de aceptación.
@@ -17,7 +20,7 @@ manifest manual. **No descifrar manifests ni extraer claves de Elgato.**
 
 ## 0. Estado actual (lo que ya está probado)
 
-- Instalador nativo en Node: `tools/plugin-install/install.mjs`.
+- Instalador nativo en Node: `tools/legacy/plugin-install/install.mjs`.
 - Acepta `.streamDeckPlugin` (zip) o una carpeta `.sdPlugin`.
 - Detecta manifests cifrados por el magic `ELGATO` y **no los descifra**.
 - Reconstruye el manifest de host desde ficheros en claro y lo guarda como overlay.
@@ -34,7 +37,7 @@ manifest manual. **No descifrar manifests ni extraer claves de Elgato.**
 | `com.barraider.advancedlauncher` | 4 | literales del `.exe` (registro opcional) |
 | `com.vivremotion.windowscockpit` | 1 | registro de Stream Dock / overlay |
 
-- Tests: `node --test tools/plugin-install/install.test.mjs` → 4/4.
+- Tests: `node --test tools/legacy/plugin-install/install.test.mjs` → 4/4.
 
 ## 1. Decisión de diseño: no se descifra el manifest
 
@@ -248,10 +251,10 @@ Comandos de traslado:
 
 ```powershell
 # Máquina vieja, después de instalar los plugins
-node tools/plugin-install/install.mjs export --data <dataRoot> --out .\overlays
+node tools/legacy/plugin-install/install.mjs export --data <dataRoot> --out .\overlays
 
 # Máquina nueva
-node tools/plugin-install/install.mjs import .\overlays --data <dataRoot>
+node tools/legacy/plugin-install/install.mjs import .\overlays --data <dataRoot>
 ```
 
 Los overlays son metadatos funcionales (JSON), no código del plugin. Se pueden guardar en el repo
@@ -287,11 +290,11 @@ importOverlays(inDir, dataRoot)      // número de overlays
 ### CLI
 
 ```powershell
-node tools/plugin-install/install.mjs inspect <pluginDir|package> [--json]
-node tools/plugin-install/install.mjs install <package> --plugins <dir> [--data <dir>] [--manifest <json>] [--force]
-node tools/plugin-install/install.mjs watch <inboxDir> --plugins <dir> [--data <dir>] [--once]
-node tools/plugin-install/install.mjs export --data <dir> --out <dir>
-node tools/plugin-install/install.mjs import <dir> --data <dir>
+node tools/legacy/plugin-install/install.mjs inspect <pluginDir|package> [--json]
+node tools/legacy/plugin-install/install.mjs install <package> --plugins <dir> [--data <dir>] [--manifest <json>] [--force]
+node tools/legacy/plugin-install/install.mjs watch <inboxDir> --plugins <dir> [--data <dir>] [--once]
+node tools/legacy/plugin-install/install.mjs export --data <dir> --out <dir>
+node tools/legacy/plugin-install/install.mjs import <dir> --data <dir>
 ```
 
 ### Rutas sugeridas para la app
@@ -354,7 +357,7 @@ Para cada `<pluginsRoot>/*.sdPlugin`:
 
 ## 10. Tests y fixtures
 
-- `node --test tools/plugin-install/install.test.mjs` (4 tests):
+- `node --test tools/legacy/plugin-install/install.test.mjs` (4 tests):
   1. reconstrucción desde locale + `CodePath`;
   2. fallback a literales de código sin locale/registro;
   3. manifest plano intacto;
@@ -382,12 +385,12 @@ Para cada `<pluginsRoot>/*.sdPlugin`:
 
 ## 12. Referencias
 
-- `docs/research/elgato-plugin-encryption.md` — formato `ELGATO`, esquema, qué está cifrado.
-- `docs/research/manifest-profiles-admin.md` §1 — evidencias del cifrado, opciones (a/b/c),
+- `docs/research/plugins/elgato-plugin-encryption.md` — formato `ELGATO`, esquema, qué está cifrado.
+- `docs/research/profiles/manifest-profiles-admin.md` §1 — evidencias del cifrado, opciones (a/b/c),
   reconstrucción, registro y perfiles.
-- `docs/research/plugin-host-protocol.md` — protocolo WebSocket, lanzamiento, `info`, eventos.
-- `docs/design/architecture.md` — diseño del demonio, componente 5 (plugin manager).
-- `tools/plugin-install/README.md` — uso del prototipo y estado de los 5 plugins.
+- `docs/research/plugins/plugin-host-protocol.md` — protocolo WebSocket, lanzamiento, `info`, eventos.
+- `docs/design/architecture-draft.md` — diseño del demonio, componente 5 (plugin manager).
+- `tools/legacy/plugin-install/README.md` — uso del prototipo y estado de los 5 plugins.
 - `tools/streamdock/insta360-manifest.json` — ejemplo manual de manifest reconstruido.
 
 ## 13. Criterio de aceptación

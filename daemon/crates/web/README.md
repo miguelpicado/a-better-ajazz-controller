@@ -80,7 +80,7 @@ All bodies are JSON. Errors are `{"error": "..."}` with a 4xx/5xx status.
 | `GET /api/device` | | `{connected, model, serial, brightness, stub}` |
 | `PUT /api/device` | `{brightness: 0..100}` | Updated device object. |
 
-Scene validation follows `docs/research/manifest-profiles-admin.md` §2.3:
+Scene validation follows `docs/research/profiles/manifest-profiles-admin.md` §2.3:
 
 - The scene is an object, and `Name` is a string.
 - `Actions` is an object keyed `"col,row"`. On `AKP153E` scenes `col` is 0..5 (column 5 is the side panel) and

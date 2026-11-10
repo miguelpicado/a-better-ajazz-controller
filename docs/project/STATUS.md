@@ -1,0 +1,65 @@
+# Estado del proyecto (2026-11-10)
+
+Punto de entrada para retomar: [`HANDOFF.md`](HANDOFF.md). Qué falta, en orden:
+[`ROADMAP.md`](ROADMAP.md). Arquitectura vigente: [`../design/ARCHITECTURE.md`](../design/ARCHITECTURE.md).
+
+## Dónde estamos
+
+Sustituto en Rust de «Stream Dock AJAZZ» para el AKP153E: un único binario (`orcadeck.exe`) hace de
+driver HID, host de plugins del SDK v2 y, bajo demanda, servidor del editor web. Sin admin, sin UI
+residente y sin runtime async. El workspace, `run`, `edit`, Scene Shift, la instalación de plugins y
+el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue pendiente.
+
+## Mergeado en `main`
+
+| Pieza | Estado |
+|---|---|
+| Scene Shift en `run` | `scenes.rs`; +27 136 B; tests unitarios; **sin probar en dispositivo** |
+| Instalar/quitar plugins desde `edit` | `plugman` + `web`, ledger propio de instalados y escaneo de Descargas bajo demanda (sin vigilante) |
+| Property Inspector | servidor en `host` + iframe en `edit`: sandbox sin `allow-same-origin`, token de un solo uso por `postMessage`, CSP sin red externa y `Origin: null` solo con sesión de PI abierta |
+| `edit` dentro de `run` | canal de control `ctl.rs` (named pipe) con fallback standalone; recarga en caliente de una tecla; `RunInspector` como `InspectorBridge` |
+| Tests | **89 verdes** con `cargo test --release --workspace` (medido 2026-11-10; 0 fallos) |
+| Binario | `orcadeck.exe` = **3 674 624 B** (~3,5 MiB) recompilado el 2026-11-10 |
+
+## Limpieza hecha
+
+- Plugin Node antiguo, `deploy.ps1` e instalador de referencia archivados en `tools/legacy/`.
+- Paquetes de terceros del usuario (zips, `.rar`, instalador, driver) movidos a `vendor/`
+  (gitignorado).
+- Borradas las extracciones regenerables `extract-2.10.185` y `current-3.10.191` (311 MB).
+
+## Pendiente sin dispositivo
+
+1. Retirada opcional de plugins sin uso al cambiar de escena (2 s de gracia).
+2. P0–P2 de [`REPO-AUDIT.md`](REPO-AUDIT.md): rutas absolutas del usuario en
+   `builtin/actions.rs` y `host/tests/real_plugin.rs`, código muerto `wait_ack`/`screen_off`,
+   metadatos de Cargo (`publish = false`, `rust-version`, licencia), `base64`/`getrandom`
+   duplicados, `cargo fmt` tras estabilizar el árbol y el workflow de CI propuesto.
+3. Huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2: desconexión HID en caliente, caída de
+   la tubería de Orca, SQLite ocupado, traversal en iconos de perfil, tramas WebSocket enormes y
+   carrera entre Scene Shift y pintado.
+
+## Pendiente con dispositivo y OK del usuario
+
+1. Parar Stream Dock con `schtasks /end /tn StreamDock`.
+2. Probar en vivo `run`, `edit` (incluido dentro de `run`), Scene Shift, Property Inspector e
+   instalación de plugins desde Descargas.
+3. Medir exe, RSS y CPU en reposo; probar el autoarranque.
+4. Investigar la pulsación larga por firmware (solo análisis/emulación; **no flashear**).
+
+## Límites conocidos
+
+- El firmware v1 entrega un solo evento por pulsación y **al soltar**; `state` siempre es 0. No hay
+  pulsación larga ni down/up sin cambiar de firmware o de hardware.
+- AKP153E v1 sin dial y con panel lateral no táctil. Plugins `.html` no soportados.
+- El fallback standalone de `edit` no recarga en caliente; con `edit` dentro de `run`, sí la tecla
+  guardada. El cambio de escena relee el manifiesto.
+- Los plugins de escenas anteriores siguen vivos para conservar sus ajustes (consumen RAM).
+- El parche de firmware está diseñado y emulado, **nunca flasheado**; regla dura: no flashear.
+
+## Entorno
+
+- Windows 10/11 x64, Rust `gnullvm-local` (1.99.0) y llvm-mingw portable en
+  `C:\Tools\llvm-mingw-20261104-ucrt-x86_64\bin`.
+- Gate: `cargo test --release --workspace` desde `daemon/`; sin CI en el repositorio.
+- `libunwind.dll` debe estar en `PATH` o junto al `.exe`.

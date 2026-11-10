@@ -118,7 +118,7 @@ Es el problema conocido del firmware del AKP153E v1, no de la app.
    Stream Dock en marcha.
 
 Estado: implementado con tests unitarios, **pendiente de prueba física** con el teclado
-([ROADMAP](ROADMAP.md)).
+([ROADMAP](../project/ROADMAP.md)).
 
 ## 8. La cuota sale atenuada o con guiones
 
@@ -175,7 +175,8 @@ cargo test --release --workspace
 
 ## 12. Los cambios del editor no aparecen en `run`
 
-No hay recarga en caliente. `run` lee el manifiesto al arrancar y al cambiar de escena. Opciones:
+Con `run` vivo, `edit` corre dentro de `run` y guardar una celda recarga esa tecla en caliente. Si
+`edit` arrancó standalone (o el canal `ctl` no está disponible), no hay recarga:
 
 - Reiniciar `run`.
 - Cambiar a otra escena y volver (el `SceneSet` recarga el manifiesto destino).

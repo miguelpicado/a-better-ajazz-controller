@@ -10,7 +10,7 @@ Limitaciones: web.archive.org está bloqueado en la herramienta de fetch (no se 
 - Fuente: https://advanceduninstaller.com/Stream-Dock-AJAZZ-Global-14c687450be4cf6829ae81599296b581-application.htm (artículo del 2024-06-28; es una guía de desinstalación, no un host de instalador).
 - Stream Dock AJAZZ Global 2.9.177.122, editor HotSpot, ruta `C:\Program Files (x86)\Stream Dock AJAZZ Global`, MSI (`MsiExec /X{8A8FC22A-75DE-452D-91FA-AD1F750420AC}`).
 - Ejecutables listados: `Stream Dock AJAZZ.exe` 19.989.112 bytes, **`FirmwareUpgradeTool.exe` (~1,62 MB)**, SystemMonitor.exe, QtWebEngineProcess.exe, ScreenCaptureTool.exe, SplashScreen.exe. Total ~24.651.848 bytes.
-- Implicación: en esa época el actualizador era `FirmwareUpgradeTool.exe` dentro de la app, no `UpDateToolV2\UpDateTool11-11.exe`. La herramienta de feb-2024 (`UpDateToolV2`) probablemente se descargaba aparte o venía en una build 2.8.x/2.9.x intermedia. No se halló confirmación pública.
+- Implicación: en esa época el actualizador era `FirmwareUpgradeTool.exe` dentro de la app, no `UpDateToolV2\UpDateTool11-11.exe`. La actualización de feb-2024 la hizo esa misma herramienta con 4 argumentos; `UpDateToolV2` es de N1/N4/S1/S3 y no interviene (ver `updatetool-origin.md`).
 - La misma página lista otras versiones conocidas del producto: 3.10.197.1210, 2.10.186.1213, 3.10.191.0421, 3.10.200.0420, 2.10.179.426, 3.10.195.0902. Además existe 2.9.178.219 (otra página de advanceduninstaller, vista solo en el título de búsqueda). 2.9.174 y 3.10.191 aparecen sin instalador alojado.
 
 ### 2. Instaladores antiguos: no hay URL pública de descarga (confianza: media)

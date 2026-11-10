@@ -7,8 +7,8 @@ si ya tiene bloque VEREDICTO, no relanzar; si está parcial, pedir al worker que
 ---
 
 Emulación y revisión en seco del parche de firmware. SOLO FICHEROS: NO toques el dispositivo USB/HID, NO ejecutes FirmwareUpgradeTool ni la
-app Stream Dock, NO flashees, NO envíes comandos CRT. Repo: C:\Users\migue\Github\orca-stream-dock. Lee docs/HANDOFF.md,
-docs/research/firmware-feasibility.md, docs/research/keystate-modes.md y docs/research/updatetool-origin.md (y docs/research/firmware/work/make_patch.py).
+app Stream Dock, NO flashees, NO envíes comandos CRT. Repo: C:\Users\migue\Github\orca-stream-dock. Lee docs/project/HANDOFF.md,
+docs/research/firmware/firmware-feasibility.md, docs/research/hid/keystate-modes.md y docs/research/firmware/updatetool-origin.md (y docs/research/firmware/work/make_patch.py).
 
 Contexto: AKP153E.bin (docs/research/firmware/backup/AKP153E.bin, 96 496 B, SHA-256 15e03f5b…, binario plano, base 0x08004000, Cortex-M4F,
 MCU probablemente C*Core; el bootloader 0x08000000-0x08003FFF NO está en el fichero) envía el informe de tecla ('ACK\0\0OK\0\0' + clave en [9],

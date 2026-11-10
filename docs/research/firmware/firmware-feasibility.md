@@ -1,5 +1,10 @@
 # AKP153E v1: ¿es viable un firmware parcheado que envíe pulsar/soltar?
 
+> **Corrección (2026-11-10):** este informe se escribió antes de identificar
+> `FirmwareUpgradeTool.exe` como el actualizador del AKP153E. La herramienta **sí está instalada** y su
+> protocolo está reconstruido en [`updatetool-origin.md`](updatetool-origin.md). Siguen sin verificarse el
+> bootloader real, SWD y la recuperación; la conclusión de **no flashear** no cambia.
+
 Fecha: 2026-11-10. Análisis estático, **solo lectura**: no se abrió el HID, no se envió nada al dispositivo, no se
 flasheó nada y no se arrancó ni se paró Stream Dock. Dispositivo: VID `0x0300`, PID `0x1010`, firmware `V2.293S.00.003`.
 
@@ -9,16 +14,16 @@ Direcciones `0x080…`/`0x200…` = firmware. `0x14…` = `Stream Dock AJAZZ.exe
 ## Veredicto
 
 **Viable con condiciones; hoy está bloqueado.** El cambio en el código es pequeño y está localizado: 6 llamadas y
-36 bytes en una zona libre, sin checksum que recalcular. Lo que falta es **la forma de cargarlo**. En este equipo no
-existe ninguna herramienta que actualice el firmware del AKP153E, y el bootloader (`0x08000000–0x08003FFF`) no viene
-en el `.bin`, así que no se conoce el protocolo con que recibe la imagen ni qué comprueba. Mientras no se consiga el
-bootloader (volcado por SWD) o la herramienta oficial de actualización, **no hay forma segura de flashear**.
+36 bytes en una zona libre, sin checksum que recalcular. La carga ya tiene herramienta
+(`FirmwareUpgradeTool.exe`, 4 argumentos; ver `updatetool-origin.md`), pero no se ha probado y falta red de
+recuperación: el bootloader (`0x08000000–0x08003FFF`) no está volcado y no se conoce qué verifica ni si SWD está
+accesible. Sin ese volcado y una unidad de sacrificio, **no hay forma segura de flashear**.
 
 | Aspecto | Valoración |
 |---|---|
 | Parche del bucle de teclas | Fácil (OBSERVED: diseño completo en §4; imagen de trabajo generada, **NO PROBADA**) |
 | Formato de la imagen | Sencillo: binario plano, sin cifrado, firma ni CRC dentro (OBSERVED) |
-| Carga en el dispositivo | **Desconocida**: no hay herramienta local y el bootloader no está en el `.bin` |
+| Carga en el dispositivo | **Herramienta disponible** (`FirmwareUpgradeTool.exe`, 4 argumentos); protocolo reconstruido, no probado; bootloader no volcado |
 | Riesgo de brick con la ruta oficial (`APP`+`NEW`) | **Alto**: el aviso de actualización queda guardado en flash (§3) |
 | Recuperación | Depende de SWD/ROM boot de un MCU poco documentado (C*Core, INFERRED). Sin verificar en la placa |
 | Esfuerzo | 1–2 días si se consigue el protocolo o el SWD; semanas o imposible si el MCU tiene el debug bloqueado |
@@ -30,7 +35,7 @@ bootloader (volcado por SWD) o la herramienta oficial de actualización, **no ha
 | `%APPDATA%\HotSpot\StreamDock\update\AKP153E.bin` (original, intacto) | 96 496 B | `15e03f5b5a593d665a382d500d8acf23b7e5aed87f64e4b7da450d1a36f54f6f` | Fecha 2024-02-20, el día de la instalación |
 | `docs/research/firmware/backup/AKP153E.bin` (copia) | 96 496 B | `15e03f5b…54f6f` (idéntico) | Copiado con `cp -p`; el original no se tocó |
 | `%APPDATA%\…\update\Stream-Dock-AJAZZ-Installer_Windows_global.exe` | 377 741 944 B | `61b104dc5f22a364800d75727b6008675f393c87e08528862180d8acd0bc1625` | Es el instalador de la app, no firmware. **No se copió** (377 MB en el repo); queda registrado el hash |
-| `C:\Program Files (x86)\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe` | 1 809 384 B | `f02eb5b7e2b609c1d87583f200e57a6bd71871879d94656176979f2353eed606` | Herramienta para **otro** chip, ver §3 |
+| `C:\Program Files (x86)\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe` | 1 809 384 B | `f02eb5b7e2b609c1d87583f200e57a6bd71871879d94656176979f2353eed606` | Actualizador del AKP153E con 4 argumentos; ver §3 y `updatetool-origin.md` |
 | `docs/research/firmware/work/AKP153E_pressrelease_NO_PROBADO.bin` | 96 496 B | `a7ea1549c454d1933d273fb16efddbc42048886df124b24ec5cde71182948fc4` | **NO PROBADO.** Solo sirve para diff y desensamblado. **No flashear** |
 | `docs/research/firmware/work/make_patch.py` | — | — | Genera la imagen anterior y comprueba los bytes originales antes de parchear |
 
@@ -99,15 +104,16 @@ la imagen).
 | Hallazgo | Evidencia |
 |---|---|
 | Ni el EXE ni la DLL construyen `APP` ni `NEW` (búsqueda de secuencias `mov dl,'X'` + `QByteRef::operator=`, el mismo patrón que genera `CRT`, `CLE` y `STP`, que sí aparecen: 35, 6 y 2 veces en la DLL). Tampoco hay literales `APP\0`/`NEW\0` | Script en scratchpad, búsqueda sobre `.text` |
-| `SDSetting::updateFirmware` (`0x140211E50`): lee la versión, descarga `https://cdn1.key123.vip/StreamDock/firmware/firmware-version-libcef.json`, compara versiones y lanza **`UpDateToolV2\UpDateTool11-11.exe StreamDockUpDate`** (`0x1402215B0`, `0x1402220EB`) | Ese ejecutable **no está instalado** |
+| `SDSetting::updateFirmware` (`0x140211E50`): lee la versión, descarga `https://cdn1.key123.vip/StreamDock/firmware/firmware-version-libcef.json`, compara versiones y lanza **`UpDateToolV2\UpDateTool11-11.exe StreamDockUpDate`** (`0x1402215B0`, `0x1402220EB`) | Esa ruta es de la app actual y solo se alcanza con N1/N4/S1/S3; para el AKP153E termina antes en `NotOnlineDevice` (`updatetool-origin.md` §2). El AKP153E usa `FirmwareUpgradeTool.exe` |
 | Las dos JSON del CDN (descargadas en solo lectura) solo listan `MBox-N1` y `VSD_M18` (imágenes `.img` `d13x_…`). **El AKP153E no aparece** → la app mostraría `ServerNotFindDev` | `…\scratchpad\cdn\*.json` |
-| `FirmwareUpgradeTool.exe` es para el SoC de Actions (cadenas `usbupg`, `fwc`, `ramboot`, `uboot`, `partition`, libusb, CBW/CSW). Busca `VID 0xEEEF / PID 0x2929` (`0x140013148`). No habla HID ni CRT | OBSERVED |
-| La pantalla de ajustes muestra "Update mode" si `SDDevice::findDevice(0xEEEF, 0x2929)` (`0x14021421B`). Es el modo de actualización de los modelos Actions, no el del AKP153E | OBSERVED |
+| `FirmwareUpgradeTool.exe` tiene dos modos: con 4 argumentos (`VID`, `PID`, `.bin`, icono) flashea el MCU por HID; con otro número de argumentos arranca el modo `usbupg` del SoC Actions. Busca `EEEF:2929` y, si no está, envía `CRT\0\0APP NEW`. Ver `updatetool-origin.md` §3 | OBSERVED (allí) |
+| La pantalla de ajustes muestra "Update mode" si `SDDevice::findDevice(0xEEEF, 0x2929)` (`0x14021421B`). Es el bootloader del AKP153E; `FirmwareUpgradeTool.exe` lo sondea antes de flashear (`updatetool-origin.md` §3.2) | OBSERVED (allí) |
 
-**Conclusión:** con lo instalado **no se puede reconstruir el protocolo HID con que el bootloader del AKP153E recibe la
-imagen**: ni tamaño de paquete, ni dirección, ni verificación. Se desconoce el VID/PID en modo bootloader, si comprueba
-un CRC o una firma, y si rechaza versiones. Tampoco se sabe si el bootloader está en una región protegida (estos MCU de
-seguridad suelen poder bloquearla, INFERRED). Con este `.bin` todo eso queda **sin determinar**.
+**Conclusión (corregida 2026-11-10):** el protocolo HID del bootloader **sí se reconstruyó** a partir de
+`FirmwareUpgradeTool.exe`: `D2` borrar, `D1` escribir bloques de 60 B, `D3` verificar CRC-16 y `AA 02`
+reiniciar (`updatetool-origin.md` §3.2). Lo que sigue sin verificarse es el bootloader real: si acepta la
+imagen sin más comprobaciones, si está protegido y cómo recuperarlo. El CRC de la herramienta es CRC-16/ARC;
+no hay firma en el protocolo (INFERRED, confianza alta). La conclusión de **no flashear** se mantiene.
 
 ### 3.3 ¿Qué pasa con una imagen inválida o si no llega la imagen?
 
@@ -160,7 +166,7 @@ Total: 50 bytes cambiados (`cmp -l`). Se mantienen el orden de la línea amarill
 | Pregunta | Respuesta |
 |---|---|
 | ¿Espacio libre? | No hay huecos de 0x00/0xFF ≥ 24 B dentro de la imagen. Sí hay 44 B de cadenas muertas (arriba). Otra opción: añadir al final, tras `0x0801B8F0`; cambia el tamaño, y no se sabe si el bootloader lo acepta |
-| ¿Recalcular checksums? | **No hay ninguno en la imagen** (OBSERVED). El bootloader o la herramienta podrían usar uno propio: desconocido |
+| ¿Recalcular checksums? | **No hay ninguno en la imagen** (OBSERVED). La herramienta usa CRC-16/ARC sobre la imagen; el bootloader podría comprobar algo más: desconocido |
 | ¿Comprimir de nuevo? | No: el parche no toca los datos RW. Para cambiar la versión visible (p. ej. `V2.293S.00.103`) habría que reescribir el bloque RW. El formato admite tokens de solo literales, así que basta un compresor trivial de ~20 líneas, pero el bloque crece y la tabla `0x0801B864` habría que revisarla. No se ha hecho |
 | Herramientas | Python + capstone (para verificar), `make_patch.py` (codifica BL/B.W a mano y comprueba los bytes originales). No hace falta toolchain ARM |
 | Efecto en la app oficial | El grupo `293S` del EXE ignora `state` y dispara la acción **con cada informe** (`0x1400A8D69`). Con el parche, la app oficial ejecutaría cada acción **dos veces**. Solo tiene sentido con el host propio |
@@ -169,7 +175,7 @@ Total: 50 bytes cambiados (`cmp -l`). Se mantienen el orden de la línea amarill
 
 | Punto | Estado |
 |---|---|
-| Original para restaurar | **Sí**: copia idéntica en `backup/`, comprobada por SHA-256. Pero el "mismo mecanismo de la app" **no existe** para el AKP153E (§3.2), así que restaurar exige el mismo cargador desconocido que flashear |
+| Original para restaurar | **Sí**: copia idéntica en `backup/`, comprobada por SHA-256. La misma herramienta oficial puede reflashear la app (`768 4112 backup/AKP153E.bin <icono>`), pero **no se ha probado** y depende de que el bootloader entre en modo actualización |
 | Bootloader inmutable | Desconocido. Lo que se ve: está en flash (`0x08000000`), separado de la app, y la app no lo borra. La ROM de máscara `0x0400xxxx` del MCU sí es inmutable. Si tiene modo ISP por pin BOOT, sería la recuperación de último recurso (INFERRED, falta la hoja de datos del modelo exacto) |
 | SWD / pines | Sin inspeccionar. Hay que abrir la carcasa y buscar pads SWDIO/SWCLK/BOOT. En MCU de seguridad C*Core el debug suele poder bloquearse (INFERRED) |
 | Riesgo de brick | **Medio-alto** sin SWD. **Bajo** con SWD funcional y la flash completa volcada (incluidos el bootloader y `0x0807E000`) |
@@ -177,9 +183,9 @@ Total: 50 bytes cambiados (`cmp -l`). Se mantienen el orden de la línea amarill
 
 ## 6. Plan recomendado (con puntos de parada)
 
-1. **Sin abrir nada**: conseguir `UpDateToolV2\UpDateTool11-11.exe` (soporte de AJAZZ/Mirabox, o de dentro del
-   instalador de 377 MB, que va comprimido) y analizarlo **en estático**: comandos HID, VID/PID del bootloader, tamaño
-   de bloque, CRC o firma. **PARADA 1**: si el bootloader exige una firma criptográfica, el proyecto es **no viable**.
+1. **Sin abrir nada**: revisar el protocolo ya reconstruido en `updatetool-origin.md` §3 y decidir si se hace un
+   ensayo de reflasheo del original con `orcadeck hidwatch` corriendo. **PARADA 1**: no flashear hasta identificar
+   el chip y una recuperación (SWD/pin BOOT) o disponer de una unidad de sacrificio.
 2. **Abrir la unidad** (solo mirar): identificar el MCU por la serigrafía, buscar los pads SWD/BOOT y conseguir la hoja
    de datos. **PARADA 2**: si no hay SWD o está bloqueado y no hay protocolo de bootloader documentado, **no seguir**.
 3. **SWD solo lectura**: volcar toda la flash `0x08000000–0x0807FFFF`, guardarla con su SHA-256 y comprobar que

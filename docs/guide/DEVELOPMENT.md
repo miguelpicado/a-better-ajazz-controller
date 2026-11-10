@@ -3,14 +3,14 @@
 Guía para compilar, probar y tocar OrcaDeck sin romper el objetivo del proyecto: un binario Rust
 ligero, sin runtime async, con 0 % de CPU en reposo y UI web solo bajo demanda.
 
-- Uso: [USAGE.md](USAGE.md). Arquitectura: [ARCHITECTURE.md](ARCHITECTURE.md).
-- Fallos: [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Estado: [HANDOFF.md](HANDOFF.md),
-  [ROADMAP.md](ROADMAP.md).
+- Uso: [USAGE.md](USAGE.md). Arquitectura: [ARCHITECTURE.md](../design/ARCHITECTURE.md).
+- Fallos: [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Estado: [HANDOFF.md](../project/HANDOFF.md),
+  [ROADMAP.md](../project/ROADMAP.md).
 
 ## 1. Requisitos
 
 - Windows 10/11 x64.
-- Rust `stable-x86_64-pc-windows-gnullvm` (fijado en [`daemon/rust-toolchain.toml`](../daemon/rust-toolchain.toml);
+- Rust `stable-x86_64-pc-windows-gnullvm` (fijado en [`daemon/rust-toolchain.toml`](../../daemon/rust-toolchain.toml);
   **no lo edites**).
 - En esta máquina no hay linker MSVC ni admin: se usa **llvm-mingw portable** en
   `C:\Tools\llvm-mingw-20261104-ucrt-x86_64\bin`, que debe estar en `PATH`.
@@ -37,7 +37,7 @@ cargo test --release --workspace
   ```powershell
   $env:CARGO_TARGET_DIR="target-$env:USERNAME"
   ```
-- El perfil release ya está ajustado en [`daemon/Cargo.toml`](../daemon/Cargo.toml): `opt-level = "s"`,
+- El perfil release ya está ajustado en [`daemon/Cargo.toml`](../../daemon/Cargo.toml): `opt-level = "s"`,
   LTO, `codegen-units = 1`, `panic = "abort"`, `strip`.
 
 ## 3. Gate antes de dar algo por terminado
@@ -60,8 +60,9 @@ $env:ORCADECK_TRACE=1; .\target\release\orcadeck.exe run <perfil>   # entradas y
 
 ## 4. Estructura de tests
 
-En el árbol hay **72 funciones `#[test]`** (contadas el 2026-11-10). La mayoría son unitarias y no
-necesitan hardware; las de integración usan sockets de loopback y carpetas temporales.
+En el árbol hay **89 tests verdes** (contados el 2026-11-10 con el gate; 87 `#[test]` y 2
+doc-tests). La mayoría son unitarios y no necesitan hardware; las de integración usan sockets de
+loopback y carpetas temporales.
 
 | Dónde | Qué cubre |
 |---|---|
@@ -134,14 +135,14 @@ Dock parado. No la automatices ni la metas en un test.
 
 | Quiero… | Fichero(s) |
 |---|---|
-| añadir un subcomando | [`daemon/src/main.rs`](../daemon/src/main.rs) (`match a(0)`), módulo nuevo si crece |
-| añadir una acción integrada | [`crates/builtin/src/actions.rs`](../daemon/crates/builtin/src/actions.rs): `BuiltinAction`, `Registry::new`, y el render en `core.rs` |
-| atender un comando de plugin | [`crates/host/src/host.rs`](../daemon/crates/host/src/host.rs) (`fn command`) y `Output` |
-| cambiar el pintado o los lotes | [`daemon/src/app.rs`](../daemon/src/app.rs) (`Runtime`, `session`) |
-| cambiar el formato de escena | [`daemon/src/profile.rs`](../daemon/src/profile.rs) y `crates/web/src/store.rs`/`api.rs` |
-| cambiar el editor | [`crates/web/web/`](../daemon/crates/web/web) y `crates/web/src/api.rs` |
-| instalar/reconstruir plugins | [`crates/plugman/src/lib.rs`](../daemon/crates/plugman/src/lib.rs) |
-| tocar el protocolo HID | [`daemon/src/proto.rs`](../daemon/src/proto.rs), [`daemon/src/render.rs`](../daemon/src/render.rs); contrasta `research/hid-protocol.md` |
+| añadir un subcomando | [`daemon/src/main.rs`](../../daemon/src/main.rs) (`match a(0)`), módulo nuevo si crece |
+| añadir una acción integrada | [`crates/builtin/src/actions.rs`](../../daemon/crates/builtin/src/actions.rs): `BuiltinAction`, `Registry::new`, y el render en `core.rs` |
+| atender un comando de plugin | [`crates/host/src/host.rs`](../../daemon/crates/host/src/host.rs) (`fn command`) y `Output` |
+| cambiar el pintado o los lotes | [`daemon/src/app.rs`](../../daemon/src/app.rs) (`Runtime`, `session`) |
+| cambiar el formato de escena | [`daemon/src/profile.rs`](../../daemon/src/profile.rs) y `crates/web/src/store.rs`/`api.rs` |
+| cambiar el editor | [`crates/web/web/`](../../daemon/crates/web/web) y `crates/web/src/api.rs` |
+| instalar/reconstruir plugins | [`crates/plugman/src/lib.rs`](../../daemon/crates/plugman/src/lib.rs) |
+| tocar el protocolo HID | [`daemon/src/proto.rs`](../../daemon/src/proto.rs), [`daemon/src/render.rs`](../../daemon/src/render.rs); contrasta `../research/hid/hid-protocol.md` |
 
 Las escenas y los ajustes son datos del usuario: si un cambio implica migrarlos, escribe el código
 para leer el formato viejo, no para reescribir sus ficheros.

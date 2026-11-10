@@ -4,9 +4,9 @@ OrcaDeck sustituye a la app oficial «Stream Dock AJAZZ» para el AKP153E. Un ú
 (`orcadeck.exe`) hace de driver HID, host de plugins del SDK v2 y, solo cuando se pide, servidor del
 editor web. Sin Qt, CEF, Electron ni runtime async; sin admin; sin UI residente.
 
-Guías: [uso](USAGE.md) · [desarrollo](DEVELOPMENT.md) · [problemas](TROUBLESHOOTING.md).
-Estado y trabajo pendiente: [HANDOFF](HANDOFF.md), [STATUS](STATUS.md), [ROADMAP](ROADMAP.md).
-Diseño histórico (borradores anteriores a la integración): [design/architecture.md](design/architecture.md).
+Guías: [uso](../guide/USAGE.md) · [desarrollo](../guide/DEVELOPMENT.md) · [problemas](../guide/TROUBLESHOOTING.md).
+Estado y trabajo pendiente: [HANDOFF](../project/HANDOFF.md), [STATUS](../project/STATUS.md), [ROADMAP](../project/ROADMAP.md).
+Diseño histórico (borradores anteriores a la integración): [architecture-draft.md](architecture-draft.md).
 
 ## 1. Principios
 
@@ -24,16 +24,16 @@ Diseño histórico (borradores anteriores a la integración): [design/architectu
 
 ## 2. Mapa del workspace
 
-El workspace es [`daemon/Cargo.toml`](../daemon/Cargo.toml); el binario es `daemon/src/main.rs`.
+El workspace es [`daemon/Cargo.toml`](../../daemon/Cargo.toml); el binario es `daemon/src/main.rs`.
 
 | Ruta | Qué es | Responsabilidad |
 |---|---|---|
 | `daemon/` | binario `orcadeck` | CLI, protocolo HID, render, perfiles, escenas, `run`, `edit` |
-| [`daemon/src/app.rs`](../daemon/src/app.rs) | `run` | hilos, canales, lotes de pintado, host, escenas |
-| [`daemon/crates/host`](../daemon/crates/host) | `orcadeck-host` | WebSocket 18618, lanzamiento y supervisión de plugins, Property Inspector |
-| [`daemon/crates/builtin`](../daemon/crates/builtin) | `orcadeck-builtin` | acciones Orca integradas (agente, cuota, reloj, resumen) |
-| [`daemon/crates/plugman`](../daemon/crates/plugman) | `orcadeck-plugman` | instalación de plugins, reconstrucción de manifests cifrados |
-| [`daemon/crates/web`](../daemon/crates/web) | `orcadeck-web` | servidor HTTP local, SPA del editor, `FsStore` |
+| [`daemon/src/app.rs`](../../daemon/src/app.rs) | `run` | hilos, canales, lotes de pintado, host, escenas |
+| [`daemon/crates/host`](../../daemon/crates/host) | `orcadeck-host` | WebSocket 18618, lanzamiento y supervisión de plugins, Property Inspector |
+| [`daemon/crates/builtin`](../../daemon/crates/builtin) | `orcadeck-builtin` | acciones Orca integradas (agente, cuota, reloj, resumen) |
+| [`daemon/crates/plugman`](../../daemon/crates/plugman) | `orcadeck-plugman` | instalación de plugins, reconstrucción de manifests cifrados |
+| [`daemon/crates/web`](../../daemon/crates/web) | `orcadeck-web` | servidor HTTP local, SPA del editor, `FsStore` |
 
 `plugman` tiene además su propio binario, `orcadeck-plugman.exe`.
 
@@ -63,9 +63,10 @@ El workspace es [`daemon/Cargo.toml`](../daemon/Cargo.toml); el binario es `daem
 | `builtin` | `app::run` | `Registry::tick` cada 400 ms, pulsaciones y reemplazo de escena; RPC a Orca | `recv_timeout(400 ms)` y el RPC |
 | `host-accept` | `Host::start` | acepta conexiones WebSocket | `listener.incoming()` |
 | `host-socket` | una por conexión | lee el WebSocket, enruta eventos, llama a `Events::output` | lectura del socket |
+| `ctl` | `run` (named pipe) | atiende a `orcadeck edit` y mantiene el servidor web mientras el cliente vive | named pipe |
 | `<plugin>-wait` | `Host::launch` | `Child::wait`; reinicio con backoff si el plugin cae | `Child::wait` |
 | RPC (efímero) | `PipeOrca::call_once` | una llamada a Orca con timeout de 5 s | lectura de la tubería |
-| editor | `orcadeck edit` | servidor HTTP en loopback (proceso aparte) | `listener.incoming()` |
+| editor | `orcadeck edit` (o hilo efímero dentro de `run`) | servidor HTTP en loopback | `listener.incoming()` |
 
 No hay un hilo por feedback ni por pintado: los avisos ok/alert son una fecha límite en
 `Runtime::restores` que el bucle del dispositivo comprueba en cada `tick`.
@@ -129,7 +130,7 @@ el mismo canal y el mismo mecanismo de lotes.
 
 ### 3.6 Por qué el gap de 400 ms
 
-Medido con el dispositivo (ver [HANDOFF](HANDOFF.md)):
+Medido con el dispositivo (ver [HANDOFF](../project/HANDOFF.md)):
 
 - Cada imagen cuesta **25–30 ms fijos** de escritura HID, independientemente de su tamaño.
 - El firmware **pierde pulsaciones mientras recibe imágenes**. Pintar por tecla cada ~120 ms dio
@@ -146,7 +147,7 @@ Medido con el dispositivo (ver [HANDOFF](HANDOFF.md)):
 El firmware del AKP153E entrega **un solo evento por pulsación y al soltar**; el byte de estado
 siempre es 0. `run` lo trata como un clic: las acciones integradas reciben `key_down` y los plugins
 reciben `keyDown` seguido de `keyUp`. No hay pulsación larga ni distinguir pulsar/soltar con este
-firmware (ver `research/keystate-modes.md`).
+firmware (ver `../research/hid/keystate-modes.md`).
 
 ## 4. Escenas y perfiles
 
@@ -207,7 +208,7 @@ Stream Dock.
 | `%LOCALAPPDATA%\OrcaDeck\bin` y `orcadeck.log` | binario copiado y log del autoarranque | `tools/autostart/orcadeck-task.ps1` | tarea programada |
 
 `run` usa siempre `%APPDATA%\OrcaDeck` como carpeta de datos; `ORCADECK_DATA` solo afecta a `edit`
-(ver [USAGE](USAGE.md#4-variables-de-entorno)).
+(ver [USAGE](../guide/USAGE.md#4-variables-de-entorno)).
 
 ## 6. Acciones integradas
 
@@ -253,31 +254,35 @@ frene el giro del spinner ni el pintado.
 - **No atendidos** (se registran una vez y se descartan): `switchToProfile`, `sendToDevice`,
   `getScreenshot`, `setFeedback`, `setTriggerDescription`, etc.
 - **Seguridad**: contextos y UUID de lanzamiento aleatorios (CSPRNG), `Origin` exacto para sockets
-  de navegador, token de Property Inspector de un solo uso. `run` arranca con la lista de orígenes
-  vacía: un PI de navegador no puede conectarse hasta que se integre el editor.
-- **Property Inspector**: la mitad servidora está implementada (`open_inspector`,
-  `registerPropertyInspector`, routing de ajustes), pero el editor web todavía no lo usa. Está
-  **en desarrollo**; el diseño y sus riesgos están en `research/inspector.md`.
+  de navegador, token de Property Inspector de un solo uso. Al abrir `edit`, su origen entra en la
+  lista blanca; `Origin: null` se acepta solo con una sesión de PI abierta.
+- **Property Inspector**: servidor en `host` (`open_inspector`, `registerPropertyInspector`,
+  routing de ajustes) y iframe en la SPA de `edit`. El iframe va en sandbox sin
+  `allow-same-origin`, con CSP sin red externa; el token de un solo uso llega por `postMessage` y
+  `RunInspector` hace de `InspectorBridge`. El diseño y sus riesgos están en `inspector.md`.
 
 ## 8. Editor web (`edit`)
 
-Proceso aparte. `Server::start` enlaza `127.0.0.1` (puerto libre por defecto), genera un token de
+Proceso aparte o hilo efímero dentro de `run` cuando el named pipe de `ctl.rs` está disponible.
+`Server::start` enlaza `127.0.0.1` (puerto libre por defecto), genera un token de
 256 bits y sirve una SPA embebida (`include_str!`, sin build ni fuentes web). El token viaja en la
 URL, se cambia por una cookie `HttpOnly; SameSite=Strict` y se exige en cada `/api/*`.
 
 - `FsStore` apunta a los perfiles, plugins, overlays, `state.json` y la configuración heredada.
 - Dos vistas: **Teclas** (cuadrícula 5×3 + panel lateral, arrastrar acciones, escenas, inspector de
-  título/JSON) y **Plugins** (estado, manifest, instalar/quitar).
-- Sin HID y sin hot reload: los cambios se guardan en disco, pero `run` no los recarga. Cambiar de
+  título/JSON/PI) y **Plugins** (estado, manifest, instalar/quitar).
+- Si `run` está vivo, `edit` corre dentro de `run` por el named pipe de `ctl.rs` y guardar una celda
+  recarga esa tecla en caliente; si no, arranca standalone y `run` no ve los cambios. Cambiar de
   escena en `run` sí recarga el manifiesto de la escena destino.
 - El brillo del editor es un stub persistido; el `run` arranca a 80 y `orcadeck bright` cambia el
   brillo real.
-- Property Inspector en iframe: **en desarrollo**, no existe todavía en la SPA.
+- Property Inspector en iframe sandbox (sin `allow-same-origin`), token de un solo uso por
+  `postMessage` y CSP sin red externa.
 - En reposo el servidor duerme en `accept`: 0 % de CPU; la última medición anotada es ~7 MB RSS.
 
 ## 9. Instalador de plugins
 
-`orcadeck-plugman` es el port a Rust de `tools/plugin-install/install.mjs`.
+`orcadeck-plugman` es el port a Rust de `tools/legacy/plugin-install/install.mjs`.
 
 - Acepta `.streamDeckPlugin` (zip) o una carpeta `.sdPlugin`.
 - **No descifra** un `manifest.json` que empieza por `ELGATO`; reconstruye el manifest funcional
@@ -303,7 +308,7 @@ URL, se cambia por una cookie `HttpOnly; SameSite=Strict` y se exige en cada `/a
   baja de 4 en 4 hasta ≤ 9000 bytes.
 - Entrada: `HANLDER` → responder `HAN`; `ACK…OK`; `error`; `CRT MOD`; si no, tecla en el byte 9 y
   estado en el byte 10 (siempre 0 en este firmware).
-- Protocolo detallado y dudas cerradas: `research/hid-protocol.md` y `research/keystate-modes.md`.
+- Protocolo detallado y dudas cerradas: `../research/hid/hid-protocol.md` y `../research/hid/keystate-modes.md`.
 
 ## 11. Límites conocidos
 
@@ -313,24 +318,24 @@ URL, se cambia por una cookie `HttpOnly; SameSite=Strict` y se exige en cada `/a
 | Panel lateral no táctil y sin dial | hardware del AKP153E v1 |
 | Plugins `.html` no soportados | necesitarían WebView2/CEF |
 | Sin `switchToProfile`, `sendToDevice`, `getScreenshot` | no implementados en el host |
-| Property Inspector en el editor | diseñado, aún en desarrollo |
-| Sin recarga en caliente de `edit` | `run` lee el manifiesto al arrancar o al cambiar de escena |
+| Property Inspector limitado a plugins con PI resoluble | si falta, el editor muestra título/JSON |
+| Sin recarga en caliente fuera de `edit` dentro de `run` | el fallback standalone escribe en disco y `run` no lo ve |
 | Plugins viejos no se matan al cambiar de escena | evita perder ajustes; consume RAM |
 | Plugins de `Program Files` fuera de `run` | `run` solo descubre `%APPDATA%\HotSpot\StreamDock\plugins` u `ORCADECK_PLUGINS`; `edit` los lista, pero no se lanzan |
 | Parpadeo ok/alert | 600 ms, dos pintados extra |
 | Sin cierre ordenado de hijos al matar `run` | Windows no mata los procesos hijos del padre |
 | Parche de firmware | diseñado y emulado, **nunca flasheado**; regla dura: no flashear |
 
-El detalle y el orden de lo que falta están en [ROADMAP](ROADMAP.md).
+El detalle y el orden de lo que falta están en [ROADMAP](../project/ROADMAP.md).
 
 ## 12. Referencias
 
-- [`daemon/src/app.rs`](../daemon/src/app.rs) — hilos, canales, lotes, escenas.
-- [`daemon/src/proto.rs`](../daemon/src/proto.rs) — protocolo y mapa de teclas.
-- [`daemon/src/render.rs`](../daemon/src/render.rs) — pipeline JPEG.
-- [`daemon/src/profile.rs`](../daemon/src/profile.rs) — lectura de perfiles y escritura de ajustes.
-- [`daemon/src/scenes.rs`](../daemon/src/scenes.rs) — orden y salto de escenas.
-- [`daemon/crates/host/src/host.rs`](../daemon/crates/host/src/host.rs) — host y protocolo.
-- [`daemon/crates/web/src/store.rs`](../daemon/crates/web/src/store.rs) — `FsStore`, `state.json`.
-- `research/scene-shift.md`, `research/inspector.md`, `research/hid-protocol.md`,
-  `research/plugin-host-protocol.md`, `design/plugin-install-handoff.md`.
+- [`daemon/src/app.rs`](../../daemon/src/app.rs) — hilos, canales, lotes, escenas.
+- [`daemon/src/proto.rs`](../../daemon/src/proto.rs) — protocolo y mapa de teclas.
+- [`daemon/src/render.rs`](../../daemon/src/render.rs) — pipeline JPEG.
+- [`daemon/src/profile.rs`](../../daemon/src/profile.rs) — lectura de perfiles y escritura de ajustes.
+- [`daemon/src/scenes.rs`](../../daemon/src/scenes.rs) — orden y salto de escenas.
+- [`daemon/crates/host/src/host.rs`](../../daemon/crates/host/src/host.rs) — host y protocolo.
+- [`daemon/crates/web/src/store.rs`](../../daemon/crates/web/src/store.rs) — `FsStore`, `state.json`.
+- `scene-shift.md`, `inspector.md`, `../research/hid/hid-protocol.md`,
+  `../research/plugins/plugin-host-protocol.md`, `plugin-install-handoff.md`.

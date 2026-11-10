@@ -1,4 +1,8 @@
 # Scene Shift (`com.hotspot.streamdock.profile.rotate`) — diseño para `orcadeck run`
+
+> **Nota (2026-11-10):** implementado en `run` (`daemon/src/scenes.rs`); pendiente la prueba física con
+> el teclado. Estado en [`../project/STATUS.md`](../project/STATUS.md).
+
 Investigación 2026-11-10, solo lectura: no se ejecutó la app, ni `orcadeck`, ni se abrió el HID. Etiquetas:
 **OBSERVED** = visto en ficheros, bytes o desensamblado; **INFERRED** = deducido, no probado en vivo.
 ## 1. Qué hace al pulsar (evidencia)
@@ -140,10 +144,10 @@ impl SceneSet {
 6. **Tamaño**: sin dependencias nuevas; `FsStore` ya está en el workspace. Si se mide el binario, anotar el delta; el
    código nuevo es ~150 líneas y no añade hilos ni polls.
 ## Fuentes
-- `docs/research/manifest-profiles-admin.md` §2.3–2.5 (formato de escena, DataCache, ini).
+- `docs/research/profiles/manifest-profiles-admin.md` §2.3–2.5 (formato de escena, DataCache, ini).
 - `daemon/crates/web/src/store.rs` (`FsStore`, `scenes`, `set_current`, `set_order`), `api.rs` (`/api/scenes*`).
 - `daemon/src/app.rs` (colocación actual, hilos, `by_key`/`latest`), `daemon/src/profile.rs` (`Scene`, `Action`).
-- `daemon/crates/host/src/host.rs` (`appear`/`disappear`/`launch`), `docs/research/plugin-host-protocol.md`.
+- `daemon/crates/host/src/host.rs` (`appear`/`disappear`/`launch`), `docs/research/plugins/plugin-host-protocol.md`.
 - `C:\Program Files (x86)\Stream Dock AJAZZ Global\plugins\com.hotspot.streamdock.profile.rotate.sdPlugin\manifest.json`.
 - `Stream Dock AJAZZ.exe`: `SDActionCanvasLabel::performActionKeyDown`, strings `ProfileUUID` (file `0x25B4988`),
   `PreviousScene` (`0x25B56D0`), `.sdProfile` (`0x25B56E0`), defaults `0x25C06F8`; desensamblado con Ghidra 12.1.4.
