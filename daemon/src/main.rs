@@ -3,6 +3,7 @@ mod edit;
 mod proto;
 mod profile;
 mod render;
+mod scenes;
 
 use hidapi::{HidApi, HidDevice};
 use proto::*;
