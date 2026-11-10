@@ -27,6 +27,13 @@ runtime async ni UI residente, 0 % de CPU en reposo, memoria y tráfico HID mín
 3. No borrar ni mover nada que no se haya nombrado por ruta exacta.
 4. No commitear ni tocar `vendor/`; son paquetes del usuario.
 
+## Rendimiento
+
+[`PERF-AUDIT.md`](PERF-AUDIT.md) (auditoría estática, cifras marcadas MEDIDA/ESTIMADA). Quick wins sin
+dispositivo: P0-1 (cadencias de RPC a Orca) y P0-2 (`SPIN_MS` 800). Lo que toca `app.rs` (hilo lector HID
+bloqueante, `builtin` por plazos, quitar `latest`) esperar a medir `run` con el dispositivo
+(procedimiento en §7 del informe) para validar que no se pierden pulsaciones.
+
 ## Siguiente, en orden
 
 1. Sin dispositivo: ver el primer run de CI en GitHub (`.github/workflows/ci.yml`, sin probar),

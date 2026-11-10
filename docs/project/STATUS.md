@@ -40,6 +40,21 @@ el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue
    la tubería de Orca, SQLite ocupado, traversal en iconos de perfil, tramas WebSocket enormes y
    carrera entre Scene Shift y pintado.
 
+## Rendimiento (auditoría estática, [`PERF-AUDIT.md`](PERF-AUDIT.md))
+
+No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `edit` en reposo (0,00 % CPU, 6,5 MB).
+
+- **Mayor coste en reposo:** el polling RPC de `builtin` a Orca, ~3,2 % de un núcleo medido
+  (19–27 ms por poll, `workerList` 160–278 ms cada 10 s). Subir intervalos lo deja en ~0,6–1,3 %.
+- **Despertares:** el bucle del dispositivo se despierta 33,3 veces/s (lectura HID con timeout de
+  30 ms) y `builtin` 2,5 veces/s; ambos sustituibles por espera bloqueante o por plazos.
+- **Spinner:** 400 ms→800 ms reduce a la mitad el tráfico HID animado y el riesgo de pulsaciones perdidas.
+- **Memoria:** el mapa `latest` cuesta 1,2–2,5 MB (hasta 10 MB con 288²); pre-escalar baja el lote
+  de 15 teclas de 12–30 ms a 3–5 ms. Node: 56–64 MB por plugin (medido en dos).
+- **Perfil release:** ya es bueno; no usar `opt-level="z"` (+40 % de pipeline), `lto="thin"`
+  ni `panic="unwind"`.
+- Plan ordenado en [`ROADMAP.md`](ROADMAP.md) (filas 14–16).
+
 ## Pendiente con dispositivo y OK del usuario
 
 1. Parar Stream Dock con `schtasks /end /tn StreamDock`.

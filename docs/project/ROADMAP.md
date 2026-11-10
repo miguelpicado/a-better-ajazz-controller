@@ -18,7 +18,10 @@ Objetivo rector en [`HANDOFF.md`](HANDOFF.md). Estado verificado en [`STATUS.md`
 | 10 | Autoarranque (`tools/autostart/orcadeck-task.ps1`) | tarea `OrcaDeck` instalada DESACTIVADA; activar exige consola elevada |
 | 11 | P0–P2 de [`REPO-AUDIT.md`](REPO-AUDIT.md) | hecho: rutas de usuario, código muerto, metadatos Cargo, `.github/workflows/ci.yml` (sin verificar en GitHub). Pendiente: `base64`/`getrandom` duplicados, `cargo fmt` (28 ficheros), licencia (decide el usuario), clippy no instalado en el toolchain local |
 | 12 | Huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2 | pendiente |
-| 13 | Medidas de ligereza: exe, RSS y CPU en reposo con el dispositivo | pendiente (necesita dispositivo) |
+| 13 | Medidas de ligereza: exe, RSS y CPU en reposo con el dispositivo | pendiente (necesita dispositivo); procedimientos en [`PERF-AUDIT.md`](PERF-AUDIT.md) §7 |
+| 14 | Rendimiento P0 de [`PERF-AUDIT.md`](PERF-AUDIT.md): cadencia RPC a Orca (`POLL_MS` 1000→3000–5000, `WORKERS_MS` 10 s→30 s) y `SPIN_MS` 400→800 | pendiente, sin dispositivo (constantes en `builtin`) |
+| 15 | Rendimiento P1: lectura HID bloqueante en hilo lector + `builtin` por plazos (33→0 y 2,5→0 despertares/s), quitar mapa `latest`, pre-escalar imágenes | pendiente; toca `app.rs`, validar con dispositivo (pulsaciones) |
+| 16 | Rendimiento P2: unificar `base64`/`getrandom`, `TerminateProcess` directo, hilo RPC persistente, celdas laterales 16–18 | pendiente; sacar el editor a otro binario (−375 KB) es decisión de producto |
 
 ## B. Pruebas con dispositivo y OK del usuario
 

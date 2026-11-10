@@ -38,6 +38,7 @@ Carpetas: [guide](guide/README.md) · [design](design/README.md) · [project](pr
 | [project/ROADMAP.md](project/ROADMAP.md) | qué falta para dar la app por terminada y qué se investiga después |
 | [project/HANDOFF.md](project/HANDOFF.md) | resumen corto y vigente para retomar el trabajo |
 | [project/REPO-AUDIT.md](project/REPO-AUDIT.md) | auditoría del repositorio: hallazgos y plan P0/P1/P2 |
+| [project/PERF-AUDIT.md](project/PERF-AUDIT.md) | auditoría de rendimiento de `run`/`edit`: despertares, memoria, tamaño; plan P0/P1/P2 |
 
 ## Investigación
 
