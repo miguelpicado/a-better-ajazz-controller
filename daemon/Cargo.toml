@@ -4,7 +4,14 @@ version = "0.1.0"
 edition = "2021"
 description = "Lightweight daemon for the AJAZZ Stream Dock AKP153E"
 
+[workspace]
+members = ["crates/host", "crates/plugman", "crates/builtin", "crates/web"]
+
 [dependencies]
+orcadeck-host = { path = "crates/host" }
+orcadeck-builtin = { path = "crates/builtin" }
+orcadeck-web = { path = "crates/web" }
+base64 = "0.22"
 hidapi = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1", features = ["derive"] }

@@ -18,6 +18,8 @@ pub struct Action {
     pub state: usize,
     #[serde(rename = "States", default)]
     pub states: Vec<State>,
+    #[serde(rename = "Settings", default)]
+    pub settings: serde_json::Value,
 }
 
 #[derive(Deserialize, Debug)]

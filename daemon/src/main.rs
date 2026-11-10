@@ -1,3 +1,4 @@
+mod app;
 mod proto;
 mod profile;
 mod render;
@@ -138,6 +139,8 @@ fn run(args: &[String]) -> Result<(), String> {
             if !found { return Err("device not found".into()); }
             Ok(())
         }
+        // the product: driver + plugin host + built-in actions in one process
+        Some("run") => app::run(Path::new(a(1).ok_or("run <sdProfile>")?), &plugins_dir(), n_env),
         Some("scene") => {
             let dir = a(1).ok_or("scene <sdProfile>")?;
             let jp = scene_jpegs(Path::new(dir), &plugins_dir())?;

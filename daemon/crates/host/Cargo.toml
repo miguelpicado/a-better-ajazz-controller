@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "Stream Deck SDK v2 compatible plugin host for the OrcaDeck daemon"
 
-# Standalone for now: not a member of the daemon workspace.
-[workspace]
 
 # Sync tungstenite + std threads: a blocking accept thread plus one blocking reader thread per
 # socket. Nothing polls, so the host sits at 0 % CPU when idle, and there is no async runtime in

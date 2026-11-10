@@ -53,14 +53,19 @@ y se relanza con `schtasks /run /tn StreamDock` (**ahora está en marcha**). Per
   corriendo** para ver `EEEF:2929`; (4) solo después, el parche. Mejor con plan de recuperación (programador SWD / unidad de sacrificio).
   Una unidad AKP153E rev. 2 (PID 0x3010, fw V3) sí emite down/up (ver `ramtic-lab/ajazz-pi`, `4ndv/opendeck-akp153`): alternativa barata.
 
-## PENDIENTE DE PRODUCTO (lo importante, no empezado)
-**Integrar el daemon** (`docs/STATUS.md` §Pendiente): convertir `daemon/` en workspace con las 4 crates (`host`, `plugman`, `builtin`, `web`)
-y un binario único; mapa `context→casilla` (contextos del host son aleatorios por `appear`); el registro de `builtin` en su propio hilo
-(llamada de workers ~450 ms cada 10 s); `Output::Image` al pipeline de render (≤ 1 imagen/400 ms/tecla); pulsación = clic al soltar.
-Luego overlays/UI/plugman, y la sustitución (tarea de autoarranque). Contenido real de teclas (hoy placeholders del perfil).
-Ideas aprovechables de repos de terceros: `docs/research/community-ideas.md` (cola de imágenes con ventana de calma, caché por hash,
-reconexión/hotplug con DIS por apertura, tabla de variantes VID/PID, formato de perfiles/DataCache.db, init sin parpadeo). Licencias:
-MIT reutilizable (warley, deckhand, dvortsis, radisky); MPL/GPL/sin licencia solo hechos (mirajazz, opendeck, Aiacos, Uriziel01).
+## PRODUCTO — integración hecha (2026-11-10), sin probar con el dispositivo
+`daemon/` ya es workspace (host, plugman, builtin, web; un solo `Cargo.lock`; 53 tests verdes con `cargo test --release --workspace`).
+Nuevo subcomando **`orcadeck run <perfil.sdProfile>`** (`daemon/src/app.rs`): driver + host de plugins (puerto 18618) + acciones
+`builtin` en un proceso. Hilo principal = dueño del HID (entrada, pintado, heartbeat, reconexión cada 2 s con repintado);
+hilo `builtin` = `Registry` (tick 400 ms, pulsación por canal); imágenes de plugins (`setImage` data URI, SVG/PNG/JPEG) y de
+builtin llegan por un canal; máx. 1 imagen/400 ms/tecla (gana la última), un `STP` por lote. Pulsación (llega al soltar) =
+click: builtin `key_down`, plugin `keyDown`+`keyUp`. Solo se lanzan los plugins que usa la escena. Parar Stream Dock antes
+(`schtasks /end /tn StreamDock`): mismo HID y mismo puerto.
+**Pendiente inmediato:** probar `run` con el dispositivo (necesita OK del usuario: para Stream Dock y toma el HID), con el perfil Orca.
+Después: servidor `web` bajo demanda (`orcadeck edit`), overlays/UI de plugman, feedback ok/alert (parpadeo), títulos/estados de
+plugins (`Output::Title/State` hoy ignorados), el host debe ignorar `state=1` duplicado si algún día se flashea el parche,
+sustitución (tarea de autoarranque). Ideas de terceros: `docs/research/community-ideas.md` (licencias: MIT reutilizable;
+MPL/GPL/sin licencia solo hechos).
 
 ## Higiene
 - `.gitignore` actualizado (target/, .playwright-mcp/, ficheros grandes de la raíz, `docs/research/firmware/work/extract-*|current-*|venv`).
