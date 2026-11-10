@@ -336,6 +336,12 @@ impl Registry {
         self.actions.contains_key(uuid)
     }
 
+    /// UUIDs of the built-in actions, so a scene can be placed without touching the registry
+    /// (which moves to its own thread after startup).
+    pub fn uuids(&self) -> Vec<&'static str> {
+        self.actions.keys().copied().collect()
+    }
+
     /// Adds a key; false if its UUID is not built in (the host should treat it as a plugin key).
     pub fn appear(&mut self, key: Key) -> bool {
         if !self.handles(&key.uuid) {

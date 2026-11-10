@@ -11,7 +11,9 @@ use crate::{
     load_img,
     profile::{self, Scene},
     proto::*,
-    render, Dock,
+    render,
+    scenes::{self, SceneSet, SceneTarget},
+    Dock,
 };
 use base64::Engine;
 use hidapi::HidApi;
@@ -20,9 +22,12 @@ use orcadeck_builtin as bi;
 use orcadeck_host as host;
 use serde_json::Value;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc, Arc, Mutex,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -186,17 +191,30 @@ fn out_key(out: &host::Output) -> Option<&host::Key> {
 /// Settings writes are coalesced: a burst from one key causes at most one manifest write per second.
 const SETTINGS_WRITE_MS: u64 = 1000;
 
+/// One key image, tagged with the scene generation it belongs to and the context that produced
+/// it, so the device loop can drop paints from a scene that is already gone.
+struct Paint {
+    key: u8,
+    img: DynamicImage,
+    gen: u64,
+    ctx: String,
+}
+
 /// State shared by plugin socket threads, the builtin thread and the device loop. Plugin outputs
 /// only touch this; the device loop drains it in `tick`, so nothing else writes the device.
 struct Runtime {
-    tx: mpsc::Sender<(u8, DynamicImage)>,
+    tx: mpsc::Sender<Paint>,
     view: View,
+    /// Bumped on every scene switch; paints tagged with an older generation are stale.
+    gen: Arc<AtomicU64>,
+    /// Plugin contexts the current scene dropped; their late paints are ignored.
+    retired: Mutex<HashSet<String>>,
     /// Key -> deadline of its ok/alert restore.
     restores: Mutex<HashMap<u8, Instant>>,
     /// Action settings waiting for the debounce window.
     settings: Mutex<SettingsPending>,
-    /// Scene manifest the settings belong to.
-    manifest: PathBuf,
+    /// Manifest of the scene now on the deck, replaced by a scene switch.
+    manifest: Mutex<PathBuf>,
     /// `<APPDATA>/OrcaDeck`, holds `globals/<plugin>.json`.
     data: PathBuf,
 }
@@ -217,10 +235,41 @@ impl Runtime {
         self.settings.lock().unwrap_or_else(|e| e.into_inner()).cells.insert(context.to_string(), cell);
     }
 
+    /// Forgets the old scene's plugin cells and any settings queued for them.
+    fn clear_cells(&self) {
+        let mut p = self.settings.lock().unwrap_or_else(|e| e.into_inner());
+        p.cells.clear();
+        p.pending.clear();
+    }
+
+    /// One paint, tagged so the device loop can drop it after a scene switch.
+    fn send(&self, key: u8, img: DynamicImage, context: &str) {
+        let _ = self.tx.send(Paint { key, img, gen: self.gen.load(Ordering::Relaxed), ctx: context.to_string() });
+    }
+
+    /// Points settings writes at the scene now on the deck.
+    fn set_manifest(&self, manifest: PathBuf) {
+        *self.manifest.lock().unwrap_or_else(|e| e.into_inner()) = manifest;
+    }
+
+    fn retired(&self, context: &str) -> bool {
+        self.retired.lock().unwrap_or_else(|e| e.into_inner()).contains(context)
+    }
+
+    /// Forgets a plugin context: whatever it paints from now on is a late paint.
+    fn retire(&self, context: &str) {
+        let mut retired = self.retired.lock().unwrap_or_else(|e| e.into_inner());
+        if retired.len() >= 1024 {
+            // shortcut: oldest contexts lose protection; upgrade to a ring buffer if a plugin keeps painting them.
+            retired.clear();
+        }
+        retired.insert(context.to_string());
+    }
+
     /// One plugin output, on a socket thread. Images go over the paint channel; settings, globals
     /// and URLs are side effects that never touch the device.
     fn output(&self, out: host::Output) {
-        let Some(k) = out_key(&out).and_then(|key| key_index(key.column as u8, key.row as u8)) else {
+        let Some(key) = out_key(&out) else {
             match out {
                 host::Output::Settings { context, settings } => self.queue_settings(&context, settings),
                 host::Output::GlobalSettings { plugin, settings } => save_global(&self.data, &plugin, &settings),
@@ -229,6 +278,11 @@ impl Runtime {
             }
             return;
         };
+        let Some(k) = key_index(key.column as u8, key.row as u8) else { return };
+        if self.retired(&key.context) {
+            return;
+        }
+        let ctx = key.context.clone();
         let (ok, px) = (matches!(&out, host::Output::ShowOk(_)), image_px(k));
         let mut v = self.view.lock().unwrap_or_else(|e| e.into_inner());
         let mut image = None;
@@ -261,28 +315,31 @@ impl Runtime {
             host::Output::ShowOk(_) | host::Output::ShowAlert(_) => {
                 let base = v.effective(k);
                 drop(v);
-                self.feedback(k, ok, base);
+                self.feedback(&ctx, k, ok, base);
                 return;
             }
             _ => {}
         }
         drop(v);
         if let Some(img) = image {
-            let _ = self.tx.send((k, img));
+            self.send(k, img, &ctx);
         }
     }
 
     /// Overlay now; the device loop restores the key after [`FEEDBACK_MS`] (no timer thread).
-    fn feedback(&self, key: u8, ok: bool, base: DynamicImage) {
-        let _ = self.tx.send((key, compose_feedback(&base, ok, image_px(key))));
+    fn feedback(&self, context: &str, key: u8, ok: bool, base: DynamicImage) {
+        self.send(key, compose_feedback(&base, ok, image_px(key)), context);
         let deadline = Instant::now() + Duration::from_millis(FEEDBACK_MS);
         self.restores.lock().unwrap_or_else(|e| e.into_inner()).insert(key, deadline);
     }
 
     /// Builtin images go through the same channel and view as plugin images.
-    fn paint(&self, key: u8, img: DynamicImage) {
+    fn paint(&self, context: &str, key: u8, img: DynamicImage) {
+        if self.retired(context) {
+            return;
+        }
         self.view.lock().unwrap_or_else(|e| e.into_inner()).base.insert(key, img.clone());
-        let _ = self.tx.send((key, img));
+        self.send(key, img, context);
     }
 
     /// Deadline work for the device loop, which already wakes every 30 ms for input: pending
@@ -300,7 +357,8 @@ impl Runtime {
         };
         for k in due {
             let img = self.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
-            let _ = self.tx.send((k, img));
+            // Restores are dropped on a scene switch, so this is always the current scene.
+            self.send(k, img, "");
         }
         self.flush_settings(now);
     }
@@ -322,8 +380,9 @@ impl Runtime {
         p.last = Some(now);
         let pending = std::mem::take(&mut p.pending);
         drop(p);
+        let manifest = self.manifest.lock().unwrap_or_else(|e| e.into_inner()).clone();
         for (cell, settings) in pending {
-            match profile::save_action_settings(&self.manifest, cell.0, cell.1, &settings) {
+            match profile::save_action_settings(&manifest, cell.0, cell.1, &settings) {
                 Ok(true) => eprintln!("settings {},{} saved", cell.0, cell.1),
                 Ok(false) => {}
                 Err(e) => {
@@ -332,6 +391,14 @@ impl Runtime {
                 }
             }
         }
+    }
+
+    /// Writes pending settings before the scene (and with it the manifest) changes; whatever cannot
+    /// be written is dropped instead of landing in the next scene's cells.
+    fn flush_now(&self) {
+        self.settings.lock().unwrap_or_else(|e| e.into_inner()).last = None;
+        self.flush_settings(Instant::now());
+        self.settings.lock().unwrap_or_else(|e| e.into_inner()).pending.clear();
     }
 }
 
@@ -393,40 +460,181 @@ fn open_url(url: &str) {
 }
 
 /// Where a scene cell's action runs.
+#[derive(Clone)]
 enum Target {
     Builtin(String),
     Plugin(String),
+    Scene(SceneTarget),
+}
+
+/// Work for the builtin thread: presses and scene replacements.
+enum BuiltinMsg {
+    Press(String),
+    Scene(SceneCmd),
+}
+
+/// Builtin half of a scene switch: the registry stays on its thread, only its keys change.
+enum SceneCmd {
+    Replace { old: Vec<String>, new: Vec<bi::Key>, ctx_keys: HashMap<String, u8> },
+}
+
+/// Result of putting a scene on the deck.
+#[derive(Default)]
+struct Placed {
+    by_key: HashMap<u8, Target>,
+    builtin_keys: Vec<bi::Key>,
+    /// Context -> key of every placed action; the builtin thread routes presses with this.
+    ctx_keys: HashMap<String, u8>,
+    /// Placeholder image per key, until the action paints.
+    latest: HashMap<u8, DynamicImage>,
+    /// Plugin id -> instances in this scene.
+    used: HashMap<String, usize>,
+}
+
+/// Puts a scene's actions on the deck: scene keys stay in the device loop, built-ins go to the
+/// builtin thread, the rest to the plugin host. Replaces the per-key view and key ownership.
+fn place_scene(
+    scene: &Scene,
+    plugins: &Path,
+    found: &[host::Plugin],
+    host: &host::Host,
+    rt: &Runtime,
+    builtins: &HashSet<&'static str>,
+) -> Placed {
+    let mut p = Placed::default();
+    let mut view = ViewState::default();
+    let mut appearing: Vec<((u8, u8), &profile::Action, &host::Plugin)> = Vec::new();
+    for ((c, r), a) in &scene.actions {
+        let Some(key) = key_index(*c, *r) else { continue };
+        if let Some(img) = scene.image_of(a, plugins).and_then(|path| load_img(&path).ok()) {
+            view.base.insert(key, img.clone());
+            p.latest.insert(key, img);
+        }
+        view.states.insert(key, (0..a.states.len()).map(|i| state_path(scene, a, plugins, i)).collect());
+        view.state.insert(key, a.state as u32);
+        let ctx = format!("{c},{r}");
+        if let Some(target) = scenes::target_of(a) {
+            p.by_key.insert(key, Target::Scene(target));
+        } else if builtins.contains(a.uuid.as_str()) {
+            p.ctx_keys.insert(ctx.clone(), key);
+            p.builtin_keys.push(bi::Key { uuid: a.uuid.clone(), context: ctx.clone(), device: DEVICE.into(), row: *r as u32, col: *c as u32 });
+            p.by_key.insert(key, Target::Builtin(ctx));
+        } else if let Some(plugin) = found.iter().filter(|p| a.uuid.starts_with(&format!("{}.", p.id))).max_by_key(|p| p.id.len()) {
+            appearing.push(((*c, *r), a, plugin));
+        } else {
+            eprintln!("no handler for {} at {c},{r} ({})", a.uuid, a.name);
+        }
+    }
+    // Publish the new view before the plugins appear: their first paint has to land in it.
+    rt.set_manifest(scene.dir.join("manifest.json"));
+    *rt.view.lock().unwrap_or_else(|e| e.into_inner()) = view;
+    for ((c, r), a, plugin) in appearing {
+        let Some(key) = key_index(c, r) else { continue };
+        let mut inst = host::Instance::new(&plugin.id, &a.uuid, DEVICE, c as u32, r as u32);
+        inst.settings = a.settings.clone();
+        inst.state = a.state as u32;
+        let ctx = host.appear(inst);
+        rt.set_cell(&ctx, (c, r));
+        p.ctx_keys.insert(ctx.clone(), key);
+        p.by_key.insert(key, Target::Plugin(ctx));
+        *p.used.entry(plugin.id.clone()).or_insert(0) += 1;
+    }
+    p
+}
+
+/// Starts the plugins a scene needs that are not running yet. v1 keeps the rest alive: restarting
+/// them would lose their settings and state.
+fn launch_plugins(used: &HashMap<String, usize>, found: &[host::Plugin], host: &host::Host, data: &Path, running: &mut HashSet<String>) {
+    for id in used.keys() {
+        if running.contains(id) {
+            continue;
+        }
+        let Some(plugin) = found.iter().find(|p| &p.id == id) else { continue };
+        if let Some(settings) = load_global(data, id) {
+            host.load_global_settings(id, settings);
+        }
+        match host.launch(plugin.clone()) {
+            Ok(()) => eprintln!("plugin {id} started"),
+            Err(e) => eprintln!("plugin {id}: {e}"),
+        }
+        running.insert(id.clone());
+    }
+}
+
+/// One Scene Shift press: load the target scene, swap its actions in and repaint every key that
+/// may differ, in one batch. Runs on the device thread: no extra thread, timer or HID writer.
+#[allow(clippy::too_many_arguments)]
+fn switch_scene(
+    scenes: &mut SceneSet,
+    target: &SceneTarget,
+    plugins: &Path,
+    by_key: &mut HashMap<u8, Target>,
+    latest: &mut HashMap<u8, DynamicImage>,
+    host: &host::Host,
+    found: &[host::Plugin],
+    running: &mut HashSet<String>,
+    tx: &mpsc::Sender<BuiltinMsg>,
+    rt: &Runtime,
+    builtins: &HashSet<&'static str>,
+) -> Result<Vec<(u8, DynamicImage)>, String> {
+    let Some(id) = scenes.resolve(target) else {
+        return Err(format!("no scene for {target:?}"));
+    };
+    if id == scenes.current() {
+        return Ok(Vec::new());
+    }
+    let scene = scenes.switch(&id)?;
+    // Everything queued before this point belongs to the old scene.
+    rt.gen.fetch_add(1, Ordering::SeqCst);
+    rt.flush_now();
+    rt.clear_cells();
+    rt.restores.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    let mut old = Vec::new();
+    for t in by_key.values() {
+        match t {
+            Target::Builtin(ctx) => old.push(ctx.clone()),
+            Target::Plugin(ctx) => {
+                host.disappear(ctx);
+                rt.retire(ctx);
+            }
+            Target::Scene(_) => {}
+        }
+    }
+    let placed = place_scene(&scene, plugins, found, host, rt, builtins);
+    let _ = tx.send(BuiltinMsg::Scene(SceneCmd::Replace { old, new: placed.builtin_keys, ctx_keys: placed.ctx_keys }));
+    launch_plugins(&placed.used, found, host, &rt.data, running);
+    let black = DynamicImage::new_rgb8(KEY_PX, KEY_PX);
+    let mut keys: Vec<u8> = latest.keys().copied().chain(placed.latest.keys().copied()).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    let mut paints = Vec::with_capacity(keys.len());
+    for key in keys {
+        let img = placed.latest.get(&key).cloned().unwrap_or_else(|| black.clone());
+        latest.insert(key, img.clone());
+        paints.push((key, img));
+    }
+    *by_key = placed.by_key;
+    Ok(paints)
 }
 
 pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), String> {
     let scene = Scene::load(profile)?;
-    let (tx, rx) = mpsc::channel::<(u8, DynamicImage)>();
-    let (press_tx, press_rx) = mpsc::channel::<String>();
-
-    // Last image, title and per-state images of every key. The host threads compose over this; the
-    // main loop only ever receives the resulting image through the channel.
-    let mut latest: HashMap<u8, DynamicImage> = HashMap::new();
-    let mut view = ViewState::default();
-    for ((c, r), a) in &scene.actions {
-        let Some(key) = key_index(*c, *r) else { continue };
-        if let Some(img) = scene.image_of(a, plugins).and_then(|p| load_img(&p).ok()) {
-            latest.insert(key, img.clone()); // placeholder until the action paints
-            view.base.insert(key, img);
-        }
-        view.states.insert(key, (0..a.states.len()).map(|i| state_path(&scene, a, plugins, i)).collect());
-        view.state.insert(key, a.state as u32);
-    }
-    let view: View = Arc::new(Mutex::new(view));
+    let (tx, rx) = mpsc::channel::<Paint>();
+    let (msg_tx, msg_rx) = mpsc::channel::<BuiltinMsg>();
 
     // Plugin host: only plugins the scene uses are launched.
     let data_root = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("OrcaDeck");
+    let mut scenes = SceneSet::open(profile, plugins, &data_root, DEVICE)?;
     let found = host::discover(&[plugins.to_path_buf()], Some(&data_root));
+    let view: View = Arc::new(Mutex::new(ViewState::default()));
     let runtime = Arc::new(Runtime {
         tx: tx.clone(),
         view: Arc::clone(&view),
+        gen: Arc::new(AtomicU64::new(0)),
+        retired: Mutex::new(HashSet::new()),
         restores: Mutex::new(HashMap::new()),
         settings: Mutex::new(SettingsPending::default()),
-        manifest: profile.join("manifest.json"),
+        manifest: Mutex::new(profile.join("manifest.json")),
         data: data_root.clone(),
     });
     let events = Arc::clone(&runtime);
@@ -439,68 +647,53 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     )
     .map_err(|e| format!("plugin host: {e}"))?;
 
-    // Place every cell: built-in (daemon) or plugin (host).
-    let mut registry = bi::Registry::new(bi::Deck::new(Box::new(bi::PipeOrca::from_env()), bi::Deck::default_quota_dir()));
-    let mut by_key: HashMap<u8, Target> = HashMap::new();
-    let mut ctx_key: HashMap<String, u8> = HashMap::new();
-    let mut used: Vec<&host::Plugin> = Vec::new();
-    for ((c, r), a) in &scene.actions {
-        let Some(key) = key_index(*c, *r) else { continue };
-        let ctx = format!("{c},{r}");
-        let bk = bi::Key { uuid: a.uuid.clone(), context: ctx.clone(), device: DEVICE.into(), row: *r as u32, col: *c as u32 };
-        if registry.appear(bk) {
-            ctx_key.insert(ctx.clone(), key);
-            by_key.insert(key, Target::Builtin(ctx));
-        } else if let Some(p) = found.iter().filter(|p| a.uuid.starts_with(&format!("{}.", p.id))).max_by_key(|p| p.id.len()) {
-            let mut inst = host::Instance::new(&p.id, &a.uuid, DEVICE, *c as u32, *r as u32);
-            inst.settings = a.settings.clone();
-            inst.state = a.state as u32;
-            let ctx = host.appear(inst);
-            runtime.set_cell(&ctx, (*c, *r));
-            by_key.insert(key, Target::Plugin(ctx));
-            if !used.iter().any(|u| u.id == p.id) {
-                used.push(p);
-            }
-        } else {
-            eprintln!("no handler for {} at {c},{r} ({})", a.uuid, a.name);
-        }
-    }
-    for p in used {
-        if let Some(settings) = load_global(&data_root, &p.id) {
-            host.load_global_settings(&p.id, settings);
-        }
-        match host.launch(p.clone()) {
-            Ok(()) => eprintln!("plugin {} started", p.id),
-            Err(e) => eprintln!("plugin {}: {e}", p.id),
-        }
-    }
-
     // Built-in actions on their own thread: Orca RPC blocks for ~450 ms now and then.
+    let mut registry = bi::Registry::new(bi::Deck::new(Box::new(bi::PipeOrca::from_env()), bi::Deck::default_quota_dir()));
+    let builtins: HashSet<&'static str> = registry.uuids().into_iter().collect();
     let builtin = Arc::clone(&runtime);
     thread::Builder::new()
         .name("builtin".into())
-        .spawn(move || loop {
-            for (ctx, svg) in registry.tick(bi::now_ms()) {
-                let Some(&k) = ctx_key.get(&ctx) else { continue };
-                if let Some(img) = svg_image(&svg, image_px(k)) {
-                    builtin.paint(k, img);
-                }
-            }
-            match press_rx.recv_timeout(Duration::from_millis(400)) {
-                Ok(ctx) => {
-                    let fb = registry.key_down(&ctx, bi::now_ms());
-                    if fb != bi::Feedback::None {
-                        if let Some(&k) = ctx_key.get(&ctx) {
-                            let base = builtin.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
-                            builtin.feedback(k, fb == bi::Feedback::Ok, base);
-                        }
+        .spawn(move || {
+            let mut ctx_key: HashMap<String, u8> = HashMap::new();
+            loop {
+                for (ctx, svg) in registry.tick(bi::now_ms()) {
+                    let Some(&k) = ctx_key.get(&ctx) else { continue };
+                    if let Some(img) = svg_image(&svg, image_px(k)) {
+                        builtin.paint(&ctx, k, img);
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                match msg_rx.recv_timeout(Duration::from_millis(400)) {
+                    Ok(BuiltinMsg::Press(ctx)) => {
+                        let fb = registry.key_down(&ctx, bi::now_ms());
+                        if fb != bi::Feedback::None {
+                            if let Some(&k) = ctx_key.get(&ctx) {
+                                let base = builtin.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
+                                builtin.feedback(&ctx, k, fb == bi::Feedback::Ok, base);
+                            }
+                        }
+                    }
+                    Ok(BuiltinMsg::Scene(SceneCmd::Replace { old, new, ctx_keys })) => {
+                        for ctx in old {
+                            registry.disappear(&ctx);
+                        }
+                        for key in new {
+                            registry.appear(key);
+                        }
+                        ctx_key = ctx_keys;
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                }
             }
         })
         .map_err(|e| e.to_string())?;
+
+    let placed = place_scene(&scene, plugins, &found, &host, &runtime, &builtins);
+    let _ = msg_tx.send(BuiltinMsg::Scene(SceneCmd::Replace { old: Vec::new(), new: placed.builtin_keys, ctx_keys: placed.ctx_keys }));
+    let mut running: HashSet<String> = HashSet::new();
+    launch_plugins(&placed.used, &found, &host, &data_root, &mut running);
+    let mut by_key = placed.by_key;
+    let mut latest = placed.latest;
     drop(tx);
 
     // Main loop: reconnect forever; `latest` repaints the device after a re-plug.
@@ -509,7 +702,8 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         latest.entry(k).or_insert_with(|| black.clone());
     }
     loop {
-        match session(n, &rx, &mut latest, &by_key, &host, &press_tx, &runtime) {
+        let s = session(n, &rx, &mut latest, &mut by_key, &host, &msg_tx, &runtime, &mut scenes, plugins, &found, &mut running, &builtins);
+        match s {
             Ok(()) => return Ok(()),
             Err(e) => {
                 eprintln!("device: {e}; retrying in 2 s");
@@ -521,20 +715,27 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
 }
 
 /// One connection to the device. Returns Err when it is lost or cannot be opened.
+#[allow(clippy::too_many_arguments)]
 fn session(
     n: Option<usize>,
-    rx: &mpsc::Receiver<(u8, DynamicImage)>,
+    rx: &mpsc::Receiver<Paint>,
     latest: &mut HashMap<u8, DynamicImage>,
-    by_key: &HashMap<u8, Target>,
+    by_key: &mut HashMap<u8, Target>,
     host: &host::Host,
-    press_tx: &mpsc::Sender<String>,
+    msg_tx: &mpsc::Sender<BuiltinMsg>,
     rt: &Runtime,
+    scenes: &mut SceneSet,
+    plugins: &Path,
+    found: &[host::Plugin],
+    running: &mut HashSet<String>,
+    builtins: &HashSet<&'static str>,
 ) -> Result<(), String> {
     let api = HidApi::new().map_err(|e| e.to_string())?;
     let dock = Dock::open(&api, n)?;
     dock.init(80)?;
     eprintln!("device ready, N = {}", dock.n);
-    let mut pending: HashMap<u8, DynamicImage> = latest.clone();
+    let gen = rt.gen.load(Ordering::Relaxed);
+    let mut pending: HashMap<u8, (DynamicImage, u64)> = latest.iter().map(|(&k, img)| (k, (img.clone(), gen))).collect();
     let gap = batch_gap();
     let mut last_batch = Instant::now() - gap;
     let mut hb = Instant::now();
@@ -548,13 +749,22 @@ fn session(
             }
             match parse_input(&buf[..k]) {
                 Input::Handshake => dock.send(&handshake_reply(dock.n))?,
-                Input::Key { key, .. } if (1..=15).contains(&key) => match by_key.get(&key) {
+                Input::Key { key, .. } if (1..=15).contains(&key) => match by_key.get(&key).cloned() {
                     Some(Target::Builtin(ctx)) => {
-                        let _ = press_tx.send(ctx.clone());
+                        let _ = msg_tx.send(BuiltinMsg::Press(ctx));
                     }
                     Some(Target::Plugin(ctx)) => {
-                        host.key(ctx, true);
-                        host.key(ctx, false);
+                        host.key(&ctx, true);
+                        host.key(&ctx, false);
+                    }
+                    Some(Target::Scene(target)) => {
+                        match switch_scene(scenes, &target, plugins, by_key, latest, host, found, running, msg_tx, rt, builtins) {
+                            Ok(paints) => {
+                                let gen = rt.gen.load(Ordering::Relaxed);
+                                pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
+                            }
+                            Err(e) => eprintln!("scene: {e}"),
+                        }
                     }
                     None => {}
                 },
@@ -562,22 +772,29 @@ fn session(
             }
         }
         rt.tick();
-        while let Ok((key, img)) = rx.try_recv() {
-            latest.insert(key, img.clone());
-            pending.insert(key, img);
+        while let Ok(p) = rx.try_recv() {
+            if p.gen < rt.gen.load(Ordering::Relaxed) || rt.retired(&p.ctx) {
+                continue;
+            }
+            latest.insert(p.key, p.img.clone());
+            pending.insert(p.key, (p.img, p.gen));
         }
         if !pending.is_empty() && last_batch.elapsed() >= gap {
-            let (started, count) = (Instant::now(), pending.len());
-            let mut bytes = 0;
-            for (key, img) in pending.drain() {
-                let j = render::key_jpeg(&img, key);
-                bytes += j.len();
-                dock.set_key(key, &j)?;
-            }
-            dock.flush()?;
-            last_batch = Instant::now();
-            if std::env::var_os("ORCADECK_TRACE").is_some() {
-                eprintln!("{:>6}ms painted {count} keys {bytes} B in {} ms", t0.elapsed().as_millis(), started.elapsed().as_millis());
+            let gen = rt.gen.load(Ordering::Relaxed);
+            pending.retain(|_, (_, g)| *g >= gen);
+            if !pending.is_empty() {
+                let (started, count) = (Instant::now(), pending.len());
+                let mut bytes = 0;
+                for (key, (img, _)) in pending.drain() {
+                    let j = render::key_jpeg(&img, key);
+                    bytes += j.len();
+                    dock.set_key(key, &j)?;
+                }
+                dock.flush()?;
+                last_batch = Instant::now();
+                if std::env::var_os("ORCADECK_TRACE").is_some() {
+                    eprintln!("{:>6}ms painted {count} keys {bytes} B in {} ms", t0.elapsed().as_millis(), started.elapsed().as_millis());
+                }
             }
         }
         if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
@@ -603,14 +820,16 @@ mod tests {
         d
     }
 
-    fn runtime(dir: &Path) -> (Runtime, mpsc::Receiver<(u8, DynamicImage)>) {
+    fn runtime(dir: &Path) -> (Runtime, mpsc::Receiver<Paint>) {
         let (tx, rx) = mpsc::channel();
         let rt = Runtime {
             tx,
             view: Arc::new(Mutex::new(ViewState::default())),
+            gen: Arc::new(AtomicU64::new(0)),
+            retired: Mutex::new(HashSet::new()),
             restores: Mutex::new(HashMap::new()),
             settings: Mutex::new(SettingsPending::default()),
-            manifest: dir.join("manifest.json"),
+            manifest: Mutex::new(dir.join("manifest.json")),
             data: dir.to_path_buf(),
         };
         (rt, rx)
@@ -656,8 +875,8 @@ mod tests {
         let base = white(KEY_PX);
         rt.view.lock().unwrap().base.insert(1, base.clone());
         let t0 = Instant::now();
-        rt.feedback(1, true, base.clone());
-        let (k, overlay) = rx.try_recv().expect("overlay");
+        rt.feedback("", 1, true, base.clone());
+        let Paint { key: k, img: overlay, .. } = rx.try_recv().expect("overlay");
         assert_eq!(k, 1);
         assert_ne!(overlay.to_rgba8(), base.to_rgba8());
 
@@ -668,9 +887,24 @@ mod tests {
         rt.tick_at(deadline - Duration::from_millis(1));
         assert!(rx.try_recv().is_err(), "restored just before the deadline");
         rt.tick_at(deadline);
-        let (k, restored) = rx.try_recv().expect("restore");
+        let (k, restored) = match rx.try_recv().expect("restore") {
+            Paint { key, img, .. } => (key, img),
+        };
         assert_eq!(k, 1);
         assert_eq!(restored.to_rgba8(), base.to_rgba8());
+    }
+
+    #[test]
+    fn a_switch_retires_the_old_plugin_contexts() {
+        let dir = tmp("retire");
+        let (rt, rx) = runtime(&dir);
+        rt.set_cell("CTX", (2, 1));
+        rt.retire("CTX");
+        let key = host::Key { context: "CTX".into(), device: DEVICE.into(), column: 2, row: 1 };
+        rt.output(host::Output::Title { key, title: "x".into(), state: None });
+        assert!(rx.try_recv().is_err(), "late paint from the old scene is dropped");
+        rt.clear_cells();
+        assert!(rt.settings.lock().unwrap().cells.get("CTX").is_none(), "old cell mapping is dropped");
     }
 
     #[test]
