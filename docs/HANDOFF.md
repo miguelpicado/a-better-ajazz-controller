@@ -1,4 +1,4 @@
-# HANDOFF (2026-11-10) — leer primero, luego `docs/STATUS.md`
+# HANDOFF (2026-11-10) — leer primero, luego `docs/STATUS.md` y `docs/ROADMAP.md` (lo que falta y las pruebas de mañana)
 
 Repo `C:\Users\migue\Github\orca-stream-dock`, rama `main`. **Nada commiteado** (daemon/, docs/, tools/, .opencode/ sin seguimiento;
 README.md modificado). Commit solo con rutas explícitas y push solo si el usuario lo pide. Idioma: español, estilo terso.
