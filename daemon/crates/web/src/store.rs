@@ -81,11 +81,25 @@ pub fn parse_json(bytes: &[u8]) -> Option<Value> {
     serde_json::from_str(s.trim_start_matches('\u{feff}')).ok()
 }
 
-/// Stream Dock / Qt layout: 4-space indent, keys sorted (serde_json's map is a BTreeMap).
+/// Keys sorted at every level. Explicit because another crate in the workspace enables serde_json's
+/// `preserve_order`, which makes the map keep insertion order instead of sorting.
+fn sorted(v: &Value) -> Value {
+    match v {
+        Value::Object(m) => {
+            let mut keys: Vec<&String> = m.keys().collect();
+            keys.sort();
+            Value::Object(keys.into_iter().map(|k| (k.clone(), sorted(&m[k]))).collect())
+        }
+        Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
+        _ => v.clone(),
+    }
+}
+
+/// Stream Dock / Qt layout: 4-space indent, keys sorted.
 pub fn to_pretty(v: &Value) -> Vec<u8> {
     let mut buf = Vec::new();
     let mut ser = serde_json::Serializer::with_formatter(&mut buf, serde_json::ser::PrettyFormatter::with_indent(b"    "));
-    v.serialize(&mut ser).expect("Value always serializes");
+    sorted(v).serialize(&mut ser).expect("Value always serializes");
     buf
 }
 
