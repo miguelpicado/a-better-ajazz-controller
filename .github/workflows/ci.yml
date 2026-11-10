@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['daemon/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['daemon/**', '.github/workflows/ci.yml']
+
+env:
+  CARGO_TERM_COLOR: always
+  # daemon/rust-toolchain.toml pins the local gnullvm toolchain (not on the runner): use the
+  # runner's stable MSVC toolchain instead. The code is Windows-only (named pipe, Win32).
+  RUSTUP_TOOLCHAIN: stable
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: daemon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4 # fake_plugin tests spawn a Node plugin
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            daemon/target
+          key: cargo-${{ hashFiles('daemon/Cargo.lock') }}
+          restore-keys: cargo-
+      - run: cargo build --release --workspace
+      - run: cargo test --release --workspace
