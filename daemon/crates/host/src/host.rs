@@ -1,8 +1,9 @@
 //! WebSocket server, connection registry and event routing.
 //!
-//! Threads: one blocking accept loop, plus one blocking reader per socket. Writes go through a
-//! second tungstenite handle on a clone of the same TCP stream, behind a mutex, so any thread can
-//! send without waiting for the reader. Nothing polls.
+//! Threads: one blocking accept loop, one blocking reader per socket, and one waiter thread per
+//! launched plugin that blocks on `Child::wait` and restarts it with backoff on a crash. Writes go
+//! through a second tungstenite handle on a clone of the same TCP stream, behind a mutex, so any
+//! thread can send without waiting for the reader. Nothing polls.
 
 use crate::launch::{self, Device};
 use crate::manifest::Plugin;
@@ -11,9 +12,10 @@ use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::Child;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::protocol::Role as WsRole;
 use tungstenite::{Message, WebSocket};
@@ -157,7 +159,24 @@ struct Slot {
     uuid: String,
     conn: Option<Arc<Conn>>,
     global: Value,
-    child: Option<Child>,
+    run: Option<Run>,
+}
+
+/// A supervised plugin process. The waiter thread owns the `Child` and blocks in `wait`, so the
+/// rest of the host only keeps this handle; `stop` kills by pid.
+struct Run {
+    stop: Arc<AtomicBool>,
+    /// Process id while alive, `None` between a crash and the next attempt (nothing to kill).
+    pid: Option<u32>,
+}
+
+/// Restart delays: 1 s, 2 s, 4 s … capped at 60 s. A run that lasted this long resets the count.
+const RESTART_MIN: Duration = Duration::from_secs(1);
+const RESTART_MAX: Duration = Duration::from_secs(60);
+const RESTART_RESET: Duration = Duration::from_secs(60);
+
+fn restart_delay(attempt: u32) -> Duration {
+    RESTART_MIN.saturating_mul(1 << attempt.min(6)).min(RESTART_MAX)
 }
 
 #[derive(Clone)]
@@ -266,51 +285,150 @@ impl Host {
             uuid: String::new(),
             conn: None,
             global: json!({}),
-            child: None,
+            run: None,
         });
         slot.uuid = uuid.clone();
         uuid
     }
 
-    /// Starts a plugin process (`.exe` directly, `.js/.mjs/.cjs` through node). A running instance
-    /// of the same plugin is stopped first. `.html` plugins return `Unsupported`.
+    /// Starts a plugin process (`.exe` directly, `.js/.mjs/.cjs` through node) and supervises it: if
+    /// it exits on its own it is relaunched with exponential backoff. A running instance of the
+    /// same plugin is stopped first (and is not restarted). `.html` plugins return `Unsupported`.
     pub fn launch(&self, plugin: Plugin) -> io::Result<()> {
         self.stop(&plugin.id);
-        let uuid = self.add(&plugin);
-        let info = launch::info(&plugin, &self.inner.cfg.devices, &self.inner.cfg.language);
-        let mut cmd = launch::command(&plugin, &self.inner.cfg.node, self.inner.port, &uuid, &info)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, format!("cannot run {}", plugin.code_path)))?;
-        let child = cmd.spawn()?;
-        log::info!("{}: started pid {}", plugin.id, child.id());
-        // ponytail: no restart on crash; add a waiter thread with backoff when a plugin needs it.
-        if let Some(slot) = self.lock().plugins.get_mut(&plugin.id) {
-            slot.child = Some(child);
+        let Some((child, stop)) = self.spawn(&plugin, None)? else { return Ok(()) };
+        self.watch(plugin, child, stop)
+    }
+
+    /// Starts one process and installs its run handle. With `expect`, gives up (`Ok(None)`) unless
+    /// the current run is still that one, so a late restart cannot revive a stopped plugin.
+    fn spawn(&self, plugin: &Plugin, expect: Option<&Arc<AtomicBool>>) -> io::Result<Option<(Child, Arc<AtomicBool>)>> {
+        if expect.is_some_and(|current| !self.is_current(&plugin.id, current)) {
+            return Ok(None);
         }
-        Ok(())
+        let uuid = self.add(plugin);
+        let info = launch::info(plugin, &self.inner.cfg.devices, &self.inner.cfg.language);
+        let mut cmd = launch::command(plugin, &self.inner.cfg.node, self.inner.port, &uuid, &info)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, format!("cannot run {}", plugin.code_path)))?;
+        let mut child = cmd.spawn()?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let installed = {
+            let mut st = self.lock();
+            match st.plugins.get_mut(&plugin.id) {
+                Some(slot) if expect.is_none_or(|c| slot.run.as_ref().is_some_and(|r| Arc::ptr_eq(&r.stop, c))) => {
+                    slot.run = Some(Run { stop: stop.clone(), pid: Some(child.id()) });
+                    true
+                }
+                _ => false,
+            }
+        };
+        if !installed {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        log::info!("{}: started pid {}", plugin.id, child.id());
+        Ok(Some((child, stop)))
+    }
+
+    fn is_current(&self, plugin: &str, flag: &Arc<AtomicBool>) -> bool {
+        self.lock().plugins.get(plugin).and_then(|s| s.run.as_ref()).is_some_and(|r| Arc::ptr_eq(&r.stop, flag))
+    }
+
+    /// Starts the one waiter thread of a plugin. It blocks on `Child::wait`; nothing polls.
+    fn watch(&self, plugin: Plugin, child: Child, stop: Arc<AtomicBool>) -> io::Result<()> {
+        let host = self.clone();
+        let id = plugin.id.clone();
+        let name = format!("{}-wait", plugin.id);
+        std::thread::Builder::new().name(name).spawn(move || host.supervise(plugin, child, stop)).map(|_| ()).map_err(|e| {
+            self.stop(&id);
+            e
+        })
+    }
+
+    /// Blocks until the child exits. A crash is retried with backoff; a `stop` (flag set, or run
+    /// replaced) ends the thread without restarting.
+    fn supervise(self, plugin: Plugin, mut child: Child, mut stop: Arc<AtomicBool>) {
+        let mut attempt = 0u32;
+        loop {
+            let started = Instant::now();
+            let status = child.wait();
+            let uptime = started.elapsed();
+            {
+                let mut st = self.lock();
+                let current = st.plugins.get_mut(&plugin.id).and_then(|s| s.run.as_mut()).filter(|r| Arc::ptr_eq(&r.stop, &stop));
+                match current {
+                    Some(run) => run.pid = None,
+                    None => return, // stopped or relaunched while we waited
+                }
+            }
+            if stop.load(Ordering::SeqCst) {
+                return;
+            }
+            if uptime >= RESTART_RESET {
+                attempt = 0;
+            }
+            let delay = restart_delay(attempt);
+            attempt = attempt.saturating_add(1);
+            log::warn!("{}: {status:?} after {} ms, restarting in {} ms", plugin.id, uptime.as_millis(), delay.as_millis());
+            std::thread::sleep(delay);
+            if stop.load(Ordering::SeqCst) {
+                self.clear(&plugin.id, &stop);
+                return;
+            }
+            match self.spawn(&plugin, Some(&stop)) {
+                Ok(Some((child_, stop_))) => {
+                    child = child_;
+                    stop = stop_;
+                }
+                Ok(None) => return,
+                Err(e) => {
+                    log::error!("{}: restart failed: {e}", plugin.id);
+                    self.clear(&plugin.id, &stop);
+                    return;
+                }
+            }
+        }
+    }
+
+    fn clear(&self, plugin: &str, flag: &Arc<AtomicBool>) {
+        if let Some(slot) = self.lock().plugins.get_mut(plugin) {
+            if slot.run.as_ref().is_some_and(|r| Arc::ptr_eq(&r.stop, flag)) {
+                slot.run = None;
+            }
+        }
     }
 
     /// Kills a launched plugin and closes its socket. Placed instances are kept and re-sent
-    /// (`willAppear`) when the plugin registers again.
+    /// (`willAppear`) when the plugin registers again. The waiter thread reaps the process.
     pub fn stop(&self, plugin_id: &str) {
-        let (child, conn) = {
+        let (run, conn) = {
             let mut st = self.lock();
             let Some(slot) = st.plugins.get_mut(plugin_id) else { return };
-            (slot.child.take(), slot.conn.take())
+            (slot.run.take(), slot.conn.take())
         };
         if let Some(c) = conn {
             c.close();
         }
-        if let Some(mut c) = child {
-            let _ = c.kill();
-            let _ = c.wait();
+        if let Some(run) = run {
+            run.stop.store(true, Ordering::SeqCst);
+            if let Some(pid) = run.pid {
+                terminate(pid);
+            }
         }
     }
 
-    /// Seeds a plugin's global settings from the daemon's store (no event is sent).
+    /// Seeds a plugin's global settings from the daemon's store (no event is sent). Creates the
+    /// slot when needed, so it may be called before [`Host::launch`].
     pub fn load_global_settings(&self, plugin_id: &str, settings: Value) {
-        if let Some(slot) = self.lock().plugins.get_mut(plugin_id) {
-            slot.global = settings;
-        }
+        let mut st = self.lock();
+        let slot = st.plugins.entry(plugin_id.to_string()).or_insert_with(|| Slot {
+            uuid: String::new(),
+            conn: None,
+            global: json!({}),
+            run: None,
+        });
+        slot.global = settings;
     }
 
     /// Places an action on a key and returns its new random context. `willAppear` is sent now if
@@ -622,6 +740,26 @@ fn check_origin(allowed: &[String], req: &Request, resp: Response) -> Result<Res
     Err(err)
 }
 
+/// Kills a process by pid. The waiter thread owns the `Child` (it is blocked in `wait`), so this is
+/// the only handle left; `taskkill` is part of Windows and the daemon is Windows-only, so no crate.
+#[cfg(windows)]
+fn terminate(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+}
+
+#[cfg(not(windows))]
+fn terminate(pid: u32) {
+    let _ = Command::new("kill").arg(pid.to_string()).status();
+}
+
 /// Read side of a socket. Writes are dropped once `mute` is set (after the handshake).
 struct Muted {
     s: TcpStream,
@@ -659,6 +797,12 @@ mod tests {
             b = b.header("Origin", o);
         }
         check_origin(&allowed, &b.body(()).unwrap(), Response::default()).is_ok()
+    }
+
+    #[test]
+    fn restart_backoff_sequence() {
+        let secs: Vec<u64> = (0..9).map(|n| restart_delay(n).as_secs()).collect();
+        assert_eq!(secs, [1, 2, 4, 8, 16, 32, 60, 60, 60]);
     }
 
     #[test]

@@ -74,9 +74,37 @@ impl Scene {
     }
 }
 
+/// Re-reads `manifest`, sets only `Actions["<col>,<row>"].Settings` and writes it back atomically
+/// with the editor's layout (4-space, sorted keys). Every other field and cell is kept. Returns
+/// `false` (and does not write) when the value is already there.
+pub fn save_action_settings(manifest: &Path, col: u8, row: u8, settings: &serde_json::Value) -> Result<bool, String> {
+    let bytes = fs::read(manifest).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes));
+    let mut doc: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let key = format!("{col},{row}");
+    let Some(action) = doc.get_mut("Actions").and_then(|a| a.get_mut(&key)).and_then(|a| a.as_object_mut()) else {
+        return Ok(false);
+    };
+    if action.get("Settings") == Some(settings) {
+        return Ok(false);
+    }
+    action.insert("Settings".into(), settings.clone());
+    orcadeck_web::store::atomic_write(manifest, &orcadeck_web::store::to_pretty(&doc), true).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
     #[test]
     fn parses_real_shape() {
         let j = r#"{"Actions":{"0,0":{"UUID":"x.y","Name":"N","State":0,"States":[{"Image":"a.png"}]},"5,2":{"UUID":"z","States":[]},"bad":{}}}"#;
@@ -84,5 +112,26 @@ mod tests {
         assert_eq!(s.actions.len(), 2);
         assert_eq!(s.actions[0].0, (0, 0));
         assert_eq!(s.image_of(&s.actions[1].1, Path::new("nope")), None);
+    }
+
+    #[test]
+    fn saves_only_the_target_cell_and_keeps_the_rest() {
+        let dir = tmp("settings");
+        let path = dir.join("manifest.json");
+        let original = r#"{"Name":"S","Custom":{"z":1,"a":2},"Actions":{"0,0":{"UUID":"x","Name":"A","Settings":{"old":true},"Extra":1},"1,0":{"UUID":"y","Settings":{"k":2}}}}"#;
+        fs::write(&path, original).unwrap();
+
+        assert!(save_action_settings(&path, 0, 0, &json!({"new": 1})).unwrap());
+        let doc: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(doc["Actions"]["0,0"]["Settings"], json!({"new": 1}));
+        assert_eq!(doc["Actions"]["0,0"]["Extra"], 1);
+        assert_eq!(doc["Actions"]["0,0"]["Name"], "A");
+        assert_eq!(doc["Actions"]["1,0"]["Settings"], json!({"k": 2}), "other cell untouched");
+        assert_eq!(doc["Name"], "S");
+        assert_eq!(doc["Custom"], json!({"a": 2, "z": 1}));
+        assert_eq!(fs::read(&path).unwrap(), orcadeck_web::store::to_pretty(&doc), "4-space, sorted keys");
+
+        assert!(!save_action_settings(&path, 0, 0, &json!({"new": 1})).unwrap(), "unchanged: no write");
+        assert!(!save_action_settings(&path, 9, 9, &json!({})).unwrap(), "missing cell: no write");
     }
 }
