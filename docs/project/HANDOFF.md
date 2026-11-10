@@ -14,8 +14,8 @@ runtime async ni UI residente, 0 % de CPU en reposo, memoria y tráfico HID mín
 - `main` tiene el workspace integrado: `run`, `edit`, Scene Shift, instalar/quitar plugins desde
   `edit` (escaneo de Descargas bajo demanda y ledger propio), Property Inspector y `edit` dentro de
   `run` por named pipe (`ctl.rs`), con fallback standalone y recarga en caliente de una tecla.
-- Gate: `cargo test --release --workspace` → **89 tests verdes** (medido 2026-11-10).
-- `orcadeck.exe` = 3 674 624 B. **Sin probar en dispositivo** todo lo mergeado después de `run`.
+- Gate: `cargo test --release --workspace` → **92 tests verdes** (medido 2026-11-10).
+- `orcadeck.exe` = 3 681 792 B. **Sin probar en dispositivo** todo lo mergeado después de `run`.
 - Limpieza hecha: plugin Node, `deploy.ps1` e instalador de referencia en `tools/legacy/`;
   paquetes del usuario en `vendor/` (gitignorado); extracciones de 311 MB borradas.
 

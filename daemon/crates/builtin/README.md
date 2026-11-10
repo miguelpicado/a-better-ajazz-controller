@@ -68,7 +68,7 @@ firmware entrega la pulsación al soltar, así que `keyDown` es el único evento
 usa timeout de 5 s y reintenta una vez releyendo el fichero (Orca puede haber reiniciado con otra
 tubería y otro token). `raise` trae la ventana de Orca al frente.
 
-`Deck::default_quota_dir()` usa `QUOTA_DIR` o, si no, `C:/Users/migue/Github/quota-monitor`.
+`Deck::default_quota_dir()` usa `QUOTA_DIR` o, si no, `%APPDATA%\OrcaDeck\quota` (`<temp>\OrcaDeck\quota` sin `APPDATA`).
 
 ## Tests
 

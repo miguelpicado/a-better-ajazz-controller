@@ -18,8 +18,8 @@ el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue
 | Instalar/quitar plugins desde `edit` | `plugman` + `web`, ledger propio de instalados y escaneo de Descargas bajo demanda (sin vigilante) |
 | Property Inspector | servidor en `host` + iframe en `edit`: sandbox sin `allow-same-origin`, token de un solo uso por `postMessage`, CSP sin red externa y `Origin: null` solo con sesión de PI abierta |
 | `edit` dentro de `run` | canal de control `ctl.rs` (named pipe) con fallback standalone; recarga en caliente de una tecla; `RunInspector` como `InspectorBridge` |
-| Tests | **89 verdes** con `cargo test --release --workspace` (medido 2026-11-10; 0 fallos) |
-| Binario | `orcadeck.exe` = **3 674 624 B** (~3,5 MiB) recompilado el 2026-11-10 |
+| Tests | **92 verdes** con `cargo test --release --workspace` (medido 2026-11-10; 0 fallos) |
+| Binario | `orcadeck.exe` = **3 681 792 B** (~3,5 MiB) recompilado el 2026-11-10 |
 
 ## Limpieza hecha
 

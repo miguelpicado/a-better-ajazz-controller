@@ -105,7 +105,7 @@ fichero de configuración para ellas.
 | `ORCADECK_TRACE` | desactivado (cualquier valor lo activa) | Escribe a stderr cada entrada HID y la duración de cada lote. | [`app.rs`](../../daemon/src/app.rs) |
 | `ORCADECK_CMD` | desactivado | Hook de experimento de `watch`: `VERBO:0a=01,0b=00` (offsets y valores en hexadecimal). Envía un `CRT` y sigue. | [`main.rs`](../../daemon/src/main.rs) |
 | `ORCADECK_SCENE` | desactivado | Con `ORCADECK_CMD`: tras el comando, envía `LIG`, `CLE`, las imágenes de ese perfil (con `STP` por tecla) y `CONNECT`. | [`main.rs`](../../daemon/src/main.rs) |
-| `QUOTA_DIR` | `C:/Users/migue/Github/quota-monitor` | Carpeta de `quota-status.json` y `.wake` para las teclas de cuota. | [`builtin/src/actions.rs`](../../daemon/crates/builtin/src/actions.rs) |
+| `QUOTA_DIR` | `%APPDATA%\OrcaDeck\quota` (si no hay `APPDATA`: `<temp>\OrcaDeck\quota`) | Carpeta de `quota-status.json` y `.wake` para las teclas de cuota. | [`builtin/src/actions.rs`](../../daemon/crates/builtin/src/actions.rs) |
 | `APPDATA` | la del usuario de Windows | Base de todas las rutas por defecto. | `main.rs`, `app.rs`, `edit.rs`, `orca.rs` |
 
 `ORCADECK_CMD` y `ORCADECK_SCENE` son herramientas de sondeo, no opciones de uso normal. `watch`

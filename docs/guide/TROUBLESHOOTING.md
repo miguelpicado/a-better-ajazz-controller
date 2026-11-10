@@ -124,9 +124,9 @@ Estado: implementado con tests unitarios, **pendiente de prueba física** con el
 
 - `quota-status.json` tiene más de **10 minutos** o no existe: la tecla se atenúa o queda vacía si no
   hay datos.
-- `QUOTA_DIR` debe apuntar a la carpeta de `quota-monitor` (por defecto
-  `C:/Users/migue/Github/quota-monitor`). Si tu checkout está en otro sitio, defínelo antes de
-  arrancar `run`.
+- `QUOTA_DIR` debe apuntar a la carpeta de `quota-monitor`. Sin definirlo, `run` lee
+  `%APPDATA%\OrcaDeck\quota` y la tecla queda vacía. Defínelo antes de arrancar `run`
+  (o en la tarea de autoarranque).
 - `orca-dock-rs` debe estar en marcha para refrescar el fichero. La tecla de cuota escribe `.wake`;
   `orca-dock-rs` lo mira cada 5 s y refresca. `run` relee cada 3 s hasta 45 s.
 - La app es de solo lectura: no inventa ni corrige cifras; si el fichero está mal, el problema es del
