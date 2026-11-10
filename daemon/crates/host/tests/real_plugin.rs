@@ -29,8 +29,12 @@ fn orcadock_plugin_paints_and_reacts() {
     let src = std::env::var_os("ORCADOCK_PLUGIN").map(PathBuf::from).unwrap_or_else(|| {
         PathBuf::from(r"C:\Users\migue\Github\orca-dock\com.miguelpicado.orcadock.sdPlugin")
     });
-    if Command::new("node").arg("--version").output().is_err() || !src.join("manifest.json").is_file() {
-        eprintln!("skipped: node or {} not available", src.display());
+    if !src.is_dir() || !src.join("manifest.json").is_file() {
+        eprintln!("skipped: plugin not found at {} (set ORCADOCK_PLUGIN)", src.display());
+        return;
+    }
+    if Command::new("node").arg("--version").output().is_err() {
+        eprintln!("skipped: node not available");
         return;
     }
 

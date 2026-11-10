@@ -41,7 +41,6 @@ pub fn clear_key(n: usize, key: u8) -> Vec<u8> { crt(n, "CLE", &[(0x0b, key)]) }
 pub fn clear_all(n: usize) -> Vec<u8> { clear_key(n, 0xFF) }
 pub fn flush(n: usize) -> Vec<u8> { crt(n, "STP", &[]) }
 pub fn heartbeat(n: usize) -> Vec<u8> { crt(n, "CONNECT", &[]) }
-pub fn screen_off(n: usize) -> Vec<u8> { crt(n, "HAN", &[(0x0a, 1)]) }
 
 /// Reply to the device's `HANLDER` (no CRT prefix).
 pub fn handshake_reply(n: usize) -> Vec<u8> {

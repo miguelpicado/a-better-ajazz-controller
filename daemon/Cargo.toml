@@ -2,10 +2,18 @@
 name = "orcadeck"
 version = "0.1.0"
 edition = "2021"
+rust-version.workspace = true
+publish.workspace = true
 description = "Lightweight daemon for the AJAZZ Stream Dock AKP153E"
 
 [workspace]
 members = ["crates/host", "crates/plugman", "crates/builtin", "crates/web"]
+
+# Internal workspace: nothing is published to crates.io. rust-version matches the toolchain
+# the release builds are made with (rustc 1.99.0).
+[workspace.package]
+rust-version = "1.99"
+publish = false
 
 [dependencies]
 orcadeck-host = { path = "crates/host" }
