@@ -192,6 +192,9 @@ enum Role {
 /// Write half of a socket.
 struct Conn {
     id: u64,
+    /// Admitted only because of the opaque `null` origin (sandboxed PI iframe): may register a
+    /// property inspector, never a plugin.
+    opaque: bool,
     ws: Mutex<WebSocket<TcpStream>>,
     raw: TcpStream,
 }
@@ -555,14 +558,16 @@ impl Host {
         if inspector_open {
             allowed.push("null".into());
         }
+        let mut opaque = false;
         let mut reader = tungstenite::accept_hdr(Muted { s: stream, mute: false }, |req: &Request, resp| {
+            opaque = req.headers().get("origin").and_then(|v| v.to_str().ok()) == Some("null");
             check_origin(&allowed, req, resp)
         })
         .map_err(|e| e.to_string())?;
         // From here the reader only reads; its automatic pong/close replies are discarded and
         // sent through the writer instead, so two threads never write frames to the socket.
         reader.get_mut().mute = true;
-        Ok((reader, Arc::new(Conn { id, ws: Mutex::new(writer), raw })))
+        Ok((reader, Arc::new(Conn { id, opaque, ws: Mutex::new(writer), raw })))
     }
 
     fn disconnected(&self, conn: &Arc<Conn>) {
@@ -609,7 +614,7 @@ impl Host {
     fn register(&self, st: &mut State, conn: &Arc<Conn>, event: &str, msg: &Value, fx: &mut Fx) {
         let uuid = msg["uuid"].as_str().unwrap_or_default();
         match event {
-            "registerPlugin" if st.uuids.contains_key(uuid) => {
+            "registerPlugin" if !conn.opaque && st.uuids.contains_key(uuid) => {
                 let id = st.uuids[uuid].clone();
                 log::info!("{id}: registered");
                 st.roles.insert(conn.id, Role::Plugin(id.clone()));
