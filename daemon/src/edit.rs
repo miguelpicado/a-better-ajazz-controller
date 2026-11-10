@@ -190,6 +190,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         data: paths.data,
         legacy_config: paths.legacy_config,
         downloads: None, // %USERPROFILE%\Downloads, scanned only when the UI asks
+        inspector: None, // the daemon attaches its live host when edit runs inside `run`
     };
 
     let server = Server::start(Arc::new(store), port)

@@ -23,6 +23,7 @@ let store = Arc::new(orcadeck_web::FsStore {
     data: data.clone(),                     // state.json + manifests/<uuid>.json overlays
     legacy_config: Some(hotspot.join("config")), // Stream Dock config, read only (order, current scene, brightness)
     downloads: None,                        // None = %USERPROFILE%\Downloads, scanned on demand
+    inspector: None,                        // the daemon fills this while `run` is active
 });
 let server = orcadeck_web::Server::start(store, 0)?; // 0 = any free port
 open_browser(&server.url());                          // http://127.0.0.1:<port>/?token=<64 hex>

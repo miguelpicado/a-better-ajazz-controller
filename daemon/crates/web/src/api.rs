@@ -10,7 +10,8 @@ const APP_CSS: &str = include_str!("../web/app.css");
 const ICON: &str = include_str!("../web/icon.svg");
 
 const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; \
-                        connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+                        connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; \
+                        form-action 'none'";
 
 pub struct Ctx {
     pub store: Arc<dyn Store>,
@@ -54,6 +55,13 @@ fn gate(ctx: &Ctx, req: &Request) -> Option<Response> {
 }
 
 pub fn handle(ctx: &Ctx, req: Request) -> Response {
+    // PI assets are sandboxed third-party code and cannot present the editor token. They get their own
+    // Host/Origin check and never reach the /api/ token gate or any editor state.
+    if req.method == "GET" {
+        if let Some(r) = crate::pi_static::route(&*ctx.store, &req, ctx.port) {
+            return r;
+        }
+    }
     if let Some(r) = gate(ctx, &req) {
         return r;
     }
@@ -161,6 +169,7 @@ fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
             ok(gone)
         }
         ("POST", ["scenes", id, "cells", key, "move"]) => move_cell(store, id, key, &body(req)?),
+        ("POST", ["scenes", id, "cells", key, "inspector"]) => inspector(ctx, store, id, key),
         ("GET", ["actions"]) => ok(action_list(&store.plugins()?)),
         ("GET", ["plugins"]) => ok(Value::Array(store.plugins()?.iter().map(plugin_json).collect())),
         ("GET", ["plugins", "inbox"]) => ok(store.plugin_inbox()?),
@@ -348,6 +357,83 @@ fn move_cell(store: &dyn Store, id: &str, key: &str, b: &Value) -> Result<Respon
     ok(json!({ "moved": !copy, "copied": copy, "to": to, "scene": dst_id }))
 }
 
+/// `POST /api/scenes/<id>/cells/<key>/inspector`: live property inspector for the action on that key.
+/// 501 when the daemon is not running (no bridge), 404 when the action has no PI in its manifest.
+fn inspector(ctx: &Ctx, store: &dyn Store, scene: &str, key: &str) -> Result<Response> {
+    let Some(bridge) = store.inspector() else {
+        return Err(Error::new(501, "el daemon no está en marcha: no hay inspector en vivo"));
+    };
+    let doc = store.scene(scene)?;
+    let key = cell_key(&doc, key)?;
+    let action = doc.pointer("/Actions").and_then(|a| a.get(&key)).cloned()
+        .ok_or_else(|| Error::new(404, "empty cell"))?;
+    let uuid = action.get("UUID").and_then(Value::as_str).unwrap_or_default();
+    let plugins = store.plugins()?;
+    let (plugin, declared) = find_action(&plugins, uuid).ok_or_else(|| Error::new(404, "plugin no instalado"))?;
+    let pi = declared.get("PropertyInspectorPath").or_else(|| plugin.manifest.get("PropertyInspectorPath"))
+        .and_then(Value::as_str).map(str::trim).filter(|p| !p.is_empty())
+        .ok_or_else(|| Error::new(404, "esta acción no tiene inspector de propiedades"))?;
+    // Validate the manifest path before issuing a token: only files inside the plugin folder are served.
+    let rel = pi.replace('\\', "/");
+    let parts: Vec<String> = rel.split('/').filter(|s| !s.is_empty() && *s != ".").map(String::from).collect();
+    if crate::pi_static::resolve(&plugin.dir, &parts).is_none() {
+        return Err(Error::new(404, "el inspector del plugin no existe en su carpeta"));
+    }
+    let sess = bridge.open(scene, &key).map_err(|e| Error::new(500, e))?;
+    if sess.token.is_empty() || sess.token == ctx.token {
+        return Err(Error::new(500, "el puente del inspector devolvió un token inválido"));
+    }
+    let (c, r) = parse_key(&key).unwrap_or((0, 0));
+    let device = doc.get("DeviceUUID").and_then(Value::as_str).unwrap_or("AKP153E");
+    let controller = action.get("Controller").and_then(Value::as_str).filter(|s| !s.is_empty())
+        .map(String::from).unwrap_or_else(|| if c == 5 { "Information".into() } else { "Keypad".into() });
+    let info = json!({
+        "application": { "language": "es", "platform": "windows", "version": env!("CARGO_PKG_VERSION") },
+        "plugin": {
+            "uuid": plugin.uuid,
+            "version": plugin.manifest.get("Version").and_then(Value::as_str).unwrap_or(""),
+        },
+        "device": {
+            "id": device, "name": device,
+            "size": { "columns": if device == "AKP153E" { 5 } else { 15 }, "rows": if device == "AKP153E" { 3 } else { 15 } },
+        },
+    });
+    let action_info = json!({
+        "action": uuid,
+        "context": sess.context,
+        "device": device,
+        "payload": {
+            "settings": action.get("Settings").filter(|s| s.is_object()).cloned().unwrap_or(json!({})),
+            "coordinates": { "column": c, "row": r },
+            "controller": controller,
+            "state": action.get("State").and_then(Value::as_u64).unwrap_or(0),
+            "isInMultiAction": false,
+        },
+    });
+    let url = format!(
+        "/api/plugins/{}/pi/{}?ws={}",
+        plugin.uuid,
+        parts.iter().map(|p| url_segment(p)).collect::<Vec<_>>().join("/"),
+        sess.port
+    );
+    ok(json!({
+        "token": sess.token, "port": sess.port, "context": sess.context,
+        "url": url, "info": info, "actionInfo": action_info,
+    }))
+}
+
+fn url_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
 fn create_scene(store: &dyn Store, b: &Value) -> Result<Response> {
     let name = b.get("name").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty())
         .ok_or_else(|| Error::new(400, "expected {name}"))?;
@@ -406,6 +492,7 @@ fn plugin_json(p: &Plugin) -> Value {
 
 fn action_list(plugins: &[Plugin]) -> Value {
     Value::Array(plugins.iter().filter(|p| p.status == "ok").filter_map(|p| {
+        let default_pi = p.manifest.get("PropertyInspectorPath").and_then(Value::as_str).filter(|s| !s.is_empty());
         let acts: Vec<Value> = p.manifest.get("Actions")?.as_array()?.iter()
             .filter(|a| a.get("VisibleInActionsList").and_then(Value::as_bool) != Some(false))
             .filter_map(|a| Some(json!({
@@ -416,6 +503,9 @@ fn action_list(plugins: &[Plugin]) -> Value {
                     .or_else(|| a.pointer("/States/0/Image").and_then(Value::as_str).filter(|s| !s.is_empty()))
                     .unwrap_or(""),
                 "controllers": a.get("Controllers").cloned().unwrap_or(json!(["Keypad"])),
+                // The editor only asks for a token (and mounts an iframe) when the manifest has a PI.
+                "pi": a.get("PropertyInspectorPath").and_then(Value::as_str).filter(|s| !s.is_empty())
+                    .or(default_pi).is_some(),
             }))).collect();
         (!acts.is_empty()).then(|| {
             let mut j = plugin_json(p);

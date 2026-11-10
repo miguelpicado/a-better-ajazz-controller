@@ -149,6 +149,14 @@ h1, h2, h3 { font-family: var(--display); margin: 0; font-weight: 600; }
 .status { min-height: 1.45em; margin: 0; text-align: center; color: var(--muted); }
 .status.err { color: var(--danger); }
 
+.pi-frame {
+  width: 100%;
+  height: 300px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
 /* inspector */
 .inspector h2 { font-size: 18px; letter-spacing: -.01em; }
 .insp-head { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }

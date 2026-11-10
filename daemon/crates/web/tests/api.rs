@@ -88,6 +88,7 @@ fn start(t: &Path) -> Server {
         data: t.join("data"),
         legacy_config: Some(t.join("legacy")),
         downloads: Some(t.join("downloads")),
+        inspector: None,
     };
     Server::start(Arc::new(store), 0).unwrap()
 }

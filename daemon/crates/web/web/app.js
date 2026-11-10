@@ -21,7 +21,7 @@ const fill = (el, items) => el.replaceChildren(...items.flat().filter((x) => x !
 
 const T_ACTION = 'application/x-orcadeck-action', T_CELL = 'application/x-orcadeck-cell', T_SCENE = 'application/x-orcadeck-scene';
 const ROTATE = 'com.hotspot.streamdock.profile.rotate';
-const S = { scenes: [], id: null, scene: null, groups: [], index: new Map(), sel: null, draft: null, dirty: false, plugins: null, psel: null };
+const S = { scenes: [], id: null, scene: null, groups: [], index: new Map(), sel: null, draft: null, dirty: false, plugins: null, psel: null, piReq: 0, piFrame: null, piCreds: null };
 
 async function api(method, path, body) {
   const init = { method, headers: {} };
@@ -29,7 +29,7 @@ async function api(method, path, body) {
   const r = await fetch('/api/' + path, init);
   if (r.status === 401) { $('#locked').hidden = false; throw new Error('Sesión no iniciada'); }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+  if (!r.ok) { const e = new Error(j.error || `Error ${r.status}`); e.status = r.status; throw e; }
   return j;
 }
 
@@ -322,6 +322,9 @@ function field(label, input) { return h('label', { class: 'field' }, h('span', n
 function renderInspector() {
   const box = $('#inspector');
   S.dirty = false;
+  const req = ++S.piReq;
+  S.piFrame = null;
+  S.piCreds = null;
   const a = S.sel && (S.scene.Actions || {})[S.sel];
   if (!S.sel) return fill(box, sceneInspector());
   if (!a) {
@@ -330,7 +333,36 @@ function renderInspector() {
   }
   S.draft = structuredClone(a);
   fill(box, actionInspector());
+  mountPi(box, req);
 }
+
+// Live plugin inspector (daemon running). Sandboxed WITHOUT allow-same-origin: third-party code gets an
+// opaque origin, so it cannot read this editor's cookie, DOM or API. The JSON editor below stays as fallback.
+async function mountPi(box, req) {
+  const info = S.index.get(S.draft.UUID);
+  if (!info?.pi) return;
+  try {
+    const r = await api('POST', `scenes/${S.id}/cells/${S.sel}/inspector`, {});
+    if (req !== S.piReq) return;
+    const frame = h('iframe', {
+      class: 'pi-frame', sandbox: 'allow-scripts allow-forms', title: 'Inspector del plugin',
+      src: r.url, referrerpolicy: 'no-referrer',
+    });
+    S.piFrame = frame;
+    S.piCreds = { port: r.port, token: r.token, info: r.info, actionInfo: r.actionInfo };
+    box.insertBefore(h('section', { class: 'pi' }, h('h3', null, 'Inspector del plugin'), frame,
+      h('p', { class: 'sub' }, 'El plugin guarda sus ajustes al cambiarlos. Abajo sigue disponible el editor JSON como respaldo.')),
+    box.children[2] || null);
+  } catch (e) {
+    // 501: standalone editor, 404: no live instance of this action. Both simply fall back to the JSON editor.
+    if (e.status !== 501 && e.status !== 404) status(e.message, true);
+  }
+}
+
+window.addEventListener('message', (e) => {
+  if (!S.piFrame || e.source !== S.piFrame.contentWindow || !S.piCreds || !e.data || e.data.type !== 'orcadeck-pi-ready') return;
+  S.piFrame.contentWindow.postMessage({ type: 'orcadeck-pi-credentials', ...S.piCreds }, '*');
+});
 
 function sceneInspector() {
   const doc = S.scene, info = S.scenes.find((s) => s.id === S.id) || {};
