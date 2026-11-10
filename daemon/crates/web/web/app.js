@@ -182,7 +182,13 @@ function cell(key) {
   if (a) {
     const st = stateOf(a);
     el.append(img(cellImg(a), '', a.Name || a.UUID.split('.').pop(), 'fallback'));
-    if (st.Title && st.ShowTitle !== false) el.append(h('span', { class: 't ' + (st.TitleAlignment || 'bottom') }, st.Title));
+    if (st.Title && st.ShowTitle !== false) {
+      const span = h('span', { class: 't ' + (st.TitleAlignment || 'bottom') }, st.Title);
+      if (st.TitleColor) span.style.color = st.TitleColor;
+      const fs = st.FontSize || st.FSize;
+      if (fs) span.style.fontSize = `${fs}px`;
+      el.append(span);
+    }
     el.title = `${a.Name || ''}\n${a.UUID}`;
     el.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData(T_CELL, key);
@@ -241,6 +247,23 @@ function select(key) {
     c.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
   renderInspector();
+}
+
+function updateCellTitle(key, s) {
+  if (!key) return;
+  const el = $(`.cell[data-key="${key}"]`);
+  if (!el) return;
+  let t = el.querySelector('.t');
+  if (s.Title && s.ShowTitle !== false) {
+    if (!t) { t = h('span', { class: 't' }); el.append(t); }
+    t.className = 't ' + (s.TitleAlignment || 'bottom');
+    t.textContent = s.Title;
+    t.style.color = s.TitleColor || '';
+    const fs = s.FontSize || s.FSize;
+    t.style.fontSize = fs ? `${fs}px` : '';
+  } else if (t) {
+    t.remove();
+  }
 }
 
 document.addEventListener('keydown', (e) => {
@@ -366,7 +389,12 @@ function actionInspector() {
   const drawState = () => {
     const s = st();
     const bind = (input, key, conv = (v) => v) => {
-      input.addEventListener('input', () => { const v = conv(input); if (v === undefined) delete s[key]; else s[key] = v; dirty(); });
+      input.addEventListener('input', () => {
+        const v = conv(input);
+        if (v === undefined) delete s[key]; else s[key] = v;
+        dirty();
+        updateCellTitle(S.sel, s);
+      });
       return input;
     };
     stateBox.replaceChildren(
@@ -490,7 +518,7 @@ function renderPluginDetail(p) {
       h('dt', null, 'Se ejecuta como'), h('dd', null, RUNTIME[p.runtime] || p.runtime),
       h('dt', null, 'Acciones'), h('dd', null, p.actions),
       h('dt', null, 'Manifest'), h('dd', null, p.overlay ? 'Reconstruido (overlay)' : p.encrypted ? 'Cifrado' : 'Original'),
-      h('dt', null, 'Origen'), h('dd', null, p.builtin ? 'Integrado en Stream Dock (solo lectura)' : 'Instalado'),
+      h('dt', null, 'Origen'), h('dd', null, p.builtin ? (p.uuid === 'com.miguelpicado.orcadock' ? 'Integrado en OrcaDeck' : 'Integrado en Stream Dock (solo lectura)') : 'Instalado'),
       h('dt', null, 'Carpeta'), h('dd', null, p.dir)),
     p.status !== 'needs-manifest' && h('div', { class: 'actions-bar' }, show), pre,
   ]);

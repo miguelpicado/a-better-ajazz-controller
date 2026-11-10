@@ -247,8 +247,11 @@ impl FsStore {
         Ok(self.profiles.join(format!("{id}.sdProfile")).join("manifest.json"))
     }
 
-    fn load_plugin(&self, dir: PathBuf, builtin: bool) -> Option<Plugin> {
+    fn load_plugin(&self, dir: PathBuf, mut builtin: bool) -> Option<Plugin> {
         let uuid = dir.file_name()?.to_str()?.strip_suffix(".sdPlugin")?.to_string();
+        if uuid == "com.miguelpicado.orcadock" {
+            builtin = true;
+        }
         let raw = fs::read(dir.join("manifest.json")).ok()?;
         let encrypted = raw.starts_with(b"ELGATO");
         let overlay = encrypted.then(|| fs::read(self.data.join("manifests").join(format!("{uuid}.json"))).ok()).flatten();

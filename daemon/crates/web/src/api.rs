@@ -358,6 +358,9 @@ fn create_scene(store: &dyn Store, b: &Value) -> Result<Response> {
 }
 
 fn runtime(m: &Value) -> &'static str {
+    if m.get("UUID").and_then(Value::as_str) == Some("com.miguelpicado.orcadock") {
+        return "builtin";
+    }
     let code = m.get("CodePathWin").or_else(|| m.get("CodePath")).and_then(Value::as_str).unwrap_or("").to_ascii_lowercase();
     match () {
         _ if m.is_null() => "unknown",
@@ -392,7 +395,9 @@ fn action_list(plugins: &[Plugin]) -> Value {
                 "uuid": a.get("UUID")?.as_str()?,
                 "name": a.get("Name").and_then(Value::as_str).unwrap_or("").trim(),
                 "tooltip": a.get("Tooltip").cloned().unwrap_or(json!("")),
-                "icon": a.get("Icon").cloned().unwrap_or(json!("")),
+                "icon": a.get("Icon").and_then(Value::as_str).filter(|s| !s.is_empty())
+                    .or_else(|| a.pointer("/States/0/Image").and_then(Value::as_str).filter(|s| !s.is_empty()))
+                    .unwrap_or(""),
                 "controllers": a.get("Controllers").cloned().unwrap_or(json!(["Keypad"])),
             }))).collect();
         (!acts.is_empty()).then(|| {

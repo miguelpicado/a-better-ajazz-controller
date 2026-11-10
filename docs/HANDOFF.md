@@ -102,3 +102,11 @@ MPL/GPL/sin licencia solo hechos).
 - Sigue ignorado en `app.rs` (no afecta al dibujo): `Output::{Settings, GlobalSettings, OpenUrl}`,
   títulos de más de 14 caracteres (se recortan con `…`) y estados sin imagen resoluble.
 - Sin dependencias nuevas; `target/release/orcadeck.exe` = 3.219.456 B (3,07 MiB).
+## edit (worker web-editor) (2026-11-10)
+- Subcomando `orcadeck edit [--port <N>] [--no-open]` integrado en `daemon/src/edit.rs` y `daemon/src/main.rs`.
+- Sirve el editor local `orcadeck-web` en loopback (`127.0.0.1`) con token aleatorio de sesión, comprobaciones estrictas de Host/Origin y sin dependencias externas añadidas.
+- Abre automáticamente el navegador con `cmd /c start "" <url>` (salvo `--no-open`) y bloquea hasta Ctrl+C capturado limpiamente mediante Win32 `SetConsoleCtrlHandler`.
+- Resolución de rutas por defecto desde `%APPDATA%` con overrides `ORCADECK_PROFILES`, `ORCADECK_PLUGINS`, `ORCADECK_DATA` y `ORCADECK_BUILTIN_PLUGINS`. Reconoce `com.miguelpicado.orcadock` y sus 4 acciones (`.agent`, `.quota`, `.clock`, `.summary`) como plugin integrado propio, y carga los plugins nativos de Stream Dock (`C:\Program Files (x86)\Stream Dock AJAZZ Global\plugins`).
+- SPA pulida: renderizado de títulos y estilos de celda (color, alineación, tamaño) en vivo, visualización de origen integrado (`Integrado en OrcaDeck`), y fallback de iconos en la biblioteca de acciones.
+- Suite de pruebas completa verde: 52 tests en el workspace (`cargo test --release --workspace`), incluyendo resolución de rutas y lectura e-to-e contra carpetas reales.
+
