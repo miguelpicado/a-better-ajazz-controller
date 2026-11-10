@@ -82,9 +82,13 @@ impl Deck {
         }
     }
 
-    /// `QUOTA_DIR` or the quota-monitor checkout next to this repo.
+    /// `QUOTA_DIR` if set, else `%APPDATA%\OrcaDeck\quota` (the daemon's data dir); with no
+    /// `APPDATA` (non-Windows) it falls back to `<temp>\OrcaDeck\quota`.
     pub fn default_quota_dir() -> PathBuf {
-        std::env::var_os("QUOTA_DIR").map(PathBuf::from).unwrap_or_else(|| "C:/Users/migue/Github/quota-monitor".into())
+        if let Some(dir) = std::env::var_os("QUOTA_DIR") {
+            return PathBuf::from(dir);
+        }
+        std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("OrcaDeck").join("quota")
     }
 
     pub fn agent(&self, key: &str) -> Option<&Agent> {
@@ -393,4 +397,24 @@ impl Registry {
 /// ms since the epoch, for `tick` / `key_down`.
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Env vars are process-wide; cargo runs this binary's tests in one process, so this is the
+    // only test that touches them.
+    #[test]
+    fn default_quota_dir_honours_quota_dir_then_appdata() {
+        std::env::set_var("QUOTA_DIR", "quota-from-env");
+        assert_eq!(Deck::default_quota_dir(), PathBuf::from("quota-from-env"));
+
+        std::env::remove_var("QUOTA_DIR");
+        std::env::set_var("APPDATA", "appdata-dir");
+        assert_eq!(Deck::default_quota_dir(), PathBuf::from("appdata-dir").join("OrcaDeck").join("quota"));
+
+        std::env::remove_var("APPDATA");
+        assert_eq!(Deck::default_quota_dir(), std::env::temp_dir().join("OrcaDeck").join("quota"));
+    }
 }

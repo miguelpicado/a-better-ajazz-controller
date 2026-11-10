@@ -35,20 +35,6 @@ impl Dock {
         self.dev.write(&wire(payload)).map(|_| ()).map_err(|e| e.to_string())
     }
 
-    /// Wait up to 1 s for ACK; other input is ignored here.
-    fn wait_ack(&self) {
-        let t = Instant::now();
-        let mut b = vec![0u8; self.n + 1];
-        while t.elapsed() < Duration::from_millis(1000) {
-            match self.dev.read_timeout(&mut b, 50) {
-                Ok(k) if k > 0 && parse_input(&b[..k]) == Input::Ack => { eprintln!("ack {:?}", t.elapsed()); return }
-                Ok(k) if k > 0 => eprintln!("other {:02x?}", &b[..k.min(12)]),
-                _ => {}
-            }
-        }
-        eprintln!("no ack");
-    }
-
     fn init(&self, bright: u8) -> Result<(), String> {
         self.send(&wake(self.n))?;
         self.send(&brightness(self.n, bright))?;
