@@ -1,3 +1,4 @@
+use crate::ctl;
 use orcadeck_web::{FsStore, Server};
 use std::{
     path::{Path, PathBuf},
@@ -132,6 +133,15 @@ pub fn is_stopped() -> bool {
     STOPPED.load(Ordering::SeqCst)
 }
 
+/// Waits for Ctrl+C without polling: the handler unparks this thread.
+fn wait_for_ctrl_c() {
+    let _ = WAITER.set(thread::current());
+    ctrl_c::set_handler();
+    while !is_stopped() {
+        thread::park();
+    }
+}
+
 fn open_browser(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -182,6 +192,26 @@ pub fn run(args: &[String]) -> Result<(), String> {
         i += 1;
     }
 
+    // A live `run` owns the HID device, the plugin host and the editor: serve from inside it and
+    // wait here. Its web server exists only while this connection is open (Ctrl+C closes the pipe).
+    match ctl::request_edit(port) {
+        Some(Ok(session)) => {
+            println!("OrcaDeck editor (dentro de orcadeck run): {}", session.url());
+            println!("Presiona Ctrl+C para detener el servidor.");
+            if !no_open {
+                if let Err(e) = open_browser(session.url()) {
+                    eprintln!("aviso: no se pudo abrir el navegador ({e}); abre {} a mano", session.url());
+                }
+            }
+            wait_for_ctrl_c();
+            println!("\nDeteniendo el editor...");
+            drop(session);
+            return Ok(());
+        }
+        Some(Err(e)) => return Err(format!("orcadeck run no pudo iniciar el editor: {e}")),
+        None => {}
+    }
+
     let paths = resolve_paths();
     let store = FsStore {
         profiles: paths.profiles,
@@ -206,11 +236,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
 
-    let _ = WAITER.set(thread::current());
-    ctrl_c::set_handler();
-    while !is_stopped() {
-        thread::park();
-    }
+    wait_for_ctrl_c();
 
     println!("\nDeteniendo el editor...");
     server.stop();
