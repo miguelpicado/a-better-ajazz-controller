@@ -157,8 +157,8 @@ referencia todavía. Informes detallados de los workers: cada `src/` y el `READM
 
 ## Cabos sueltos
 
-- Zips sin límite de tamaño/ratio (zip bomb) en `plugman`; añadir antes de aceptar paquetes de fuentes no fiables.
-- `--force` que ya no sale `full` deja el overlay antiguo (igual que Node): decidir si se borra.
+- ~~Zips sin límite (zip bomb) en `plugman`~~ resuelto 2026-11-10 (límites con nombre: 20 k entradas, 256 MiB/fichero, 512 MiB total, ratio 200:1).
+- ~~`--force` que ya no sale `full` deja el overlay antiguo~~ resuelto: se borra y se informa (`InstallResult.removed_overlay`).
 - `raise()` de `builtin` (sustituye a `raise.ps1`) no se pudo probar sin tocar el Orca en marcha.
 - Sin reinicio de plugins caídos, sin plugins `.html` (WebView2 opcional), sin diales ni extras de Stream Dock en `host`.
 - `manifest.json.A.bak`/`.B.bak` aparecen cada 10 min en el perfil Orca: parecen copias propias de Stream Dock (confirmar).
