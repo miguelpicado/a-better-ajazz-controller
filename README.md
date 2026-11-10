@@ -30,4 +30,9 @@ Test: `node com.miguelpicado.orcadock.sdPlugin/test.js`. Log: `plugin.log` in th
   encrypted and Stream Dock cannot load that; copy this over `manifest.json` in Stream Dock's copy
   of the plugin (keep the original as `manifest.json.elgato`). Redo after updating the plugin.
 
+`tools/plugin-install/` installs `.streamDeckPlugin`/`.sdPlugin` without the Elgato app. It does not
+decrypt Marketplace manifests: it rebuilds the host manifest from the plugin's plaintext files and
+writes an overlay to `<data>/manifests/<uuid>.json`. See `tools/plugin-install/README.md`; the
+integration contract for the app is `docs/design/plugin-install-handoff.md`.
+
 Icons in `imgs/` come from [1am/orca-agent-deck](https://github.com/1am/orca-agent-deck) (MIT).
