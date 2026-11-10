@@ -11,10 +11,8 @@ target-*/
 # Playwright / editor scratch
 .playwright-mcp/
 
-# Ficheros grandes del usuario dejados en la raiz para analisis (no commitear)
-/AJAZZ_ak820_pro_2.4G_upgrade.zip
-/AJAZZ_AKP153E&AKP815&AKP03E_Screen Driver*
-/Stream-Dock-AJAZZ-Installer_Windows_global.exe
+# Paquetes de terceros del usuario (zips, .rar, instalador, driver) para analisis (no commitear)
+/vendor/
 
 # Binarios extraidos de las apps de AJAZZ (~330 MB) y entornos de analisis
 /docs/research/firmware/work/extract-*/
