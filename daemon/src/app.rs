@@ -3,7 +3,7 @@
 //! Threads: main (owns the HID device: input, paint, heartbeat), `builtin` (owns the `Registry`,
 //! ticks every 400 ms), host accept/socket threads (plugins). Everything that paints sends
 //! `(key, image)` over one channel; the main loop keeps the latest image per key and writes it at most
-//! once per `MIN_GAP`, so a chatty plugin cannot flood the device.
+//! as one batch at most once per `batch_gap()`, so a chatty plugin cannot flood the device.
 //! The AKP153E reports a press only on release, so a press is delivered as a click (down + up).
 use crate::{load_img, profile::Scene, proto::*, render, Dock};
 use base64::Engine;
@@ -19,7 +19,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-const MIN_GAP: Duration = Duration::from_millis(400);
+/// Minimum time between paint batches (all pending keys go out together). The firmware misses key
+/// presses while busy with images, so paint traffic must leave idle gaps. ORCADECK_GAP_MS tunes it.
+fn batch_gap() -> Duration {
+    Duration::from_millis(std::env::var("ORCADECK_GAP_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(400))
+}
 const DEVICE: &str = "AKP153E";
 
 fn pct_decode(s: &str) -> Vec<u8> {
@@ -182,12 +186,17 @@ fn session(
     dock.init(80)?;
     eprintln!("device ready, N = {}", dock.n);
     let mut pending: HashMap<u8, DynamicImage> = latest.clone();
-    let mut last: HashMap<u8, Instant> = HashMap::new();
+    let gap = batch_gap();
+    let mut last_batch = Instant::now() - gap;
     let mut hb = Instant::now();
+    let t0 = Instant::now();
     let mut buf = vec![0u8; dock.n + 1];
     loop {
         let k = dock.dev.read_timeout(&mut buf, 30).map_err(|e| e.to_string())?;
         if k > 0 {
+            if std::env::var_os("ORCADECK_TRACE").is_some() {
+                eprintln!("{:>6}ms in {:02x?}", t0.elapsed().as_millis(), &buf[..k.min(16)]);
+            }
             match parse_input(&buf[..k]) {
                 Input::Handshake => dock.send(&handshake_reply(dock.n))?,
                 Input::Key { key, .. } if (1..=15).contains(&key) => match by_key.get(&key) {
@@ -207,15 +216,19 @@ fn session(
             latest.insert(key, img.clone());
             pending.insert(key, img);
         }
-        let due: Vec<u8> = pending.keys().copied().filter(|k| last.get(k).is_none_or(|t| t.elapsed() >= MIN_GAP)).collect();
-        if !due.is_empty() {
-            for key in due {
-                if let Some(img) = pending.remove(&key) {
-                    dock.set_key(key, &render::key_jpeg(&img, key))?;
-                    last.insert(key, Instant::now());
-                }
+        if !pending.is_empty() && last_batch.elapsed() >= gap {
+            let (started, count) = (Instant::now(), pending.len());
+            let mut bytes = 0;
+            for (key, img) in pending.drain() {
+                let j = render::key_jpeg(&img, key);
+                bytes += j.len();
+                dock.set_key(key, &j)?;
             }
             dock.flush()?;
+            last_batch = Instant::now();
+            if std::env::var_os("ORCADECK_TRACE").is_some() {
+                eprintln!("{:>6}ms painted {count} keys {bytes} B in {} ms", t0.elapsed().as_millis(), started.elapsed().as_millis());
+            }
         }
         if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
             dock.send(&heartbeat(dock.n))?;

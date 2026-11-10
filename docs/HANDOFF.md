@@ -61,7 +61,14 @@ hilo `builtin` = `Registry` (tick 400 ms, pulsación por canal); imágenes de pl
 builtin llegan por un canal; máx. 1 imagen/400 ms/tecla (gana la última), un `STP` por lote. Pulsación (llega al soltar) =
 click: builtin `key_down`, plugin `keyDown`+`keyUp`. Solo se lanzan los plugins que usa la escena. Parar Stream Dock antes
 (`schtasks /end /tn StreamDock`): mismo HID y mismo puerto.
-**Pendiente inmediato:** probar `run` con el dispositivo (necesita OK del usuario: para Stream Dock y toma el HID), con el perfil Orca.
+**Probado en vivo (2026-11-10, perfil Orca): funciona** (pintado, gif/spinner, pulsación → enfocar terminal, cuota ok). Hallazgo clave:
+**el firmware pierde pulsaciones si se le pinta casi sin pausa** (envíos por tecla cada ~120 ms: cero pulsaciones en 80 s; sin línea
+amarilla). Cada imagen cuesta ~25-30 ms de escritura HID fijos (independiente del tamaño). Arreglo: lotes (todas las teclas
+pendientes juntas, `ORCADECK_GAP_MS`, 400 por defecto) + JPEG q75 (3× menos bytes) → pulsaciones fiables según el usuario.
+Traza: `ORCADECK_TRACE=1` (entradas HID y duración de cada lote). Ejecutar fuera de la shell con `llvm-mingw\bin` en `PATH`
+(`-1073741515` = falta libunwind.dll). Pendiente de la prueba: `Scene Shift` (`com.hotspot.streamdock.profile.rotate`) sin manejador;
+retardo pulsación→acción pequeño pero visible (Orca RPC).
+Stream Dock quedó relanzado (`schtasks /run /tn StreamDock`).
 Después: servidor `web` bajo demanda (`orcadeck edit`), overlays/UI de plugman, feedback ok/alert (parpadeo), títulos/estados de
 plugins (`Output::Title/State` hoy ignorados), el host debe ignorar `state=1` duplicado si algún día se flashea el parche,
 sustitución (tarea de autoarranque). Ideas de terceros: `docs/research/community-ideas.md` (licencias: MIT reutilizable;

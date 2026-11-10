@@ -1,11 +1,13 @@
-//! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 100 down by 4).
+//! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 75 down by 4).
 use crate::proto::{image_px, MAX_JPEG};
 use image::{imageops, DynamicImage, ImageEncoder};
 
 pub fn key_jpeg(img: &DynamicImage, key: u8) -> Vec<u8> {
     let px = image_px(key);
     let rgb = imageops::rotate270(&img.resize_exact(px, px, imageops::FilterType::Lanczos3).to_rgb8());
-    let mut q: i32 = 100;
+    // q75, not 100: at ~7 KB per key a batch of animated keys kept the device busy ~40 % of the time and it
+    // missed presses; flat UI graphics look fine at 75 and are ~3x smaller.
+    let mut q: i32 = 75;
     loop {
         let mut out = Vec::new();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, q.max(1) as u8)
