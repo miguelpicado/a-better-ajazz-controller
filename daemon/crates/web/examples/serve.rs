@@ -14,6 +14,7 @@ fn main() {
         data: root.clone(),
         legacy_config: None,
         downloads: None,
+        inspector: None,
     };
     let mut port = 0;
     while let (Some(k), Some(v)) = (args.next(), args.next()) {

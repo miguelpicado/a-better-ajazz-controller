@@ -6,6 +6,7 @@ use serde_json::{json, Map, Value};
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -82,6 +83,12 @@ pub trait Store: Send + Sync {
     fn plugin_remove(&self, uuid: &str) -> Result<Value>;
     /// One-shot scan of the inbox folder, newest first. Never runs in the background.
     fn plugin_inbox(&self) -> Result<Value>;
+    /// Folder of an installed plugin, without scanning every manifest. Used to serve its inspector.
+    fn plugin_dir(&self, uuid: &str) -> Option<PathBuf>;
+    /// Live plugin host, when one is attached. `None` means the inspector endpoint answers 501.
+    fn inspector(&self) -> Option<&dyn crate::InspectorBridge> {
+        None
+    }
 }
 
 /// Scene and plugin ids are used as folder names: allow only `[0-9A-Za-z._-]`, no `..`.
@@ -147,6 +154,8 @@ pub struct FsStore {
     pub legacy_config: Option<PathBuf>,
     /// Folder scanned by `plugin_inbox`; `None` means `%USERPROFILE%\Downloads`.
     pub downloads: Option<PathBuf>,
+    /// Live plugin host, when the daemon is running; `None` in the standalone editor.
+    pub inspector: Option<Arc<dyn crate::InspectorBridge>>,
 }
 
 struct Legacy {
@@ -555,6 +564,19 @@ impl Store for FsStore {
             "dir": dir.to_string_lossy(),
             "items": items.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         }))
+    }
+
+    fn plugin_dir(&self, uuid: &str) -> Option<PathBuf> {
+        if !safe_id(uuid) {
+            return None;
+        }
+        let name = format!("{uuid}.sdPlugin");
+        std::iter::once(&self.plugins).chain(&self.builtin_plugins)
+            .map(|root| root.join(&name)).find(|dir| dir.is_dir())
+    }
+
+    fn inspector(&self) -> Option<&dyn crate::InspectorBridge> {
+        self.inspector.as_deref()
     }
 }
 

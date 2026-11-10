@@ -110,10 +110,13 @@ pub fn write_response(mut w: impl Write, resp: &Response) -> io::Result<()> {
     };
     let mut h = format!(
         "HTTP/1.1 {} {reason}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\
-         Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
-         X-Frame-Options: DENY\r\n",
+         Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n",
         resp.status, resp.ctype, resp.body.len()
     );
+    // Routes that must be frameable (the plugin inspector) override this; everything else keeps DENY.
+    if !resp.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("x-frame-options")) {
+        h.push_str("X-Frame-Options: DENY\r\n");
+    }
     for (k, v) in &resp.headers {
         h.push_str(&format!("{k}: {v}\r\n"));
     }
@@ -163,5 +166,19 @@ mod tests {
         assert_eq!(read_request(&b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"[..]).err(), Some(411));
         assert_eq!(pct_decode("a%2Cb%"), "a,b%");
         assert_eq!(pct_decode("%4"), "%4");
+    }
+
+    #[test]
+    fn frame_header_is_deny_unless_a_route_overrides_it() {
+        let mut plain = vec![];
+        write_response(&mut plain, &Response::new(200, "text/plain", "x")).unwrap();
+        let plain = String::from_utf8(plain).unwrap();
+        assert!(plain.contains("X-Frame-Options: DENY\r\n"));
+
+        let mut framed = vec![];
+        write_response(&mut framed, &Response::new(200, "text/plain", "x").with("X-Frame-Options", "SAMEORIGIN")).unwrap();
+        let framed = String::from_utf8(framed).unwrap();
+        assert!(framed.contains("X-Frame-Options: SAMEORIGIN\r\n"));
+        assert!(!framed.contains("DENY"));
     }
 }
