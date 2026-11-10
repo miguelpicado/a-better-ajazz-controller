@@ -86,3 +86,19 @@ MPL/GPL/sin licencia solo hechos).
 - `.gitignore` actualizado (target/, .playwright-mcp/, ficheros grandes de la raíz, `docs/research/firmware/work/extract-*|current-*|venv`).
 - Ficheros del usuario en la raíz sin tocar: zip AK820, instalador 561 MB, `.rar` y su carpeta descomprimida.
 - Clones temporales de repos de terceros en `/tmp/rr` y `/tmp/ajz` (Git-Bash), borrables.
+
+## app feedback (worker app-feedback)
+`daemon/src/app.rs` ya dibuja lo que antes solo se ignoraba o se registraba en log:
+- **Title**: compone una barra inferior translúcida con el texto (Segoe UI, resvg) sobre la última
+  imagen de la tecla; la barra rasterizada se cachea por tecla hasta que cambie el título.
+- **State**: recuerda el estado por tecla (un `setState` repetido no repinta) y, si el manifiesto
+  tiene `States[].Image` para ese índice, pinta esa imagen con la misma resolución que los
+  placeholders (`Scene::image_of`). Si no resuelve, se ignora.
+- **showOk / showAlert** de plugins y **`Feedback::{Ok,Alert}`** de builtin: superponen check verde
+  o aspa roja y, 600 ms después, reenvían la imagen actual de la tecla. Dos pintados extra por
+  feedback (overlay + vuelta), sin hilo que pinte al dispositivo.
+- Invariante intacto: todo pasa por el mismo canal `(key, DynamicImage)` y el mismo lote/`batch_gap`;
+  ningún hilo nuevo escribe al HID. Tests unitarios de composición en `app.rs`, sin hardware.
+- Sigue ignorado en `app.rs` (no afecta al dibujo): `Output::{Settings, GlobalSettings, OpenUrl}`,
+  títulos de más de 14 caracteres (se recortan con `…`) y estados sin imagen resoluble.
+- Sin dependencias nuevas; `target/release/orcadeck.exe` = 3.219.456 B (3,07 MiB).
