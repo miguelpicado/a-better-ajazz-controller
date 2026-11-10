@@ -12,7 +12,7 @@
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::fs;
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -20,6 +20,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const ELGATO_MAGIC: &[u8] = b"ELGATO";
 const SKIP_DIRS: &[&str] = &["node_modules", ".git", "logs", "archive", "storecache"];
 const MAX_CODE_FILE: u64 = 20 * 1024 * 1024;
+/// Zip-bomb limits for packages from untrusted sources.
+const MAX_ENTRIES: usize = 20_000;
+const MAX_ENTRY_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_COMPRESSION_RATIO: u64 = 200;
+/// The ratio is only enforced once an entry is big enough for it to mean anything.
+const RATIO_CHECK_ABOVE_BYTES: u64 = 1024 * 1024;
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "svg", "gif"];
 const LOCALE_SKIP_EXTS: &[&str] = &["png", "jpg", "jpeg", "svg", "gif", "json", "js", "html", "css"];
 const LITERAL_SKIP_EXTS: &[&str] = &[
@@ -120,6 +127,8 @@ pub struct InstallOptions {
 pub struct InstallResult {
     pub dest: PathBuf,
     pub overlay: Option<PathBuf>,
+    /// Previous overlay deleted because the new install did not produce one.
+    pub removed_overlay: Option<PathBuf>,
     /// Encrypted (or unreadable) manifest that could not be rebuilt to `full`: do not launch.
     pub needs_manifest: bool,
     pub reconstruction: Reconstruction,
@@ -557,18 +566,36 @@ pub fn install_package(package: &Path, opts: &InstallOptions) -> io::Result<Inst
     if let Some(manifest) = provided {
         write_json(&overlay, &manifest)?;
         let reconstruction = Reconstruction::new(uuid, rec.encrypted, Confidence::Provided, Some(manifest));
-        return Ok(InstallResult { dest, overlay: Some(overlay), needs_manifest: false, reconstruction });
+        return Ok(InstallResult {
+            dest,
+            overlay: Some(overlay),
+            removed_overlay: None,
+            needs_manifest: false,
+            reconstruction,
+        });
     }
     let write = rec.encrypted && rec.confidence == Confidence::Full;
     if write {
         write_json(&overlay, rec.manifest.as_ref().expect("full reconstruction has a manifest"))?;
     }
+    // An overlay from the previous install no longer describes this plugin.
+    let removed_overlay = if write { None } else { remove_stale_overlay(&overlay)? };
     Ok(InstallResult {
         dest,
         overlay: write.then_some(overlay),
+        removed_overlay,
         needs_manifest: matches!(rec.confidence, Confidence::Partial | Confidence::None),
         reconstruction: rec,
     })
+}
+
+/// Remove the overlay of a replaced install. Not finding one is fine.
+fn remove_stale_overlay(path: &Path) -> io::Result<Option<PathBuf>> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(Some(path.to_path_buf())),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 /// Reject zip entry names that could escape the extraction folder: absolute paths, any `:`
@@ -584,25 +611,65 @@ pub fn check_entry_name(name: &str) -> io::Result<()> {
 }
 
 fn extract_package(pkg: &Path, dest: &Path) -> io::Result<()> {
+    match extract_zip(pkg, dest) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // Callers pass a fresh temp dir; never leave a rejected package's partial output behind.
+            let _ = fs::remove_dir_all(dest);
+            Err(e)
+        }
+    }
+}
+
+fn extract_zip(pkg: &Path, dest: &Path) -> io::Result<()> {
     let mut zip = zip::ZipArchive::new(fs::File::open(pkg)?).map_err(io::Error::other)?;
+    if zip.len() > MAX_ENTRIES {
+        return Err(rejected(format!("{} entries (limit {MAX_ENTRIES})", zip.len())));
+    }
     // Validate every entry before writing anything.
     for name in zip.file_names() {
         check_entry_name(&name.map_err(io::Error::other)?)?;
     }
-    // ponytail: no size/ratio cap on entries; add one if packages come from untrusted sources.
+    let mut buf = [0u8; 64 * 1024];
+    let mut total = 0u64;
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(io::Error::other)?;
-        let out = dest.join(&*file.name().map_err(io::Error::other)?);
+        let name = file.name().map_err(io::Error::other)?.into_owned();
+        let out = dest.join(&name);
         if file.is_dir() {
             fs::create_dir_all(&out)?;
-        } else {
-            if let Some(parent) = out.parent() {
-                fs::create_dir_all(parent)?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut writer = fs::File::create(&out)?;
+        let mut entry = 0u64;
+        // Count what is actually written: the sizes declared in the zip header are not trusted.
+        loop {
+            let n = file.read(&mut buf).map_err(io::Error::other)?;
+            if n == 0 {
+                break;
             }
-            io::copy(&mut file, &mut fs::File::create(&out)?)?;
+            entry += n as u64;
+            total += n as u64;
+            if entry > MAX_ENTRY_BYTES {
+                return Err(rejected(format!("{name} is over {MAX_ENTRY_BYTES} bytes")));
+            }
+            if total > MAX_TOTAL_UNCOMPRESSED_BYTES {
+                return Err(rejected(format!("over {MAX_TOTAL_UNCOMPRESSED_BYTES} bytes uncompressed")));
+            }
+            if entry > RATIO_CHECK_ABOVE_BYTES && entry > file.compressed_size().saturating_mul(MAX_COMPRESSION_RATIO) {
+                return Err(rejected(format!("{name} expands over {MAX_COMPRESSION_RATIO}:1")));
+            }
+            writer.write_all(&buf[..n])?;
         }
     }
     Ok(())
+}
+
+fn rejected(reason: String) -> io::Error {
+    err(io::ErrorKind::InvalidData, format!("Package rejected: {reason}"))
 }
 
 fn find_plugin_dir(root: &Path) -> io::Result<PathBuf> {
@@ -713,6 +780,9 @@ fn report(events: Vec<WatchEvent>) {
                     println!("  manifest overlay: {} ({})", o.display(), r.reconstruction.confidence.as_str());
                 } else if r.needs_manifest {
                     println!("  encrypted manifest needs --manifest <json>");
+                }
+                if let Some(o) = &r.removed_overlay {
+                    println!("  removed stale manifest overlay: {}", o.display());
                 }
             }
             Err(e) => eprintln!("{}: {e}", path.display()),
@@ -999,5 +1069,23 @@ mod tests {
         let t = timestamp();
         assert_eq!(t.len(), 24, "{t}");
         assert!(t.ends_with('Z') && !t.contains(':'));
+    }
+
+    #[test]
+    fn a_rejected_package_leaves_no_partial_extraction() {
+        let src = TempDir::new("bomb-src").unwrap();
+        let zip_path = src.0.join("bomb.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
+        let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("com.example.demo.sdPlugin/manifest.json", o).unwrap();
+        zip.write_all(b"{}").unwrap();
+        zip.start_file("com.example.demo.sdPlugin/bomb.bin", o).unwrap();
+        zip.write_all(&vec![0u8; 4 * 1024 * 1024]).unwrap();
+        zip.finish().unwrap();
+
+        let dest = TempDir::new("bomb-dst").unwrap();
+        let e = extract_package(&zip_path, &dest.0).unwrap_err();
+        assert!(e.to_string().contains("expands over"), "{e}");
+        assert!(!dest.0.exists(), "partial extraction must be deleted");
     }
 }

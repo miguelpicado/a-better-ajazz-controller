@@ -68,6 +68,9 @@ fn run() -> Result<(), String> {
             } else if r.needs_manifest {
                 println!("Encrypted manifest needs a manual overlay: re-run with --manifest <json>.");
             }
+            if let Some(o) = &r.removed_overlay {
+                println!("Removed stale manifest overlay: {}", o.display());
+            }
         }
         ("watch", Some(path)) => {
             opts.plugins_root = need_plugins(plugins)?;

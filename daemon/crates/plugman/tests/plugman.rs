@@ -164,6 +164,7 @@ fn installs_a_zip_and_writes_the_overlay() {
     assert_eq!(fs::read(installed.join("manifest.json")).unwrap(), encrypted_manifest());
     let overlay = root.0.join("data/manifests").join(format!("{UUID}.json"));
     assert_eq!(r.overlay.as_deref(), Some(overlay.as_path()));
+    assert!(r.removed_overlay.is_none());
     assert!(!r.needs_manifest);
     let written: Value = serde_json::from_str(&fs::read_to_string(&overlay).unwrap()).unwrap();
     assert_eq!(written["Actions"].as_array().unwrap().len(), 2);
@@ -195,6 +196,59 @@ fn rejects_zip_slip_entries() {
         assert!(!root.0.parent().unwrap().join("evil.txt").exists());
     }
     assert!(check_entry_name("com.x.sdPlugin/imgs/a..b.png").is_ok());
+}
+
+#[test]
+fn rejects_a_zip_bomb_by_compression_ratio() {
+    let root = Root::new();
+    let zip_path = root.0.join("bomb.streamDeckPlugin");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
+    let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o).unwrap();
+    zip.write_all(b"{}").unwrap();
+    zip.start_file(format!("{UUID}.sdPlugin/bomb.bin"), o).unwrap();
+    zip.write_all(&vec![0u8; 4 * 1024 * 1024]).unwrap();
+    zip.finish().unwrap();
+
+    let e = install_package(&zip_path, &opts(&root.0)).unwrap_err();
+    assert!(e.to_string().contains("Package rejected"), "{e}");
+    assert!(inspect_package(&zip_path).is_err());
+    assert!(!root.0.join("plugins").exists(), "nothing may be installed");
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 1, "no files may be left behind");
+}
+
+#[test]
+fn rejects_a_package_with_too_many_entries() {
+    let root = Root::new();
+    let zip_path = root.0.join("many.streamDeckPlugin");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
+    let o = zip::write::SimpleFileOptions::default();
+    zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o).unwrap();
+    zip.write_all(b"{}").unwrap();
+    for i in 0..20_001 {
+        zip.start_file(format!("{UUID}.sdPlugin/f{i}.txt"), o).unwrap();
+    }
+    zip.finish().unwrap();
+
+    let e = install_package(&zip_path, &opts(&root.0)).unwrap_err();
+    assert!(e.to_string().contains("Package rejected") && e.to_string().contains("entries"), "{e}");
+    assert!(!root.0.join("plugins").exists(), "nothing may be installed");
+}
+
+#[test]
+fn force_removes_the_previous_overlay_when_the_new_install_is_not_full() {
+    let root = Root::new();
+    let dir = fixture(&root.0);
+    let o = opts(&root.0);
+    let overlay = install_package(&dir, &o).unwrap().overlay.unwrap();
+    assert!(overlay.exists());
+
+    fs::remove_dir_all(dir.join("bin")).unwrap(); // actions but no CodePath: partial
+    let r = install_package(&dir, &InstallOptions { force: true, ..o }).unwrap();
+    assert_eq!(r.reconstruction.confidence, Confidence::Partial);
+    assert!(r.needs_manifest && r.overlay.is_none());
+    assert_eq!(r.removed_overlay.as_deref(), Some(overlay.as_path()));
+    assert!(!overlay.exists(), "the stale overlay must be deleted");
 }
 
 #[test]
