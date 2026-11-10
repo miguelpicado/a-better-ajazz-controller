@@ -1,0 +1,121 @@
+## tecla 1 100ms
+  AKP153E.bin                        informes: [1,0@114]  | descartados(EP ocupado): -  | linea: [(1, 1), (0, 1)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 1, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [1,1@22] [1,0@114]  | descartados(EP ocupado): -  | linea: [(1, 1), (0, 1)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 1, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [1,1@22] [1,0@114]  | descartados(EP ocupado): -  | linea: [(1, 1), (0, 1)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 1, 1)]  | espera: 2  | errores: ninguno
+## tecla 2 100ms
+  AKP153E.bin                        informes: [2,0@114]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 2, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [2,1@22] [2,0@114]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 2, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [2,1@22] [2,0@114]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 2, 1)]  | espera: 2  | errores: ninguno
+## tecla 3 100ms
+  AKP153E.bin                        informes: [3,0@114]  | descartados(EP ocupado): -  | linea: [(1, 3), (0, 3)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 3, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [3,1@22] [3,0@114]  | descartados(EP ocupado): -  | linea: [(1, 3), (0, 3)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 3, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [3,1@22] [3,0@114]  | descartados(EP ocupado): -  | linea: [(1, 3), (0, 3)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 3, 1)]  | espera: 2  | errores: ninguno
+## tecla 4 100ms
+  AKP153E.bin                        informes: [4,0@114]  | descartados(EP ocupado): -  | linea: [(1, 4), (0, 4)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 4, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [4,1@22] [4,0@114]  | descartados(EP ocupado): -  | linea: [(1, 4), (0, 4)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 4, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [4,1@22] [4,0@114]  | descartados(EP ocupado): -  | linea: [(1, 4), (0, 4)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 4, 1)]  | espera: 2  | errores: ninguno
+## tecla 5 100ms
+  AKP153E.bin                        informes: [5,0@114]  | descartados(EP ocupado): -  | linea: [(1, 5), (0, 5)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 5, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [5,1@22] [5,0@114]  | descartados(EP ocupado): -  | linea: [(1, 5), (0, 5)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 5, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [5,1@22] [5,0@114]  | descartados(EP ocupado): -  | linea: [(1, 5), (0, 5)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 5, 1)]  | espera: 2  | errores: ninguno
+## tecla 6 100ms
+  AKP153E.bin                        informes: [6,0@114]  | descartados(EP ocupado): -  | linea: [(1, 6), (0, 6)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 6, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [6,1@22] [6,0@114]  | descartados(EP ocupado): -  | linea: [(1, 6), (0, 6)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 6, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [6,1@22] [6,0@114]  | descartados(EP ocupado): -  | linea: [(1, 6), (0, 6)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 6, 1)]  | espera: 2  | errores: ninguno
+## tecla 7 100ms
+  AKP153E.bin                        informes: [7,0@114]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 7, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22] [7,0@114]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 7, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22] [7,0@114]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 7, 1)]  | espera: 2  | errores: ninguno
+## tecla 8 100ms
+  AKP153E.bin                        informes: [8,0@114]  | descartados(EP ocupado): -  | linea: [(1, 8), (0, 8)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 8, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [8,1@22] [8,0@114]  | descartados(EP ocupado): -  | linea: [(1, 8), (0, 8)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 8, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [8,1@22] [8,0@114]  | descartados(EP ocupado): -  | linea: [(1, 8), (0, 8)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 8, 1)]  | espera: 2  | errores: ninguno
+## tecla 9 100ms
+  AKP153E.bin                        informes: [9,0@114]  | descartados(EP ocupado): -  | linea: [(1, 9), (0, 9)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 9, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [9,1@22] [9,0@114]  | descartados(EP ocupado): -  | linea: [(1, 9), (0, 9)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 9, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [9,1@22] [9,0@114]  | descartados(EP ocupado): -  | linea: [(1, 9), (0, 9)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 9, 1)]  | espera: 2  | errores: ninguno
+## tecla 10 100ms
+  AKP153E.bin                        informes: [10,0@114]  | descartados(EP ocupado): -  | linea: [(1, 10), (0, 10)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 10, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [10,1@22] [10,0@114]  | descartados(EP ocupado): -  | linea: [(1, 10), (0, 10)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 10, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [10,1@22] [10,0@114]  | descartados(EP ocupado): -  | linea: [(1, 10), (0, 10)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 10, 1)]  | espera: 2  | errores: ninguno
+## tecla 11 100ms
+  AKP153E.bin                        informes: [11,0@114]  | descartados(EP ocupado): -  | linea: [(1, 11), (0, 11)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 11, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [11,1@22] [11,0@114]  | descartados(EP ocupado): -  | linea: [(1, 11), (0, 11)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 11, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [11,1@22] [11,0@114]  | descartados(EP ocupado): -  | linea: [(1, 11), (0, 11)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 11, 1)]  | espera: 2  | errores: ninguno
+## tecla 12 100ms
+  AKP153E.bin                        informes: [12,0@114]  | descartados(EP ocupado): -  | linea: [(1, 12), (0, 12)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 12, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [12,1@22] [12,0@114]  | descartados(EP ocupado): -  | linea: [(1, 12), (0, 12)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 12, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [12,1@22] [12,0@114]  | descartados(EP ocupado): -  | linea: [(1, 12), (0, 12)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 12, 1)]  | espera: 2  | errores: ninguno
+## tecla 13 100ms
+  AKP153E.bin                        informes: [13,0@114]  | descartados(EP ocupado): -  | linea: [(1, 13), (0, 13)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 13, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [13,1@22] [13,0@114]  | descartados(EP ocupado): -  | linea: [(1, 13), (0, 13)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 13, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [13,1@22] [13,0@114]  | descartados(EP ocupado): -  | linea: [(1, 13), (0, 13)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.14, 13, 1)]  | espera: 2  | errores: ninguno
+## tecla 14 100ms
+  AKP153E.bin                        informes: [14,0@114]  | descartados(EP ocupado): -  | linea: [(1, 14), (0, 14)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 14, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [14,1@22] [14,0@114]  | descartados(EP ocupado): -  | linea: [(1, 14), (0, 14)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 14, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [14,1@22] [14,0@114]  | descartados(EP ocupado): -  | linea: [(1, 14), (0, 14)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 14, 1)]  | espera: 2  | errores: ninguno
+## tecla 15 100ms
+  AKP153E.bin                        informes: [15,0@114]  | descartados(EP ocupado): -  | linea: [(1, 15), (0, 15)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 15, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [15,1@22] [15,0@114]  | descartados(EP ocupado): -  | linea: [(1, 15), (0, 15)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 15, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [15,1@22] [15,0@114]  | descartados(EP ocupado): -  | linea: [(1, 15), (0, 15)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.1, 15, 1)]  | espera: 2  | errores: ninguno
+## tap 3ms (< antirrebote)
+  AKP153E.bin                        informes: [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22] [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22] [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8600  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 2  | errores: ninguno
+## tap 12ms
+  AKP153E.bin                        informes: [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22] [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22] [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8600  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 2  | errores: ninguno
+## tap 25ms
+  AKP153E.bin                        informes: [7,0@44]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 6606  | ISR-ACK veria [9],[10]: [(32.08, 7, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22] [7,0@44]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 6606  | ISR-ACK veria [9],[10]: [(32.08, 7, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22] [7,0@44]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 6600  | ISR-ACK veria [9],[10]: [(32.08, 7, 1)]  | espera: 2  | errores: ninguno
+## rafaga 5x tecla 1 (30ms on / 30ms off)
+  AKP153E.bin                        informes: [1,0@44] [1,0@104] [1,0@164] [1,0@224] [1,0@284]  | descartados(EP ocupado): -  | linea: [(1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1)]  | pantalla: 0  | wdt: 23004  | ISR-ACK veria [9],[10]: [(32.08, 1, 0), (92.06, 1, 0), (152.04, 1, 0), (212.02, 1, 0), (272.06, 1, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [1,1@22] [1,0@44] [1,1@82] [1,0@104] [1,1@142] [1,0@164] [1,1@202] [1,0@224] [1,1@262] [1,0@284]  | descartados(EP ocupado): -  | linea: [(1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1)]  | pantalla: 0  | wdt: 23004  | ISR-ACK veria [9],[10]: [(32.08, 1, 1), (92.06, 1, 1), (152.04, 1, 1), (212.02, 1, 1), (272.06, 1, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [1,1@22] [1,0@44] [1,1@82] [1,0@104] [1,1@142] [1,0@164] [1,1@202] [1,0@224] [1,1@262] [1,0@284]  | descartados(EP ocupado): -  | linea: [(1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1)]  | pantalla: 0  | wdt: 23004  | ISR-ACK veria [9],[10]: [(32.08, 1, 1), (92.06, 1, 1), (152.04, 1, 1), (212.02, 1, 1), (272.06, 1, 1)]  | espera: 10  | errores: ninguno
+## 2 teclas a la vez, misma fila (2 y 5)
+  AKP153E.bin                        informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 0  | wdt: 10002  | ISR-ACK veria [9],[10]: [(60.28, 0, 0), (60.28, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 0  | wdt: 10002  | ISR-ACK veria [9],[10]: [(60.28, 0, 0), (60.28, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 0  | wdt: 10002  | ISR-ACK veria [9],[10]: [(60.28, 0, 0), (60.28, 0, 0)]  | espera: 0  | errores: ninguno
+## 2 teclas a la vez, filas distintas (1 y 2)
+  AKP153E.bin                        informes: [2,0@114]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 2, 0), (62.12, 2, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [2,1@22] [2,0@114]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 2, 1), (62.12, 2, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [2,1@22] [2,0@114]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2)]  | pantalla: 0  | wdt: 9602  | ISR-ACK veria [9],[10]: [(62.12, 2, 1), (62.12, 2, 1)]  | espera: 2  | errores: ninguno
+## solapadas misma fila: 2 [10,200) 5 [60,150)
+  AKP153E.bin                        informes: [2,0@74] [2,0@209]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2), (1, 2), (0, 2)]  | pantalla: 0  | wdt: 10202  | ISR-ACK veria [9],[10]: [(114.38, 0, 0), (114.38, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [2,1@22] [2,0@74] [2,1@167] [2,0@209]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2), (1, 2), (0, 2)]  | pantalla: 0  | wdt: 10202  | ISR-ACK veria [9],[10]: [(114.38, 0, 0), (114.38, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [2,1@22] [2,0@74] [2,1@167] [2,0@209]  | descartados(EP ocupado): -  | linea: [(1, 2), (0, 2), (1, 2), (0, 2)]  | pantalla: 0  | wdt: 10202  | ISR-ACK veria [9],[10]: [(114.38, 0, 0), (114.38, 0, 0)]  | espera: 4  | errores: ninguno
+## solapadas filas distintas: 3 [10,200) 4 [60,150)
+  AKP153E.bin                        informes: [3,0@204]  | descartados(EP ocupado): -  | linea: [(1, 3), (0, 3)]  | pantalla: 0  | wdt: 10604  | ISR-ACK veria [9],[10]: [(112.2, 3, 0), (112.2, 3, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [3,1@22] [3,0@204]  | descartados(EP ocupado): -  | linea: [(1, 3), (0, 3)]  | pantalla: 0  | wdt: 10604  | ISR-ACK veria [9],[10]: [(112.2, 3, 1), (112.2, 3, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [3,1@22] [3,0@204]  | descartados(EP ocupado): -  | linea: [(1, 3), (0, 3)]  | pantalla: 0  | wdt: 10604  | ISR-ACK veria [9],[10]: [(112.2, 3, 1), (112.2, 3, 1)]  | espera: 2  | errores: ninguno
+## mantener 60 s (tecla 9)
+  AKP153E.bin                        informes: [9,0@60014]  | descartados(EP ocupado): -  | linea: [(1, 9), (0, 9)]  | pantalla: 0  | wdt: 21606  | ISR-ACK veria [9],[10]: [(30011.88, 9, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [9,1@22] [9,0@60014]  | descartados(EP ocupado): -  | linea: [(1, 9), (0, 9)]  | pantalla: 0  | wdt: 21606  | ISR-ACK veria [9],[10]: [(30011.88, 9, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [9,1@22] [9,0@60014]  | descartados(EP ocupado): -  | linea: [(1, 9), (0, 9)]  | pantalla: 0  | wdt: 21600  | ISR-ACK veria [9],[10]: [(30011.88, 9, 1)]  | espera: 2  | errores: ninguno
+## host lento 5ms, tap 12ms
+  AKP153E.bin                        informes: [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22]  | descartados(EP ocupado): [(7, 0)]  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22] [7,0@27]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8306  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 29802  | errores: ninguno
+## host lento 1ms, tap 12ms
+  AKP153E.bin                        informes: [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22] [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22] [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8600  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 2  | errores: ninguno
+## host lento 20ms, tap 12ms (supera la espera)
+  AKP153E.bin                        informes: [7,0@24]  | descartados(EP ocupado): -  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22]  | descartados(EP ocupado): [(7, 0)]  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 8606  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22]  | descartados(EP ocupado): [(7, 0)]  | linea: [(1, 7), (0, 7)]  | pantalla: 0  | wdt: 7946  | ISR-ACK veria [9],[10]: [(20.06, 0, 0)]  | espera: 65537  | errores: ninguno
+## host no lee (latencia inf)
+  AKP153E.bin                        informes: [7,0@114]  | descartados(EP ocupado): [(8, 0)]  | linea: [(1, 7), (0, 7), (1, 8), (0, 8)]  | pantalla: 0  | wdt: 19204  | ISR-ACK veria [9],[10]: [(62.14, 7, 0), (252.12, 8, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: [7,1@22]  | descartados(EP ocupado): [(7, 0), (8, 1), (8, 0)]  | linea: [(1, 7), (0, 7), (1, 8), (0, 8)]  | pantalla: 0  | wdt: 19204  | ISR-ACK veria [9],[10]: [(62.14, 7, 1), (252.12, 8, 1)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: [7,1@22]  | descartados(EP ocupado): [(7, 0), (8, 1), (8, 0)]  | linea: [(1, 7), (0, 7), (1, 8), (0, 8)]  | pantalla: 0  | wdt: 17236  | ISR-ACK veria [9],[10]: [(62.14, 7, 1), (258.69, 8, 1)]  | espera: 196609  | errores: ninguno
+## pantalla apagada (flag 0x20000112=1)
+  AKP153E.bin                        informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 1  | wdt: 10004  | ISR-ACK veria [9],[10]: [(60.14, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 1  | wdt: 10004  | ISR-ACK veria [9],[10]: [(60.14, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 1  | wdt: 10004  | ISR-ACK veria [9],[10]: [(60.14, 0, 0)]  | espera: 0  | errores: ninguno
+## sin STP (flag 0x2000010C=0)
+  AKP153E.bin                        informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 1  | wdt: 10004  | ISR-ACK veria [9],[10]: [(60.14, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_NO_PROBADO.bi informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 1  | wdt: 10004  | ISR-ACK veria [9],[10]: [(60.14, 0, 0)]  | espera: 0  | errores: ninguno
+  AKP153E_pressrelease_v2_NO_PROBADO informes: -  | descartados(EP ocupado): -  | linea: []  | pantalla: 1  | wdt: 10004  | ISR-ACK veria [9],[10]: [(60.14, 0, 0)]  | espera: 0  | errores: ninguno
+sin excepciones / accesos fuera de mapa / fallos de registros
