@@ -83,6 +83,9 @@ fn decode_uri(uri: &str, px: u32) -> Option<DynamicImage> {
 const SANS: &str = r#"font-family="Segoe UI, Arial, sans-serif""#;
 /// How long an ok/alert overlay stays before the current image is sent again.
 const FEEDBACK_MS: u64 = 600;
+/// A plugin the new scene dropped is stopped this long after the switch; a scene that needs it
+/// again cancels the deadline first.
+const RETIRE_MS: u64 = 2000;
 
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
@@ -221,6 +224,8 @@ struct Runtime {
     retired: Mutex<HashSet<String>>,
     /// Key -> deadline of its ok/alert restore.
     restores: Mutex<HashMap<u8, Instant>>,
+    /// Plugin id -> deadline to stop a process the current scene no longer uses.
+    retire: Mutex<HashMap<String, Instant>>,
     /// Action settings waiting for the debounce window.
     settings: Mutex<SettingsPending>,
     /// Manifest of the scene now on the deck, replaced by a scene switch.
@@ -288,6 +293,32 @@ impl Runtime {
             retired.clear();
         }
         retired.insert(context.to_string());
+    }
+
+    /// Deadlines for the plugins the switch left unused (`running - used`). A plugin already
+    /// waiting keeps its first deadline, so chained switches cannot postpone it forever.
+    fn retire_unused(&self, used: &HashMap<String, usize>, running: &HashSet<String>, now: Instant) {
+        let mut retire = self.retire.lock().unwrap_or_else(|e| e.into_inner());
+        retire.retain(|id, _| running.contains(id) && !used.contains_key(id));
+        let deadline = now + Duration::from_millis(RETIRE_MS);
+        for id in running {
+            if !used.contains_key(id) {
+                retire.entry(id.clone()).or_insert(deadline);
+            }
+        }
+    }
+
+    /// The scene now on the deck (or an editor reload) needs this plugin: drop any pending stop.
+    fn cancel_retire(&self, plugin: &str) {
+        self.retire.lock().unwrap_or_else(|e| e.into_inner()).remove(plugin);
+    }
+
+    /// Plugins whose grace period expired without another scene asking for them.
+    fn due_retires(&self, now: Instant) -> Vec<String> {
+        let mut retire = self.retire.lock().unwrap_or_else(|e| e.into_inner());
+        let due = retire.iter().filter(|(_, t)| **t <= now).map(|(id, _)| id.clone()).collect();
+        retire.retain(|_, t| *t > now);
+        due
     }
 
     /// One plugin output, on a socket thread. Images go over the paint channel; settings, globals
@@ -632,10 +663,34 @@ fn place_scene(
     p
 }
 
-/// Starts the plugins a scene needs that are not running yet. v1 keeps the rest alive: restarting
-/// them would lose their settings and state.
-fn launch_plugins(used: &HashMap<String, usize>, found: &[host::Plugin], host: &host::Host, data: &Path, running: &mut HashSet<String>) {
+/// Stops the plugin processes whose grace period expired. Pending settings are flushed first so a
+/// kill cannot lose a queued `setSettings`; `running` forgets them, so a later scene that needs one
+/// launches it again. Called from the device loop's existing 30 ms wake, never from a timer.
+fn retire_due(rt: &Runtime, host: &host::Host, running: &mut HashSet<String>, now: Instant) {
+    let due = rt.due_retires(now);
+    if due.is_empty() {
+        return;
+    }
+    rt.flush_now();
+    for id in due {
+        running.remove(&id);
+        eprintln!("plugin {id} retired");
+        host.stop(&id);
+    }
+}
+
+/// Starts the plugins a scene needs that are not running yet, and cancels a pending stop for every
+/// plugin the scene uses. Restarting a live plugin would lose its settings and state.
+fn launch_plugins(
+    used: &HashMap<String, usize>,
+    found: &[host::Plugin],
+    host: &host::Host,
+    rt: &Runtime,
+    data: &Path,
+    running: &mut HashSet<String>,
+) {
     for id in used.keys() {
+        rt.cancel_retire(id);
         if running.contains(id) {
             continue;
         }
@@ -692,7 +747,8 @@ fn switch_scene(
     }
     let placed = place_scene(&scene, plugins, found, host, rt, builtins);
     let _ = tx.send(BuiltinMsg::Scene(SceneCmd::Replace { old, new: placed.builtin_keys, ctx_keys: placed.ctx_keys }));
-    launch_plugins(&placed.used, found, host, &rt.data, running);
+    launch_plugins(&placed.used, found, host, rt, &rt.data, running);
+    rt.retire_unused(&placed.used, running, Instant::now());
     let black = DynamicImage::new_rgb8(KEY_PX, KEY_PX);
     let mut keys: Vec<u8> = latest.keys().copied().chain(placed.latest.keys().copied()).collect();
     keys.sort_unstable();
@@ -776,7 +832,7 @@ fn reload_cell(
                 let ctx = host.appear(inst);
                 rt.set_cell(&ctx, cell);
                 let used: HashMap<String, usize> = HashMap::from([(plugin.id.clone(), 1)]);
-                launch_plugins(&used, found, host, &rt.data, running);
+                launch_plugins(&used, found, host, rt, &rt.data, running);
                 by_key.insert(key, Target::Plugin(ctx));
             } else {
                 eprintln!("reload {scene_id}: no handler for {} at {cell:?}", a.uuid);
@@ -860,6 +916,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         gen: Arc::new(AtomicU64::new(0)),
         retired: Mutex::new(HashSet::new()),
         restores: Mutex::new(HashMap::new()),
+        retire: Mutex::new(HashMap::new()),
         settings: Mutex::new(SettingsPending::default()),
         manifest: Mutex::new(profile.join("manifest.json")),
         data: data_root.clone(),
@@ -940,7 +997,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let placed = place_scene(&scene, plugins, &found, &host, &runtime, &builtins);
     let _ = msg_tx.send(BuiltinMsg::Scene(SceneCmd::Replace { old: Vec::new(), new: placed.builtin_keys, ctx_keys: placed.ctx_keys }));
     let mut running: HashSet<String> = HashSet::new();
-    launch_plugins(&placed.used, &found, &host, &data_root, &mut running);
+    launch_plugins(&placed.used, &found, &host, &runtime, &data_root, &mut running);
     let mut by_key = placed.by_key;
     let mut latest = placed.latest;
     drop(tx);
@@ -957,6 +1014,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
             Err(e) => {
                 eprintln!("device: {e}; retrying in 2 s");
                 runtime.tick();
+                retire_due(&runtime, &host, &mut running, Instant::now());
                 thread::sleep(Duration::from_secs(2));
             }
         }
@@ -1022,6 +1080,7 @@ fn session(
             }
         }
         rt.tick();
+        retire_due(rt, host, running, Instant::now());
         // Editor saves: repaint just that key, through the same pending batch as everything else.
         while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
             if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
@@ -1087,6 +1146,7 @@ mod tests {
             gen: Arc::new(AtomicU64::new(0)),
             retired: Mutex::new(HashSet::new()),
             restores: Mutex::new(HashMap::new()),
+            retire: Mutex::new(HashMap::new()),
             settings: Mutex::new(SettingsPending::default()),
             manifest: Mutex::new(dir.join("manifest.json")),
             data: dir.to_path_buf(),
@@ -1164,6 +1224,53 @@ mod tests {
         assert!(rx.try_recv().is_err(), "late paint from the old scene is dropped");
         rt.clear_cells();
         assert!(rt.settings.lock().unwrap().cells.get("CTX").is_none(), "old cell mapping is dropped");
+    }
+
+    #[test]
+    fn unused_plugins_are_retired_after_the_grace_period_and_cancelled_on_return() {
+        let dir = tmp("retire-deadline");
+        let (rt, _rx) = runtime(&dir);
+        let running: HashSet<String> = ["com.a", "com.b"].into_iter().map(String::from).collect();
+        let used_b: HashMap<String, usize> = HashMap::from([("com.b".to_string(), 1)]);
+        let t0 = Instant::now();
+
+        rt.retire_unused(&used_b, &running, t0);
+        assert!(rt.due_retires(t0 + Duration::from_millis(RETIRE_MS - 1)).is_empty(), "not before 2 s");
+        // A switch back to the scene that uses both cancels com.a's pending stop.
+        let used_ab: HashMap<String, usize> =
+            HashMap::from([("com.a".to_string(), 1), ("com.b".to_string(), 1)]);
+        rt.retire_unused(&used_ab, &running, t0 + Duration::from_millis(500));
+        assert!(rt.due_retires(t0 + Duration::from_secs(10)).is_empty(), "a used plugin is not retired");
+
+        // Chained switches do not extend an existing deadline.
+        rt.retire_unused(&used_b, &running, t0);
+        rt.retire_unused(&used_b, &running, t0 + Duration::from_millis(1000));
+        let mut due = rt.due_retires(t0 + Duration::from_millis(RETIRE_MS));
+        due.sort();
+        assert_eq!(due, ["com.a"], "only the unused plugin, at its first deadline");
+        assert!(rt.due_retires(t0 + Duration::from_secs(10)).is_empty(), "the deadline is one-shot");
+    }
+
+    #[test]
+    fn retiring_flushes_settings_first_and_forgets_the_plugin() {
+        let dir = tmp("retire-flush");
+        let path = dir.join("manifest.json");
+        std::fs::write(&path, r#"{"Actions":{"2,1":{"UUID":"a","Settings":{"v":0}}}}"#).unwrap();
+        let (rt, _rx) = runtime(&dir);
+        rt.set_cell("CTX", (2, 1));
+        rt.queue_settings("CTX", json!({"v": 1}));
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let mut running: HashSet<String> = ["com.a".to_string()].into_iter().collect();
+        let t0 = Instant::now();
+        rt.retire_unused(&HashMap::new(), &running, t0);
+
+        retire_due(&rt, &host, &mut running, t0 + Duration::from_millis(RETIRE_MS - 1));
+        assert!(running.contains("com.a"), "still inside the grace period");
+        assert_eq!(settings_at(&path), json!({"v": 0}), "nothing flushed early");
+
+        retire_due(&rt, &host, &mut running, t0 + Duration::from_millis(RETIRE_MS));
+        assert_eq!(settings_at(&path), json!({"v": 1}), "pending settings are written before the stop");
+        assert!(!running.contains("com.a"), "running forgets the retired plugin so a scene can launch it again");
     }
 
     #[test]
