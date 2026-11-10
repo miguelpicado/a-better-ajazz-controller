@@ -49,6 +49,7 @@ fn test_real_folders_read_only() {
         builtin_plugins: builtin,
         data: temp_data.clone(),
         legacy_config: legacy,
+        downloads: None,
     };
 
     // 1. Scenes: verify real scenes loaded and metadata matches

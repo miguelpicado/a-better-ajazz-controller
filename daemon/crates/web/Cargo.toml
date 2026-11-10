@@ -9,4 +9,6 @@ description = "Local web editor (HTTP API + embedded SPA) for the OrcaDeck daemo
 serde = "1"
 serde_json = "1"
 getrandom = "0.2"
+# Workspace crate: no new external package, just the plugin installer itself.
+orcadeck-plugman = { path = "../plugman" }
 

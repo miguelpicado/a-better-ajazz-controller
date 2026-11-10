@@ -34,9 +34,10 @@ async function api(method, path, body) {
 }
 
 function status(msg, err) {
-  const el = $('#status');
-  el.textContent = msg || '';
-  el.classList.toggle('err', !!err);
+  for (const el of document.querySelectorAll('.status')) {
+    el.textContent = msg || '';
+    el.classList.toggle('err', !!err);
+  }
 }
 const fail = (e) => status(e.message, true);
 const q = (o) => new URLSearchParams(o).toString();
@@ -501,6 +502,9 @@ function renderPluginDetail(p) {
     'needs-manifest': 'Su manifest viene cifrado por Elgato y aún no hay uno reconstruido. Reconstrúyelo con tools/plugin-install o aporta el manifest del fabricante; hasta entonces sus acciones no aparecen.',
     invalid: 'El manifest no es JSON válido. El plugin no se puede cargar hasta corregirlo o reinstalarlo.',
   }[p.status];
+  const origin = p.origin === 'orcadeck' ? 'Instalado por OrcaDeck'
+    : p.builtin ? (p.uuid === 'com.miguelpicado.orcadock' ? 'Integrado en OrcaDeck' : 'Integrado en Stream Dock (solo lectura)')
+    : 'Instalado (Stream Dock, solo lectura)';
   const pre = h('pre', { class: 'json', hidden: true });
   const show = h('button', { type: 'button', class: 'btn' }, 'Ver manifest');
   show.addEventListener('click', async () => {
@@ -518,9 +522,95 @@ function renderPluginDetail(p) {
       h('dt', null, 'Se ejecuta como'), h('dd', null, RUNTIME[p.runtime] || p.runtime),
       h('dt', null, 'Acciones'), h('dd', null, p.actions),
       h('dt', null, 'Manifest'), h('dd', null, p.overlay ? 'Reconstruido (overlay)' : p.encrypted ? 'Cifrado' : 'Original'),
-      h('dt', null, 'Origen'), h('dd', null, p.builtin ? (p.uuid === 'com.miguelpicado.orcadock' ? 'Integrado en OrcaDeck' : 'Integrado en Stream Dock (solo lectura)') : 'Instalado'),
+      h('dt', null, 'Origen'), h('dd', null, origin),
       h('dt', null, 'Carpeta'), h('dd', null, p.dir)),
-    p.status !== 'needs-manifest' && h('div', { class: 'actions-bar' }, show), pre,
+    h('div', { class: 'actions-bar' },
+      p.status !== 'needs-manifest' && show,
+      p.removable && h('button', { type: 'button', class: 'btn danger', onclick: () => removePlugin(p) }, 'Quitar plugin')),
+    pre,
+  ]);
+}
+
+async function removePlugin(p) {
+  if (!confirm(`¿Quitar «${p.name || p.uuid}»?\n\nSe borrará ${p.dir}. Las teclas que usen sus acciones dejarán de funcionar.`)) return;
+  try {
+    await api('DELETE', 'plugins/' + encodeURIComponent(p.uuid));
+    S.psel = null;
+    $('#pdetail').replaceChildren(h('p', { class: 'empty-note' }, 'Selecciona un plugin de la lista.'));
+    await loadPlugins();
+    await loadActions();
+    status(`«${p.name || p.uuid}» quitado`);
+  } catch (e) { fail(e); }
+}
+
+// ---------- install from Downloads (on demand, nothing watches the folder) ----------
+$('#scan-downloads').addEventListener('click', async function () {
+  this.disabled = true;
+  try {
+    renderInbox(await api('GET', 'plugins/inbox'));
+  } catch (e) { fail(e); } finally { this.disabled = false; }
+});
+
+function renderInbox({ dir, items }) {
+  const note = $('#inbox-note'), list = $('#inbox');
+  note.hidden = false;
+  note.textContent = items.length
+    ? `${items.length} paquete${items.length === 1 ? '' : 's'} reciente${items.length === 1 ? '' : 's'} en ${dir}. Nada se instala hasta que lo confirmes.`
+    : `No hay paquetes recientes en ${dir}.`;
+  list.hidden = items.length === 0;
+  list.replaceChildren(...items.map((it) => h('li', null,
+    h('button', { type: 'button', onclick: () => inspectPackage(it.path) },
+      h('span', null, h('strong', null, it.name),
+        h('span', { class: 'meta' }, ` · ${it.kind === 'folder' ? 'carpeta' : 'archivo'} · ${new Date(it.modified).toLocaleString()}`)),
+      h('span', { class: 'meta' }, 'Revisar')))));
+}
+
+async function inspectPackage(path) {
+  try {
+    const p = await api('POST', 'plugins/inspect', { path });
+    S.psel = null;
+    if (S.plugins) renderPlugins();
+    renderPackage(p);
+  } catch (e) { fail(e); }
+}
+
+function renderPackage(p) {
+  const box = $('#pdetail');
+  const install = h('button', { type: 'button', class: 'btn primary' }, p.installed ? 'Reemplazar plugin' : 'Instalar plugin');
+  install.addEventListener('click', async () => {
+    const ask = p.installed
+      ? `Ya hay un «${p.uuid}» instalado. ¿Reemplazarlo? Se guardará una copia de seguridad.`
+      : `¿Instalar «${p.name || p.uuid}» desde ${p.path}?`;
+    if (!confirm(ask)) return;
+    install.disabled = true;
+    try {
+      const r = await api('POST', 'plugins/install', { path: p.path, force: p.installed });
+      await loadPlugins();
+      await loadActions();
+      const found = (S.plugins || []).find((x) => x.uuid === r.uuid);
+      if (found) { S.psel = found.uuid; renderPlugins(); renderPluginDetail(found); }
+      status(`«${p.name || r.uuid}» ${r.replaced ? 'reemplazado' : 'instalado'}${r.needsManifest ? ' (necesita un manifest)' : ''}`);
+    } catch (e) { fail(e); install.disabled = false; }
+  });
+  fill(box, [
+    h('h2', null, 'Instalar plugin'),
+    h('p', { class: 'sub' }, p.path),
+    h('h3', null, p.name || p.uuid),
+    p.description && h('p', null, p.description),
+    h('dl', { class: 'kv' },
+      h('dt', null, 'UUID'), h('dd', null, p.uuid),
+      h('dt', null, 'Versión'), h('dd', null, p.version || '—'),
+      h('dt', null, 'Autor'), h('dd', null, p.author || '—'),
+      h('dt', null, 'Acciones'), h('dd', null, p.actions),
+      h('dt', null, 'Contenido'), h('dd', null, p.kind === 'folder' ? 'Carpeta .sdPlugin' : 'Archivo comprimido'),
+      h('dt', null, 'Manifest'), h('dd', null, p.encrypted ? `Cifrado (${p.confidence})` : 'Original'),
+      h('dt', null, 'Destino'), h('dd', null, p.installed ? 'Ya instalado: se reemplazará' : 'No instalado')),
+    p.needsManifest && h('p', { class: 'note' }, 'El manifest viene cifrado y no se pudo reconstruir entero: el plugin se instalará, pero no cargará hasta aportar un manifest del fabricante.'),
+    h('div', { class: 'actions-bar' }, install,
+      h('button', {
+        type: 'button', class: 'btn',
+        onclick: () => { S.psel = null; if (S.plugins) renderPlugins(); box.replaceChildren(h('p', { class: 'empty-note' }, 'Selecciona un plugin de la lista.')); },
+      }, 'Cancelar')),
   ]);
 }
 

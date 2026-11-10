@@ -1,10 +1,12 @@
 //! Storage behind the editor API. `FsStore` works on plain folders, so tests point it at a temp dir and the
 //! daemon points it at its own data root. Stream Dock's files (`legacy_config`, built-in plugins) are only read.
+use orcadeck_plugman::{install_package, inspect_package, Confidence, InstallOptions};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug)]
@@ -50,6 +52,10 @@ pub struct Plugin {
     pub overlay: bool,
     /// Lives in a read-only built-in plugin folder.
     pub builtin: bool,
+    /// `builtin`, `streamdock` (already there before this editor) or `orcadeck` (installed here).
+    pub origin: &'static str,
+    /// Installed through this editor, so it is the only kind this API may delete.
+    pub removable: bool,
     /// Effective manifest with `en.json` names applied; `Null` when there is none.
     pub manifest: Value,
 }
@@ -68,6 +74,14 @@ pub trait Store: Send + Sync {
     fn image(&self, scene: Option<&str>, plugin: Option<&str>, img: &str) -> Option<(Vec<u8>, &'static str)>;
     fn device(&self) -> Result<Value>;
     fn set_device(&self, patch: &Value) -> Result<Value>;
+    /// What a package in the inbox folder contains. Read-only: nothing is written.
+    fn plugin_inspect(&self, path: &str) -> Result<Value>;
+    /// Installs a package from the inbox folder. `force` replaces an existing install, keeping a backup.
+    fn plugin_install(&self, path: &str, force: bool) -> Result<Value>;
+    /// Deletes a plugin, only when this editor installed it.
+    fn plugin_remove(&self, uuid: &str) -> Result<Value>;
+    /// One-shot scan of the inbox folder, newest first. Never runs in the background.
+    fn plugin_inbox(&self) -> Result<Value>;
 }
 
 /// Scene and plugin ids are used as folder names: allow only `[0-9A-Za-z._-]`, no `..`.
@@ -121,15 +135,18 @@ pub fn atomic_write(path: &Path, bytes: &[u8], backup: bool) -> io::Result<()> {
 pub struct FsStore {
     /// `<id>.sdProfile/manifest.json` folders. Written by `put_scene`.
     pub profiles: PathBuf,
-    /// Installed plugins (`<uuid>.sdPlugin`). Read only.
+    /// Installed plugins (`<uuid>.sdPlugin`). Ours (and Stream Dock's) installs land here.
     pub plugins: PathBuf,
     /// Extra read-only plugin folders, e.g. Stream Dock's `<install>\plugins` built-ins.
     pub builtin_plugins: Vec<PathBuf>,
-    /// Own state: `state.json` (order, current, brightness) and `manifests/<uuid>.json` overlays.
+    /// Own state: `state.json` (order, current, brightness, installed ids) and `manifests/<uuid>.json`
+    /// overlays.
     pub data: PathBuf,
     /// Stream Dock `config` folder, read only: seeds order (DataCache.db) and current scene/brightness (ini)
     /// until `state.json` has its own values.
     pub legacy_config: Option<PathBuf>,
+    /// Folder scanned by `plugin_inbox`; `None` means `%USERPROFILE%\Downloads`.
+    pub downloads: Option<PathBuf>,
 }
 
 struct Legacy {
@@ -247,6 +264,52 @@ impl FsStore {
         Ok(self.profiles.join(format!("{id}.sdProfile")).join("manifest.json"))
     }
 
+    /// Plugin UUIDs installed through this editor, newest last. `state.json` is our own file; if it is lost,
+    /// previously installed plugins simply become non-removable (the safe direction).
+    fn installed_ids(&self) -> Vec<String> {
+        match self.state().get("installed") {
+            Some(Value::Array(a)) => a.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn set_installed(&self, ids: &[String]) -> Result<()> {
+        let mut st = self.state();
+        st.insert("installed".into(), json!(ids));
+        self.save_state(st)
+    }
+
+    fn downloads_dir(&self) -> Result<PathBuf> {
+        if let Some(d) = &self.downloads {
+            return Ok(d.clone());
+        }
+        std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(PathBuf::from)
+            .map(|home| home.join("Downloads"))
+            .ok_or_else(|| Error::new(404, "no se encontró la carpeta de Descargas"))
+    }
+
+    /// Canonical package path, required to stay inside the Downloads folder. `canonicalize` resolves `..`
+    /// and symlinks, so anything that escapes the folder is refused before plugman sees it.
+    fn package_in_downloads(&self, raw: &str) -> Result<PathBuf> {
+        let path = Path::new(raw).canonicalize().map_err(|_| Error::new(404, format!("no existe: {raw}")))?;
+        let root = self.downloads_dir()?.canonicalize()
+            .map_err(|_| Error::new(404, "no se encontró la carpeta de Descargas"))?;
+        if !path.starts_with(&root) {
+            return Err(Error::new(400, "el paquete debe estar dentro de Descargas"));
+        }
+        let name = path.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase();
+        if path.is_dir() {
+            if !name.ends_with(".sdplugin") || !path.join("manifest.json").is_file() {
+                return Err(Error::new(400, "la carpeta no es un .sdPlugin con manifest.json"));
+            }
+        } else if !path.is_file() || !["streamdeckplugin", "zip"].iter().any(|e| name.ends_with(&format!(".{e}"))) {
+            return Err(Error::new(400, "se esperaba un .streamDeckPlugin, un .zip o una carpeta .sdPlugin"));
+        }
+        Ok(path)
+    }
+
     fn load_plugin(&self, dir: PathBuf, mut builtin: bool) -> Option<Plugin> {
         let uuid = dir.file_name()?.to_str()?.strip_suffix(".sdPlugin")?.to_string();
         if uuid == "com.miguelpicado.orcadock" {
@@ -262,7 +325,10 @@ impl FsStore {
         if manifest.is_object() {
             localize(&mut manifest, &dir);
         }
-        Some(Plugin { uuid, dir, status, encrypted, overlay: overlay.is_some(), builtin, manifest })
+        Some(Plugin {
+            uuid, dir, status, encrypted, overlay: overlay.is_some(), builtin,
+            origin: if builtin { "builtin" } else { "streamdock" }, removable: false, manifest,
+        })
     }
 }
 
@@ -322,11 +388,18 @@ impl Store for FsStore {
     }
 
     fn plugins(&self) -> Result<Vec<Plugin>> {
+        let installed = self.installed_ids();
         let mut out = vec![];
         let dirs = std::iter::once((&self.plugins, false)).chain(self.builtin_plugins.iter().map(|d| (d, true)));
         for (dir, builtin) in dirs {
             let Ok(rd) = fs::read_dir(dir) else { continue };
             out.extend(rd.flatten().filter_map(|e| self.load_plugin(e.path(), builtin)));
+        }
+        for p in &mut out {
+            if !p.builtin && installed.iter().any(|i| i == &p.uuid) {
+                p.origin = "orcadeck";
+                p.removable = true;
+            }
         }
         out.sort_by(|a, b| a.uuid.cmp(&b.uuid));
         Ok(out)
@@ -367,4 +440,131 @@ impl Store for FsStore {
         }
         self.device()
     }
+
+    fn plugin_inspect(&self, path: &str) -> Result<Value> {
+        let pkg = self.package_in_downloads(path)?;
+        let rec = inspect_package(&pkg).map_err(package_error)?;
+        if !safe_id(&rec.uuid) {
+            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
+        }
+        let text = |k: &str| rec.manifest.as_ref().and_then(|m| m.get(k)).and_then(Value::as_str).unwrap_or("").trim().to_string();
+        let installed = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).is_dir();
+        Ok(json!({
+            "path": pkg.to_string_lossy(),
+            "kind": if pkg.is_dir() { "folder" } else { "archive" },
+            "uuid": rec.uuid, "name": text("Name"), "version": text("Version"),
+            "author": text("Author"), "description": text("Description"),
+            "actions": rec.action_count, "encrypted": rec.encrypted,
+            "confidence": rec.confidence.as_str(),
+            "needsManifest": matches!(rec.confidence, Confidence::Partial | Confidence::None),
+            "installed": installed,
+        }))
+    }
+
+    fn plugin_install(&self, path: &str, force: bool) -> Result<Value> {
+        let pkg = self.package_in_downloads(path)?;
+        // Read-only pass first: validate the derived UUID before writing anything.
+        let rec = inspect_package(&pkg).map_err(package_error)?;
+        if !safe_id(&rec.uuid) {
+            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
+        }
+        let replaced = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).exists();
+        if replaced && !force {
+            return Err(Error::new(409, format!("{} ya está instalado; confirma para reemplazarlo", rec.uuid)));
+        }
+        let opts = InstallOptions {
+            plugins_root: self.plugins.clone(),
+            data_root: Some(self.data.clone()),
+            force,
+            manifest_path: None,
+        };
+        let r = install_package(&pkg, &opts).map_err(package_error)?;
+        let mut ids = self.installed_ids();
+        if !ids.iter().any(|i| i == &r.reconstruction.uuid) {
+            ids.push(r.reconstruction.uuid.clone());
+            self.set_installed(&ids)?;
+        }
+        Ok(json!({
+            "uuid": r.reconstruction.uuid, "dir": r.dest.to_string_lossy(),
+            "overlay": r.overlay.is_some(), "needsManifest": r.needs_manifest, "replaced": replaced,
+        }))
+    }
+
+    fn plugin_remove(&self, uuid: &str) -> Result<Value> {
+        if !safe_id(uuid) {
+            return Err(Error::new(400, "bad plugin id"));
+        }
+        let name = format!("{uuid}.sdPlugin");
+        if self.builtin_plugins.iter().any(|d| d.join(&name).is_dir()) {
+            return Err(Error::new(403, "los plugins integrados no se pueden quitar"));
+        }
+        let mut ids = self.installed_ids();
+        if !ids.iter().any(|i| i == uuid) {
+            return Err(Error::new(403, "solo se pueden quitar plugins instalados por OrcaDeck"));
+        }
+        let root = self.plugins.canonicalize().map_err(|_| Error::new(404, "no existe la carpeta de plugins"))?;
+        let target = self.plugins.join(&name).canonicalize().map_err(|_| Error::new(404, "el plugin ya no está instalado"))?;
+        // Direct child of our plugins folder, after resolving links: nothing else is ever deleted.
+        if target.parent() != Some(root.as_path()) {
+            return Err(Error::new(400, "el plugin no está en la carpeta de plugins"));
+        }
+        fs::remove_dir_all(&target)?;
+        let overlay = self.data.join("manifests").join(format!("{uuid}.json"));
+        if overlay.is_file() {
+            fs::remove_file(overlay)?;
+        }
+        ids.retain(|i| i != uuid);
+        self.set_installed(&ids)?;
+        Ok(json!({ "uuid": uuid, "removed": true }))
+    }
+
+    fn plugin_inbox(&self) -> Result<Value> {
+        const RECENT: u64 = 30 * 86_400;
+        const MAX: usize = 20;
+        let dir = self.downloads_dir()?;
+        let rd = fs::read_dir(&dir).map_err(|_| Error::new(404, format!("no se encontró {}", dir.display())))?;
+        let cutoff = SystemTime::now().checked_sub(Duration::from_secs(RECENT)).unwrap_or(UNIX_EPOCH);
+        let mut items = Vec::new();
+        for e in rd.flatten() {
+            let path = e.path();
+            let Ok(meta) = e.metadata() else { continue };
+            let name = e.file_name().to_string_lossy().into_owned();
+            let lower = name.to_ascii_lowercase();
+            if meta.is_dir() {
+                // A folder package is installable only if plugman will find its manifest.
+                if !lower.ends_with(".sdplugin") || !path.join("manifest.json").is_file() {
+                    continue;
+                }
+            } else if !meta.is_file() || !["streamdeckplugin", "zip"].iter().any(|x| lower.ends_with(&format!(".{x}"))) {
+                continue;
+            }
+            let Ok(modified) = meta.modified() else { continue };
+            if modified < cutoff {
+                continue;
+            }
+            let ms = modified.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+            items.push((ms, json!({
+                "name": name, "path": path.to_string_lossy(),
+                "kind": if meta.is_dir() { "folder" } else { "archive" },
+                "size": meta.len(), "modified": ms,
+            })));
+        }
+        items.sort_by(|a, b| b.0.cmp(&a.0));
+        items.truncate(MAX);
+        Ok(json!({
+            "dir": dir.to_string_lossy(),
+            "items": items.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+        }))
+    }
+}
+
+/// `plugman` errors: a bad package is the caller's fault (400), not a server failure.
+fn package_error(e: io::Error) -> Error {
+    let status = match e.kind() {
+        io::ErrorKind::NotFound => 404,
+        io::ErrorKind::AlreadyExists => 409,
+        io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput => 400,
+        _ => 500,
+    };
+    Error::new(status, e.to_string())
 }

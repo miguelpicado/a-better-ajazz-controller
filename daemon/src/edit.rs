@@ -189,6 +189,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         builtin_plugins: paths.builtin_plugins,
         data: paths.data,
         legacy_config: paths.legacy_config,
+        downloads: None, // %USERPROFILE%\Downloads, scanned only when the UI asks
     };
 
     let server = Server::start(Arc::new(store), port)

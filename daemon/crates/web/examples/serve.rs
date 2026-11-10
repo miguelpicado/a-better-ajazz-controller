@@ -1,7 +1,7 @@
 //! Runs the editor over a folder, for manual checks:
-//! `cargo run --example serve -- <data-root> [--plugins DIR] [--builtin DIR] [--legacy DIR] [--port N]`
+//! `cargo run --example serve -- <data-root> [--plugins DIR] [--builtin DIR] [--legacy DIR] [--downloads DIR] [--port N]`
 //! `<data-root>` holds `profiles/` (written on save), `state.json` and `manifests/`. Use a copy of your profiles,
-//! never Stream Dock's own folder: plugin and legacy folders are only read.
+//! never Stream Dock's own folder: the `--plugins` folder is only written by the install/remove endpoints.
 use std::{path::PathBuf, sync::Arc};
 
 fn main() {
@@ -13,6 +13,7 @@ fn main() {
         builtin_plugins: vec![],
         data: root.clone(),
         legacy_config: None,
+        downloads: None,
     };
     let mut port = 0;
     while let (Some(k), Some(v)) = (args.next(), args.next()) {
@@ -20,6 +21,7 @@ fn main() {
             "--plugins" => store.plugins = v.into(),
             "--builtin" => store.builtin_plugins.push(v.into()),
             "--legacy" => store.legacy_config = Some(v.into()),
+            "--downloads" => store.downloads = Some(v.into()),
             "--port" => port = v.parse().expect("port"),
             _ => panic!("unknown option {k}"),
         }

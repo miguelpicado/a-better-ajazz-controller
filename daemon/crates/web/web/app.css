@@ -199,6 +199,16 @@ textarea.title-in { min-height: 0; font: inherit; }
 .pill.bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 pre.json { font: 12px/1.5 var(--mono); background: var(--raise); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow: auto; max-height: 50vh; }
 .note { background: var(--bg); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.scan-btn { margin-left: auto; }
+.inbox { list-style: none; margin: 0 0 16px; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.inbox button {
+  width: 100%; display: flex; gap: 14px; align-items: center; justify-content: space-between;
+  padding: 9px 14px; border: 0; border-bottom: 1px solid var(--line); background: var(--panel);
+  text-align: left; cursor: pointer;
+}
+.inbox li:last-child button { border-bottom: 0; }
+.inbox button:hover { background: var(--raise); }
+.inbox .meta { color: var(--muted); font-size: 12.5px; }
 
 .locked { position: fixed; inset: 0; background: var(--bg); display: grid; place-content: center; text-align: center; padding: 24px; }
 .locked p { max-width: 46ch; color: var(--muted); }

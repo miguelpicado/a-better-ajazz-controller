@@ -97,6 +97,11 @@ fn body(req: &Request) -> Result<Value> {
     serde_json::from_slice(&req.body).map_err(|e| Error::new(400, format!("bad JSON: {e}")))
 }
 
+fn str_field<'a>(b: &'a Value, k: &str) -> Result<&'a str> {
+    b.get(k).and_then(Value::as_str).filter(|s| !s.is_empty())
+        .ok_or_else(|| Error::new(400, format!("expected {{{k}}}")))
+}
+
 fn ok(v: Value) -> Result<Response> {
     Ok(Response::json(200, &v))
 }
@@ -158,10 +163,21 @@ fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
         ("POST", ["scenes", id, "cells", key, "move"]) => move_cell(store, id, key, &body(req)?),
         ("GET", ["actions"]) => ok(action_list(&store.plugins()?)),
         ("GET", ["plugins"]) => ok(Value::Array(store.plugins()?.iter().map(plugin_json).collect())),
+        ("GET", ["plugins", "inbox"]) => ok(store.plugin_inbox()?),
+        ("POST", ["plugins", "inspect"]) => {
+            let b = body(req)?;
+            ok(store.plugin_inspect(str_field(&b, "path")?)?)
+        }
+        ("POST", ["plugins", "install"]) => {
+            let b = body(req)?;
+            let force = b.get("force").and_then(Value::as_bool).unwrap_or(false);
+            ok(store.plugin_install(str_field(&b, "path")?, force)?)
+        }
         ("GET", ["plugins", uuid, "manifest"]) => {
             let p = store.plugins()?.into_iter().find(|p| p.uuid == *uuid).ok_or_else(|| Error::new(404, "no such plugin"))?;
             ok(p.manifest)
         }
+        ("DELETE", ["plugins", uuid]) => ok(store.plugin_remove(uuid)?),
         ("GET", ["image"]) => image(store, req),
         ("GET", ["device"]) => ok(store.device()?),
         ("PUT", ["device"]) => ok(store.set_device(&body(req)?)?),
@@ -382,6 +398,7 @@ fn plugin_json(p: &Plugin) -> Value {
         "version": s("Version"), "author": s("Author"), "description": s("Description"),
         "category": s("Category"), "status": p.status, "icon": icon, "encrypted": p.encrypted,
         "overlay": p.overlay, "builtin": p.builtin, "runtime": runtime(m),
+        "origin": p.origin, "removable": p.removable,
         "actions": m.get("Actions").and_then(Value::as_array).map_or(0, Vec::len),
         "dir": p.dir.to_string_lossy(),
     })

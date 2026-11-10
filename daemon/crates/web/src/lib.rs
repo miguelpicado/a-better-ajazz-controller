@@ -5,7 +5,7 @@
 //! # use std::sync::Arc;
 //! let store = Arc::new(orcadeck_web::FsStore {
 //!     profiles: "data/profiles".into(), plugins: "data/plugins".into(), builtin_plugins: vec![],
-//!     data: "data".into(), legacy_config: None,
+//!     data: "data".into(), legacy_config: None, downloads: None,
 //! });
 //! let server = orcadeck_web::Server::start(store, 0).unwrap();
 //! println!("open {}", server.url()); // token in the URL; the page swaps it for a cookie
