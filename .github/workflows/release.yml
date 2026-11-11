@@ -44,6 +44,10 @@ jobs:
       - name: Build
         working-directory: daemon
         run: cargo build --release --workspace
+      - name: Smoke test
+        shell: pwsh
+        working-directory: daemon
+        run: pwsh -File ../tools/smoke/smoke.ps1 -Exe target/release/orcadeck.exe
       - name: Package
         shell: pwsh
         run: |
