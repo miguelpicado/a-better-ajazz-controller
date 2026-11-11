@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
-use tungstenite::protocol::Role as WsRole;
+use tungstenite::protocol::{Role as WsRole, WebSocketConfig};
 use tungstenite::{Message, WebSocket};
 
 /// Host settings.
@@ -177,6 +177,11 @@ struct Run {
 const RESTART_MIN: Duration = Duration::from_secs(1);
 const RESTART_MAX: Duration = Duration::from_secs(60);
 const RESTART_RESET: Duration = Duration::from_secs(60);
+
+/// Largest inbound frame or whole message, per socket. A 288x288 base64 PNG `setImage` stays under
+/// 1 MiB, so 4 MiB leaves a wide margin while bounding what one local plugin or browser page can
+/// make the daemon buffer (tungstenite defaults to 16 MiB per frame and 64 MiB per message).
+pub const MAX_WS_MESSAGE: usize = 4 * 1024 * 1024;
 
 fn restart_delay(attempt: u32) -> Duration {
     RESTART_MIN.saturating_mul(1 << attempt.min(6)).min(RESTART_MAX)
@@ -559,10 +564,17 @@ impl Host {
             allowed.push("null".into());
         }
         let mut opaque = false;
-        let mut reader = tungstenite::accept_hdr(Muted { s: stream, mute: false }, |req: &Request, resp| {
-            opaque = req.headers().get("origin").and_then(|v| v.to_str().ok()) == Some("null");
-            check_origin(&allowed, req, resp)
-        })
+        let config = WebSocketConfig::default()
+            .max_frame_size(Some(MAX_WS_MESSAGE))
+            .max_message_size(Some(MAX_WS_MESSAGE));
+        let mut reader = tungstenite::accept_hdr_with_config(
+            Muted { s: stream, mute: false },
+            |req: &Request, resp| {
+                opaque = req.headers().get("origin").and_then(|v| v.to_str().ok()) == Some("null");
+                check_origin(&allowed, req, resp)
+            },
+            Some(config),
+        )
         .map_err(|e| e.to_string())?;
         // From here the reader only reads; its automatic pong/close replies are discarded and
         // sent through the writer instead, so two threads never write frames to the socket.
@@ -860,5 +872,83 @@ mod tests {
         assert!(check_origin(&allowed, &req, Response::default()).is_ok());
         let req = Request::builder().uri("ws://127.0.0.1/").header("Origin", "http://127.0.0.1:9999").body(()).unwrap();
         assert!(check_origin(&allowed, &req, Response::default()).is_err());
+    }
+
+    type Ws = WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>;
+
+    fn connect(host: &Host) -> Ws {
+        use tungstenite::client::IntoClientRequest;
+        let req = format!("ws://127.0.0.1:{}", host.port()).into_client_request().unwrap();
+        let (ws, _) = tungstenite::connect(req).unwrap();
+        if let tungstenite::stream::MaybeTlsStream::Plain(s) = ws.get_ref() {
+            s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            s.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+        }
+        ws
+    }
+
+    fn recv(ws: &mut Ws) -> Value {
+        loop {
+            if let Message::Text(t) = ws.read().expect("expected a frame") {
+                return serde_json::from_str(&t).unwrap();
+            }
+        }
+    }
+
+    /// True once the host drops the socket, skipping frames already queued.
+    fn dropped(ws: &mut Ws) -> bool {
+        loop {
+            match ws.read() {
+                Ok(Message::Close(_)) | Err(_) => return true,
+                Ok(_) => {}
+            }
+        }
+    }
+
+    #[test]
+    fn ws_limits_drop_only_the_offending_socket() {
+        assert_eq!(MAX_WS_MESSAGE, 4 * 1024 * 1024);
+        let host = Host::start(
+            Config {
+                port: 0,
+                devices: vec![Device { id: "DEV".into(), name: "AKP153E".into(), columns: 6, rows: 3, kind: 0 }],
+                ..Config::default()
+            },
+            |_| {},
+        )
+        .unwrap();
+        let plugin = Plugin::from_manifest(
+            std::path::Path::new("x/com.fake.sdPlugin"),
+            json!({"UUID": "com.fake", "CodePath": "p.js"}),
+        )
+        .unwrap();
+        let uuid = host.add(&plugin);
+
+        let mut first = connect(&host);
+        first.send(Message::text(json!({"event": "registerPlugin", "uuid": uuid}).to_string())).unwrap();
+        assert_eq!(recv(&mut first)["event"], "deviceDidConnect");
+        let ctx = host.appear(Instance::new("com.fake", "com.fake.act", "DEV", 0, 0));
+        assert!(host.key(&ctx, true));
+
+        // One byte over the limit: the host drops this socket and nobody else's.
+        let _ = first.send(Message::text("x".repeat(MAX_WS_MESSAGE + 1)));
+        assert!(dropped(&mut first));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while host.key(&ctx, false) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!host.key(&ctx, false), "disconnected() cleared the dead plugin connection");
+
+        // A fresh client still registers, and a 1 MiB message is read and answered.
+        let mut second = connect(&host);
+        second.send(Message::text(json!({"event": "registerPlugin", "uuid": uuid}).to_string())).unwrap();
+        assert_eq!(recv(&mut second)["event"], "deviceDidConnect");
+        assert_eq!(recv(&mut second)["event"], "willAppear");
+        let big = json!({"event": "logMessage", "payload": {"message": "y".repeat(1024 * 1024)}}).to_string();
+        assert!(big.len() <= MAX_WS_MESSAGE);
+        second.send(Message::text(big)).unwrap();
+        second.send(Message::text(json!({"event": "getGlobalSettings", "context": uuid}).to_string())).unwrap();
+        assert_eq!(recv(&mut second)["event"], "didReceiveGlobalSettings");
+        assert!(host.key(&ctx, false), "the new plugin socket still serves keys");
     }
 }
