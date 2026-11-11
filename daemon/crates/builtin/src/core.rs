@@ -283,10 +283,10 @@ pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) ->
     if !time.is_empty() {
         b += &format!(r#"<text x="14" y="130" {SANS} font-weight="800" font-size="22" fill="{fg}">{time}</text>"#);
     }
-    b += &badge;
     if on {
         b += r##"<rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#000" stroke-width="11"/><rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#fff" stroke-width="7"/>"##;
     }
+    b += &badge;
     svg(&b)
 }
 
