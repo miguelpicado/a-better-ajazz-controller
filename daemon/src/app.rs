@@ -2,8 +2,8 @@
 //!
 //! Threads: main (owns the HID device: input, paint, heartbeat), `builtin` (owns the `Registry`,
 //! ticks every 400 ms), host accept/socket threads (plugins). Everything that paints sends
-//! `(key, image)` over one channel; the main loop keeps the latest image per key and writes it at most
-//! as one batch at most once per `batch_gap()`, so a chatty plugin cannot flood the device.
+//! `(key, image)` over one channel; the main loop coalesces them per key and writes them as one
+//! batch at most once per `batch_gap()`, so a chatty plugin cannot flood the device.
 //! Titles and ok/alert overlays are composed over the key's last image before sending; a feedback is
 //! two sends (overlay, then the current image ~600 ms later), never a direct device write.
 //! The AKP153E reports a press only on release, so a press is delivered as a click (down + up).
@@ -79,7 +79,7 @@ fn decode_uri(uri: &str, px: u32) -> Option<DynamicImage> {
     if meta.starts_with("image/svg") {
         svg_image(std::str::from_utf8(&bytes).ok()?, px)
     } else {
-        image::load_from_memory(&bytes).ok()
+        image::load_from_memory(&bytes).ok().map(|img| render::fit_px(img, px))
     }
 }
 
@@ -173,10 +173,12 @@ struct ViewState {
 type View = Arc<Mutex<ViewState>>;
 
 impl ViewState {
-    /// Base image with the title bar drawn on it (black if the key has no image yet).
+    /// Base image with the title bar drawn on it (black if the key has no image yet), always at key
+    /// size: every consumer (`send`, reconnect repaint) feeds `key_jpeg`, which then skips its resize.
     fn effective(&self, key: u8) -> DynamicImage {
         let px = image_px(key);
         let base = self.base.get(&key).cloned().unwrap_or_else(|| DynamicImage::new_rgb8(px, px));
+        let base = render::fit_px(base, px);
         match self.title.get(&key) {
             Some(top) => blend(&base, top, px),
             None => base,
@@ -388,7 +390,7 @@ impl Runtime {
                 }
                 let path = v.states.get(&k).and_then(|s| s.get(state as usize)).cloned().flatten();
                 if let Some(img) = path.and_then(|p| load_img(&p).ok()) {
-                    v.base.insert(k, img);
+                    v.base.insert(k, render::fit_px(img, px));
                     image = Some(v.effective(k));
                 }
             }
@@ -418,6 +420,7 @@ impl Runtime {
         if self.retired(context) {
             return;
         }
+        let img = render::fit_px(img, image_px(key));
         self.view.lock().unwrap_or_else(|e| e.into_inner()).base.insert(key, img.clone());
         self.send(key, img, context);
     }
@@ -673,8 +676,6 @@ struct Placed {
     builtin_keys: Vec<bi::Key>,
     /// Context -> key of every placed action; the builtin thread routes presses with this.
     ctx_keys: HashMap<String, u8>,
-    /// Placeholder image per key, until the action paints.
-    latest: HashMap<u8, DynamicImage>,
     /// Plugin id -> instances in this scene.
     used: HashMap<String, usize>,
 }
@@ -695,8 +696,7 @@ fn place_scene(
     for ((c, r), a) in &scene.actions {
         let Some(key) = key_index(*c, *r) else { continue };
         if let Some(img) = scene.image_of(a, plugins).and_then(|path| load_img(&path).ok()) {
-            view.base.insert(key, img.clone());
-            p.latest.insert(key, img);
+            view.base.insert(key, render::fit_px(img, image_px(key)));
         }
         view.states.insert(key, (0..a.states.len()).map(|i| state_path(scene, a, plugins, i)).collect());
         view.state.insert(key, a.state as u32);
@@ -781,7 +781,6 @@ fn switch_scene(
     target: &SceneTarget,
     plugins: &Path,
     by_key: &mut HashMap<u8, Target>,
-    latest: &mut HashMap<u8, DynamicImage>,
     host: &host::Host,
     found: &[host::Plugin],
     running: &mut HashSet<String>,
@@ -816,16 +815,17 @@ fn switch_scene(
     let _ = tx.send(BuiltinMsg::Scene(SceneCmd::Replace { old, new: placed.builtin_keys, ctx_keys: placed.ctx_keys }));
     launch_plugins(&placed.used, found, host, rt, &rt.data, running);
     rt.retire_unused(&placed.used, running, Instant::now());
-    let black = DynamicImage::new_rgb8(KEY_PX, KEY_PX);
-    let mut keys: Vec<u8> = latest.keys().copied().chain(placed.latest.keys().copied()).collect();
+    // Keys that held an action in either scene, were painted, or are main keys: the new view
+    // already holds the placeholder (or black, for a key the new scene dropped), so repainting
+    // reads the same composed source the reconnect path uses.
+    let mut keys: Vec<u8> = by_key.keys().copied().chain(placed.by_key.keys().copied()).collect();
+    keys.extend(1..=15);
+    let v = rt.view.lock().unwrap_or_else(|e| e.into_inner());
+    keys.extend(v.base.keys().copied());
     keys.sort_unstable();
     keys.dedup();
-    let mut paints = Vec::with_capacity(keys.len());
-    for key in keys {
-        let img = placed.latest.get(&key).cloned().unwrap_or_else(|| black.clone());
-        latest.insert(key, img.clone());
-        paints.push((key, img));
-    }
+    let paints = keys.into_iter().map(|key| (key, v.effective(key))).collect();
+    drop(v);
     *by_key = placed.by_key;
     Ok(paints)
 }
@@ -917,7 +917,7 @@ fn reload_cell(
     v.title.remove(&key);
     v.base.remove(&key);
     if let Some(img) = action.and_then(|a| scene.image_of(a, plugins)).and_then(|path| load_img(&path).ok()) {
-        v.base.insert(key, img);
+        v.base.insert(key, render::fit_px(img, image_px(key)));
     }
     let states = action.map(|a| (0..a.states.len()).map(|i| state_path(&scene, a, plugins, i)).collect()).unwrap_or_default();
     v.states.insert(key, states);
@@ -1069,16 +1069,11 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let mut running: HashSet<String> = HashSet::new();
     launch_plugins(&placed.used, &found, &host, &runtime, &data_root, &mut running);
     let mut by_key = placed.by_key;
-    let mut latest = placed.latest;
     drop(tx);
 
-    // Main loop: reconnect forever; `latest` repaints the device after a re-plug.
-    let black = DynamicImage::new_rgb8(KEY_PX, KEY_PX);
-    for k in 1..=15u8 {
-        latest.entry(k).or_insert_with(|| black.clone());
-    }
+    // Main loop: reconnect forever; each new session repaints the keys from the composed view.
     loop {
-        let s = session(n, &rx, &reload_rx, &mut latest, &mut by_key, &host, &msg_tx, &runtime, &mut scenes, plugins, &found, &mut running, &builtins);
+        let s = session(n, &rx, &reload_rx, &mut by_key, &host, &msg_tx, &runtime, &mut scenes, plugins, &found, &mut running, &builtins);
         match s {
             Ok(()) => return Ok(()),
             Err(e) => {
@@ -1144,6 +1139,17 @@ fn compute_next_wake(
     wake
 }
 
+/// Every key a (re)connect has to repaint: the keys the deck has shown, composed with their title,
+/// plus 1..=15, so a key with no image is cleared to black instead of keeping the boot splash.
+fn view_paints(rt: &Runtime) -> HashMap<u8, (DynamicImage, u64)> {
+    let gen = rt.gen.load(Ordering::Relaxed);
+    let v = rt.view.lock().unwrap_or_else(|e| e.into_inner());
+    let mut keys: Vec<u8> = v.base.keys().copied().chain(1..=15).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    keys.into_iter().map(|key| (key, (v.effective(key), gen))).collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_input_packet<W: DockWriter>(
     buf: &[u8],
@@ -1153,7 +1159,6 @@ fn handle_input_packet<W: DockWriter>(
     host: &host::Host,
     scenes: &mut SceneSet,
     plugins: &Path,
-    latest: &mut HashMap<u8, DynamicImage>,
     found: &[host::Plugin],
     running: &mut HashSet<String>,
     rt: &Runtime,
@@ -1175,7 +1180,7 @@ fn handle_input_packet<W: DockWriter>(
                 host.key(&ctx, false);
             }
             Some(Target::Scene(target)) => {
-                match switch_scene(scenes, &target, plugins, by_key, latest, host, found, running, msg_tx, rt, builtins) {
+                match switch_scene(scenes, &target, plugins, by_key, host, found, running, msg_tx, rt, builtins) {
                     Ok(paints) => {
                         let gen = rt.gen.load(Ordering::Relaxed);
                         pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
@@ -1193,7 +1198,6 @@ fn handle_input_packet<W: DockWriter>(
 fn process_paints<W: DockWriter>(
     rx: &mpsc::Receiver<Paint>,
     rt: &Runtime,
-    latest: &mut HashMap<u8, DynamicImage>,
     pending: &mut HashMap<u8, (DynamicImage, u64)>,
     last_batch: &mut Instant,
     gap: Duration,
@@ -1204,7 +1208,6 @@ fn process_paints<W: DockWriter>(
         if p.gen < rt.gen.load(Ordering::Relaxed) || rt.retired(&p.ctx) {
             continue;
         }
-        latest.insert(p.key, p.img.clone());
         pending.insert(p.key, (p.img, p.gen));
     }
     if !pending.is_empty() && last_batch.elapsed() >= gap {
@@ -1234,7 +1237,6 @@ fn session_loop_threaded<W: DockWriter>(
     dock: &mut W,
     rx: &mpsc::Receiver<Paint>,
     reload: &mpsc::Receiver<ReloadCmd>,
-    latest: &mut HashMap<u8, DynamicImage>,
     by_key: &mut HashMap<u8, Target>,
     host: &host::Host,
     msg_tx: &mpsc::Sender<BuiltinMsg>,
@@ -1257,7 +1259,7 @@ fn session_loop_threaded<W: DockWriter>(
 
         match event_rx.recv_timeout(timeout) {
             Ok(ReaderMsg::Data(buf)) => {
-                handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, pending, t0)?;
+                handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, found, running, rt, builtins, pending, t0)?;
             }
             Ok(ReaderMsg::Wake) => {}
             Ok(ReaderMsg::Error(err)) => {
@@ -1272,7 +1274,7 @@ fn session_loop_threaded<W: DockWriter>(
         while let Ok(msg) = event_rx.try_recv() {
             match msg {
                 ReaderMsg::Data(buf) => {
-                    handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, pending, t0)?;
+                    handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, found, running, rt, builtins, pending, t0)?;
                 }
                 ReaderMsg::Wake => {}
                 ReaderMsg::Error(err) => return Err(err),
@@ -1284,12 +1286,11 @@ fn session_loop_threaded<W: DockWriter>(
 
         while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
             if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
-                latest.insert(key, img.clone());
                 pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
             }
         }
 
-        process_paints(rx, rt, latest, pending, &mut last_batch, gap, dock, t0)?;
+        process_paints(rx, rt, pending, &mut last_batch, gap, dock, t0)?;
 
         if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
             dock.send(&heartbeat(dock.report_n()))?;
@@ -1304,7 +1305,6 @@ fn session(
     n: Option<usize>,
     rx: &mpsc::Receiver<Paint>,
     reload: &mpsc::Receiver<ReloadCmd>,
-    latest: &mut HashMap<u8, DynamicImage>,
     by_key: &mut HashMap<u8, Target>,
     host: &host::Host,
     msg_tx: &mpsc::Sender<BuiltinMsg>,
@@ -1319,8 +1319,7 @@ fn session(
     let mut dock = Dock::open(&api, n)?;
     dock.init(80)?;
     eprintln!("device ready, N = {}", dock.n);
-    let gen = rt.gen.load(Ordering::Relaxed);
-    let mut pending: HashMap<u8, (DynamicImage, u64)> = latest.iter().map(|(&k, img)| (k, (img.clone(), gen))).collect();
+    let mut pending = view_paints(rt);
     let gap = batch_gap();
     let mut last_batch = Instant::now() - gap;
     let mut hb = Instant::now();
@@ -1331,18 +1330,17 @@ fn session(
         loop {
             let k = dock.dev.read_timeout(&mut buf, 30).map_err(|e| e.to_string())?;
             if k > 0 {
-                handle_input_packet(&buf[..k], &mut dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, &mut pending, t0)?;
+                handle_input_packet(&buf[..k], &mut dock, by_key, msg_tx, host, scenes, plugins, found, running, rt, builtins, &mut pending, t0)?;
             }
             rt.tick();
             retire_due(rt, host, running, Instant::now());
             // Editor saves: repaint just that key, through the same pending batch as everything else.
             while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
                 if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
-                    latest.insert(key, img.clone());
                     pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
                 }
             }
-            process_paints(rx, rt, latest, &mut pending, &mut last_batch, gap, &mut dock, t0)?;
+            process_paints(rx, rt, &mut pending, &mut last_batch, gap, &mut dock, t0)?;
             if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
                 dock.send(&heartbeat(dock.n))?;
                 hb = Instant::now();
@@ -1383,7 +1381,6 @@ fn session(
             &mut dock,
             rx,
             reload,
-            latest,
             by_key,
             host,
             msg_tx,
@@ -1609,6 +1606,32 @@ mod tests {
         assert!(title_svg(&"x".repeat(40), KEY_PX).contains('…'));
     }
 
+    fn big(px: u32) -> DynamicImage {
+        DynamicImage::ImageRgb8(image::RgbImage::from_pixel(px, px, image::Rgb([1, 2, 3])))
+    }
+
+    #[test]
+    fn ingest_scales_images_to_key_size_once() {
+        let dir = tmp("ingest-px");
+        let (rt, rx) = runtime(&dir);
+        rt.paint("c", 1, big(200));
+        rt.paint("c", 16, big(200));
+        {
+            let v = rt.view.lock().unwrap();
+            assert_eq!((v.base[&1].width(), v.base[&1].height()), (KEY_PX, KEY_PX), "main key stored at 85");
+            assert_eq!((v.base[&16].width(), v.base[&16].height()), (SIDE_PX, SIDE_PX), "side key stored at 80");
+        }
+        for p in [rx.try_recv().unwrap(), rx.try_recv().unwrap()] {
+            assert_eq!((p.img.width(), p.img.height()), (image_px(p.key), image_px(p.key)), "paint already at key size");
+        }
+
+        let png = dir.join("big.png");
+        big(200).save(&png).unwrap();
+        let uri = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(std::fs::read(&png).unwrap()));
+        let img = decode_uri(&uri, image_px(1)).expect("data uri");
+        assert_eq!((img.width(), img.height()), (KEY_PX, KEY_PX), "raster data URI scaled at decode");
+    }
+
     #[test]
     fn feedback_overlay_changes_pixels() {
         let base = white(KEY_PX);
@@ -1771,7 +1794,6 @@ mod tests {
     fn coalescing_delivers_latest_image_and_batches_stay_separated_by_gap() {
         let dir = tmp("coalescing");
         let (rt, rx) = runtime(&dir);
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let gap = Duration::from_millis(50);
         let mut last_batch = Instant::now() - gap;
@@ -1791,7 +1813,7 @@ mod tests {
         rt.send(4, white_img, "c");
 
         // Process batch
-        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
 
         // Verification:
         // Key 3 must be sent only ONCE (coalesced to the latest image: blue)
@@ -1808,12 +1830,12 @@ mod tests {
         rt.send(3, yellow.clone(), "c");
 
         // Try to process batch immediately: last_batch.elapsed() < gap
-        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
         assert_eq!(writer.flushes.len(), 1, "no new batch sent before gap elapsed");
 
         // Sleep until gap elapses
         std::thread::sleep(gap + Duration::from_millis(10));
-        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
 
         assert_eq!(writer.flushes.len(), 2, "second batch sent after gap elapsed");
         assert!(writer.flushes[1].0.duration_since(writer.flushes[0].0) >= gap, "batches stay separated by the gap");
@@ -1832,7 +1854,6 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel();
         let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
         let mut by_key = HashMap::from([(2u8, Target::Builtin("CTX2".into()))]);
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
@@ -1849,7 +1870,6 @@ mod tests {
                 &mut writer,
                 &rx,
                 &reload_rx,
-                &mut latest,
                 &mut by_key,
                 &host,
                 &msg_tx,
@@ -1935,7 +1955,6 @@ mod tests {
 
         let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
         let mut by_key = HashMap::new();
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
@@ -1959,7 +1978,6 @@ mod tests {
                 &mut writer,
                 &rx,
                 &reload_rx,
-                &mut latest,
                 &mut by_key,
                 &host,
                 &msg_tx,
@@ -2039,7 +2057,6 @@ mod tests {
 
         let mut scenes = SceneSet::open(&scene_a, &dir, &dir, DEVICE).unwrap();
         let mut by_key = HashMap::from([(1u8, Target::Plugin("CTX_OLD".into()))]);
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let gap = Duration::from_millis(10);
         let mut last_batch = Instant::now() - gap;
@@ -2055,7 +2072,6 @@ mod tests {
             &SceneTarget::Id("B".into()),
             Path::new("."),
             &mut by_key,
-            &mut latest,
             &host,
             &[],
             &mut running,
@@ -2076,7 +2092,7 @@ mod tests {
         rt.send(1, yellow, "CTX_OLD");
 
         // 4. Run process_paints
-        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
 
         // 5. Verification:
         // Exactly one image written for key 1, matching the blue image from new scene
@@ -2084,14 +2100,13 @@ mod tests {
         assert_eq!(key1_sends.len(), 1, "only one image written for key 1");
         assert_eq!(key1_sends[0].2, render::key_jpeg(&blue, 1), "only the new scene image (blue) was written");
         assert!(pending.is_empty(), "pending holds no stale entry");
-        assert_eq!(latest.get(&1), Some(&blue), "latest reflects the new scene image");
+        assert!(rt.view.lock().unwrap().base.get(&1).is_none(), "the old scene image is not kept after the switch");
     }
 
     #[test]
     fn stale_pending_image_purged_by_retain_filter_during_race() {
         let dir = tmp("gap1-pending-purge");
         let (rt, rx) = runtime(&dir);
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let gap = Duration::from_millis(50);
         let mut last_batch = Instant::now();
@@ -2103,7 +2118,7 @@ mod tests {
 
         // Call process_paints while last_batch.elapsed() < gap:
         // Key 3 is received and inserted into `pending` with gen 0, but not flushed!
-        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
         assert_eq!(pending.len(), 1, "pending holds key 3 at gen 0");
         assert_eq!(pending.get(&3).map(|(_, g)| *g), Some(0));
         assert_eq!(writer.keys_sent.len(), 0, "nothing flushed yet due to gap");
@@ -2121,7 +2136,7 @@ mod tests {
         // 4. Run process_paints:
         // pending.retain(|_, (_, g)| *g >= gen) must purge key 3 (g=0 < gen=1)
         // and flush key 4 (g=1 >= gen=1)
-        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
 
         // 5. Verify:
         // Key 3 was purged by pending.retain and NEVER written to writer
@@ -2141,7 +2156,6 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel();
         let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
         let mut by_key = HashMap::new();
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
@@ -2158,7 +2172,6 @@ mod tests {
                 &mut writer,
                 &rx,
                 &reload_rx,
-                &mut latest,
                 &mut by_key,
                 &host,
                 &msg_tx,
@@ -2186,10 +2199,9 @@ mod tests {
     }
 
     #[test]
-    fn writer_error_propagates_from_process_paints_without_panic_and_preserves_images_in_latest() {
+    fn writer_error_propagates_from_process_paints_and_reconnect_repaints_from_the_view() {
         let dir = tmp("gap2-writer-err");
         let (rt, rx) = runtime(&dir);
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let gap = Duration::from_millis(10);
         let mut last_batch = Instant::now() - gap;
@@ -2204,52 +2216,37 @@ mod tests {
         let img2 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
         let img3 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 255, 0])));
 
-        rt.send(1, img1.clone(), "ctx");
-        rt.send(2, img2.clone(), "ctx");
-        rt.send(3, img3.clone(), "ctx");
+        // The same path plugin images take: into the composed view, then the paint channel.
+        rt.paint("ctx", 1, img1.clone());
+        rt.paint("ctx", 2, img2.clone());
+        rt.paint("ctx", 3, img3.clone());
 
-        let res = process_paints(
-            &rx,
-            &rt,
-            &mut latest,
-            &mut pending,
-            &mut last_batch,
-            gap,
-            &mut failing_writer,
-            Instant::now(),
-        );
+        let res = process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut failing_writer, Instant::now());
 
         assert!(res.is_err(), "writer failure must surface as Err");
         let err_msg = res.unwrap_err();
         assert!(err_msg.contains("unplugged during set_key for key 2"), "error preserved: {err_msg}");
 
-        // Images are NOT lost: `latest` holds all queued images
-        assert_eq!(latest.get(&1), Some(&img1));
-        assert_eq!(latest.get(&2), Some(&img2));
-        assert_eq!(latest.get(&3), Some(&img3));
-
-        // Reconnect path parity: pending is re-seeded from latest
-        let gen = rt.gen.load(Ordering::Relaxed);
-        let mut reconnected_pending: HashMap<u8, (DynamicImage, u64)> =
-            latest.iter().map(|(&k, img)| (k, (img.clone(), gen))).collect();
-
-        assert_eq!(reconnected_pending.len(), 3, "all 3 images re-queued for reconnect");
+        // Images are NOT lost: the composed view keeps them, and that is what a reconnect repaints.
+        let reconnect = view_paints(&rt);
+        assert_eq!(reconnect.get(&1).map(|(img, _)| img), Some(&img1));
+        assert_eq!(reconnect.get(&2).map(|(img, _)| img), Some(&img2));
+        assert_eq!(reconnect.get(&3).map(|(img, _)| img), Some(&img3));
 
         let mut healthy_writer = FakeWriter { n: 64, ..Default::default() };
+        let mut reconnected_pending = reconnect;
         let mut reconnect_batch = Instant::now() - gap;
-        process_paints(
-            &rx,
-            &rt,
-            &mut latest,
-            &mut reconnected_pending,
-            &mut reconnect_batch,
-            gap,
-            &mut healthy_writer,
-            Instant::now(),
-        ).expect("reconnected paint succeeds");
+        process_paints(&rx, &rt, &mut reconnected_pending, &mut reconnect_batch, gap, &mut healthy_writer, Instant::now())
+            .expect("reconnected paint succeeds");
 
         assert_eq!(healthy_writer.flushes.len(), 1);
-        assert_eq!(healthy_writer.keys_sent.len(), 3);
+        let mut keys: Vec<u8> = healthy_writer.keys_sent.iter().map(|(_, k, _)| *k).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, (1..=15).collect::<Vec<u8>>(), "every key is repainted after the reconnect");
+        for (_, k, jpeg) in &healthy_writer.keys_sent {
+            let expected = render::key_jpeg(&rt.view.lock().unwrap().effective(*k), *k);
+            assert_eq!(jpeg, &expected, "key {k} repainted with what it shows");
+        }
         assert!(reconnected_pending.is_empty());
     }
 
@@ -2262,7 +2259,6 @@ mod tests {
         let (_event_tx, event_rx) = mpsc::channel();
         let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
         let mut by_key = HashMap::new();
-        let mut latest = HashMap::new();
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
@@ -2285,7 +2281,6 @@ mod tests {
             &mut failing_writer,
             &rx,
             &reload_rx,
-            &mut latest,
             &mut by_key,
             &host,
             &msg_tx,
