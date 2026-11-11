@@ -36,7 +36,20 @@ bloqueante, `builtin` por plazos, quitar `latest`) esperar a medir `run` con el 
 
 ## Hecho el 2026-11-11 (workers OpenCode y agy)
 
-`main` incluye animación de teclas (spinner 250 ms, aro, temporizador), cadencias nuevas, doble clic en plugins, bucle `builtin` por plazos, hilo lector HID opcional, tests de huecos y el fix de traversal de iconos. Gate: **135 tests verdes**; `orcadeck.exe` = 3 721 728 B. Todo sin probar en dispositivo. Cuidado: `BATCH_GAP_MS` bajó a 250 ms; si se pierden pulsaciones, `ORCADECK_GAP_MS=400`.
+`main` incluye: animación de teclas (spinner 250 ms con cabeza visible, aro de alerta, temporizador solo en pregunta/done), cadencias nuevas, doble clic en plugins, bucle `builtin` por plazos, hilo lector HID opcional, pre-escalado de imágenes y sin mapa `latest`, tubería `ctl` blindada, límite WebSocket de 4 MiB, fix de traversal de iconos, `base64`/`getrandom` unificados, tabla `DeviceSpec`, clippy bloqueante, humo del binario y E2E en CI, workflow de release, script de espejo público y docs públicas EN/ES. Gate: **141 tests verdes**; `orcadeck.exe` = 3 725 824 B.
+
+Todo lo anterior está **sin probar en dispositivo**. Espejo público: https://github.com/miguelpicado/a-better-ajazz-controller (se actualiza con `node tools/publish-public.mjs`, nunca con `git push` directo; los binarios de firmware de AJAZZ son solo locales).
+
+## Lista de pruebas con el dispositivo (siguiente sesión)
+
+Con Stream Dock parado (`schtasks /end /tn StreamDock`) y `QUOTA_DIR` definido:
+
+1. `orcadeck run <perfil>`: pintado, spinner a 4 fps, aro y temporizador en una tecla de agente; **pulsar mientras animan** (hueco `BATCH_GAP_MS` 250; si se pierden pulsaciones: `ORCADECK_GAP_MS=400`).
+2. Re-plug USB: todas las teclas se repintan con título/feedback.
+3. Scene Shift y cambio de escena; `edit` dentro de `run` (tubería blindada) y recarga de una tecla.
+4. `orcadeck register` y doble clic en un `.streamDeckPlugin` real (deshacer con `unregister`).
+5. Opcional: `ORCADECK_HID_READER=thread` (pulsaciones y re-plug).
+6. Medir exe, RSS y CPU en reposo; anotarlos en `STATUS.md`.
 
 ## Siguiente, en orden
 
