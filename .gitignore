@@ -18,3 +18,8 @@ target-*/
 /docs/research/firmware/work/extract-*/
 /docs/research/firmware/work/current-*/
 /docs/research/firmware/work/venv/
+
+# Firmware del fabricante (AJAZZ) y derivados: copyright ajeno, solo en local, NUNCA al remoto
+/docs/research/firmware/backup/
+/docs/research/firmware/work/*.bin
+*.bin
