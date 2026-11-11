@@ -82,8 +82,8 @@ Es el problema conocido del firmware del AKP153E v1, no de la app.
 - Mientras el dispositivo recibe imágenes, **descarta pulsaciones**. Medido: pintar por tecla cada
   ~120 ms dio cero pulsaciones en 80 s.
 - Cada imagen cuesta 25–30 ms fijos de escritura HID, aunque pese poco.
-- `run` lo mitiga con lotes (todas las teclas pendientes juntas) y un hueco de 400 ms
-  (`ORCADECK_GAP_MS`), más JPEG q75.
+- `run` lo mitiga con lotes (todas las teclas pendientes juntas) y un hueco de 250 ms
+  (`ORCADECK_GAP_MS`; `ORCADECK_GAP_MS=400` recupera el valor conservador), más JPEG q75.
 - Si aún se pierden, **sube** el gap, no lo bajes:
   ```powershell
   $env:ORCADECK_GAP_MS=500
@@ -116,7 +116,7 @@ Es el problema conocido del firmware del AKP153E v1, no de la app.
 5. Si has añadido la tecla a la escena, reinicia `run`. Si cambias el destino de una tecla de la
    escena actual, también: `run` no relee esa escena hasta que vuelve a entrar en ella. El destino de
    otra escena se lee al saltar a ella.
-6. El cambio pinta todas las teclas afectadas; puede tardar un lote (~400 ms). No lo pruebes con
+6. El cambio pinta todas las teclas afectadas; puede tardar un lote (~250 ms). No lo pruebes con
    Stream Dock en marcha.
 
 Estado: implementado con tests unitarios, **pendiente de prueba física** con el teclado
@@ -142,7 +142,7 @@ Estado: implementado con tests unitarios, **pendiente de prueba física** con el
   así, no hay una recuperación documentada sin intervención de hardware.
 - `hidwatch` solo enumera: no abre el dispositivo, no escribe y no flashea. Es el instrumento
   permitido para ver la transición.
-- Contexto y riesgo del parche: `research/firmware/patch-emulation.md`. Regla dura: no flashear.
+- Contexto y riesgo del parche: [`../research/firmware/patch-emulation.md`](../research/firmware/patch-emulation.md). Regla dura: no flashear.
 
 ## 10. Fallos de compilación
 

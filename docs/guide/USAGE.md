@@ -44,6 +44,10 @@ Todos se implementan en [`daemon/src/main.rs`](../../daemon/src/main.rs); `run` 
 | `watch` | `watch [modo]` | Init, `MOD` opcional y volcado crudo de la entrada; latido cada 10 s. Experimental. | Sí |
 | `poll` | `poll [input\|feature]` | Lee `GET_REPORT` cada 30 ms y muestra cambios. Experimental. | Sí (lectura) |
 | `hidwatch` | `hidwatch` | Enumera HID cada 100 ms, sin abrir ni escribir. Marca `EEEF:2929` (bootloader). | No (solo enumera) |
+| `install` | `install <paquete>` | Abre el editor con el paquete preparado para instalarlo; nada se instala solo. | No |
+| `register` | `register` | Asocia `.streamDeckPlugin` y `.sdPlugin` a OrcaDeck para el usuario actual (sin admin). | No |
+| `unregister` | `unregister` | Deshace la asociación y restaura la anterior. | No |
+| `help` | `help`, `-h`, `--help` | Imprime la lista de comandos. | No |
 
 Notas:
 
@@ -55,7 +59,7 @@ Notas:
   `MOD` no cambia el comportamiento: el evento sigue llegando al soltar y con `state = 0`.
 - `poll feature` devuelve «Función incorrecta» en esta unidad; es esperado. `poll input` devuelve la
   cadena de versión y no refleja una tecla mantenida.
-- No hay un `orcadeck --help` global. `edit --help` sí existe.
+- `orcadeck help` (también `-h`/`--help`) imprime la lista de comandos. `edit --help` también existe.
 
 ## 3. Flujo de uso
 
@@ -103,7 +107,7 @@ fichero de configuración para ellas.
 | `ORCADECK_PROFILES` | `%APPDATA%\HotSpot\StreamDock\profiles` | Carpeta de perfiles **solo para `edit`**. `run` recibe el perfil por argumento. | [`edit.rs`](../../daemon/src/edit.rs) |
 | `ORCADECK_DATA` | `%APPDATA%\OrcaDeck` | `state.json` y overlays **solo para `edit`**. `run` usa siempre `%APPDATA%\OrcaDeck`. | [`edit.rs`](../../daemon/src/edit.rs) |
 | `ORCADECK_BUILTIN_PLUGINS` | vacío; se añaden las carpetas `plugins` de Stream Dock si existen | Raíces de plugins de solo lectura extra para `edit`, separadas por `;`. | [`edit.rs`](../../daemon/src/edit.rs) |
-| `ORCADECK_GAP_MS` | `400` | Mínimo de milisegundos entre lotes de pintado. Se lee al abrir cada sesión del dispositivo. **No bajar.** | [`app.rs`](../../daemon/src/app.rs) |
+| `ORCADECK_GAP_MS` | `250` | Mínimo de milisegundos entre lotes de pintado. Se lee al abrir cada sesión del dispositivo. **No bajar.** | [`app.rs`](../../daemon/src/app.rs) |
 | `ORCADECK_TRACE` | desactivado (cualquier valor lo activa) | Escribe a stderr cada entrada HID y la duración de cada lote. | [`app.rs`](../../daemon/src/app.rs) |
 | `ORCADECK_CMD` | desactivado | Hook de experimento de `watch`: `VERBO:0a=01,0b=00` (offsets y valores en hexadecimal). Envía un `CRT` y sigue. | [`main.rs`](../../daemon/src/main.rs) |
 | `ORCADECK_SCENE` | desactivado | Con `ORCADECK_CMD`: tras el comando, envía `LIG`, `CLE`, las imágenes de ese perfil (con `STP` por tecla) y `CONNECT`. | [`main.rs`](../../daemon/src/main.rs) |
@@ -119,8 +123,9 @@ también hace `init`, así que pueden aparecer imágenes o limpieza de pantalla.
 - **Perfil**: se lee al arrancar y al cambiar de escena. Las ediciones del editor no se recargan solas,
   salvo la recarga en caliente de una tecla cuando `edit` corre dentro de `run` (ver §7).
 - **Escena Shift**: sí recarga el manifiesto de la escena destino (ver §6).
-- **Lotes**: hasta el gap de espera entre lotes (400 ms por defecto, `ORCADECK_GAP_MS`). Es
-  deliberado: el firmware pierde pulsaciones si se le pinta sin pausas.
+- **Lotes**: hasta el gap de espera entre lotes (250 ms por defecto, `ORCADECK_GAP_MS`; con
+  `ORCADECK_GAP_MS=400` se recupera el hueco conservador). Es deliberado: el firmware pierde
+  pulsaciones si se le pinta sin pausas.
 - **Latido**: `CONNECT` cada 10 s.
 - **Reconexión**: si el USB desaparece, `device: …; retrying in 2 s`; al volver, `init` y repintado.
 - **Ajustes de plugin**: `setSettings` se escribe en el `manifest.json` de la celda con debounce de

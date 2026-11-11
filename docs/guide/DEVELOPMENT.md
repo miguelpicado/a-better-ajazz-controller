@@ -48,7 +48,8 @@ cargo test --release --workspace
 ```
 
 Es el único gate del repositorio. Debe compilar el workspace completo (binario + `host`, `plugman`,
-`builtin`, `web`) y pasar la suite. El CI (`.github/workflows/ci.yml`) ejecuta lo mismo en cada push.
+`builtin`, `web`) y pasar la suite. El CI (`.github/workflows/ci.yml`) ejecuta lo mismo en cada push,
+más el smoke del binario release (`tools/smoke/smoke.ps1`) y la suite E2E de `tools/e2e`.
 
 Medidas que acompañan a un cambio de rendimiento (anotarlas, no estimarlas):
 
@@ -78,6 +79,8 @@ loopback y carpetas temporales.
 | `daemon/crates/plugman/tests/plugman.rs` | zips de fixture, manifests cifrados/planos, overlay, `force`/backup, límites, traversal |
 | `daemon/crates/web/tests/api.rs` | HTTP real en loopback: seguridad (token/Host/Origin), escenas, celdas, plugins, imágenes |
 | `daemon/crates/web/tests/real_folders.rs` | lectura de carpetas reales de Stream Dock; se **omite** si no existen |
+| `tools/e2e/` (Playwright) | E2E del editor con el `orcadeck.exe` release: arranque y token, edición de una celda, instalación/quitado de plugins, accesibilidad y errores de consola; sin hardware |
+| `tools/smoke/smoke.ps1` | smoke del binario release: `help`, `render` offline y `edit` standalone, con rutas temporales |
 
 Los tests que dependen de datos reales no fallan si faltan: imprimen `skipped` y pasan. No leen ni
 escriben el dispositivo.
@@ -166,8 +169,8 @@ Estas reglas no se negocian y aplican también a tests y scripts:
   en `.gitignore` y son del usuario.
 - No muevas ni borres ficheros que no se hayan nombrado por ruta exacta.
 - No toques `daemon/rust-toolchain.toml` ni los perfiles reales de Stream Dock.
-- El repo no tiene CI: la verificación es local (`cargo test --release --workspace`) y, cuando toca
-  hardware, manual y con Stream Dock parado.
+- El CI (`.github/workflows/ci.yml`) cubre `cargo test --release --workspace`, el smoke del binario y
+  la E2E; la verificación con hardware sigue siendo manual y con Stream Dock parado.
 
 ## 10. Releases
 

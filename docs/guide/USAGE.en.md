@@ -44,6 +44,10 @@ All are implemented in [`daemon/src/main.rs`](../../daemon/src/main.rs); `run` a
 | `watch` | `watch [mode]` | Init, optional `MOD` and a raw dump of the input; heartbeat every 10 s. Experimental. | Yes |
 | `poll` | `poll [input\|feature]` | Reads `GET_REPORT` every 30 ms and shows changes. Experimental. | Yes (read) |
 | `hidwatch` | `hidwatch` | Enumerates HID every 100 ms, without opening or writing. Flags `EEEF:2929` (bootloader). | No (enumerates only) |
+| `install` | `install <package>` | Opens the editor with the package staged for install; nothing installs by itself. | No |
+| `register` | `register` | Associates `.streamDeckPlugin` and `.sdPlugin` with OrcaDeck for the current user (no admin). | No |
+| `unregister` | `unregister` | Undoes the association and restores the previous one. | No |
+| `help` | `help`, `-h`, `--help` | Prints the command list. | No |
 
 Notes:
 
