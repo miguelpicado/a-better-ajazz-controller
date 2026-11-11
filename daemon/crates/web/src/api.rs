@@ -70,8 +70,13 @@ pub fn handle(ctx: &Ctx, req: Request) -> Response {
         ("GET", "/") => {
             if let Some(t) = req.query_param("token") {
                 if ctx.token_ok(Some(&t)) {
-                    // Swap the URL token for an HttpOnly cookie and drop it from the address bar.
-                    return Response::new(303, "text/plain", "").with("Location", "/").with(
+                    // Swap the URL token for an HttpOnly cookie and drop it from the address bar. The
+                    // install token (never a path) stays so the SPA knows which staged package to show.
+                    let location = match req.query_param("install").filter(|i| !i.is_empty()) {
+                        Some(i) => format!("/?install={}", url_segment(&i)),
+                        None => "/".to_string(),
+                    };
+                    return Response::new(303, "text/plain", "").with("Location", location).with(
                         "Set-Cookie",
                         format!("{}={}; Path=/; HttpOnly; SameSite=Strict", ctx.cookie_name(), ctx.token),
                     );
@@ -173,6 +178,10 @@ fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
         ("GET", ["actions"]) => ok(action_list(&store.plugins()?)),
         ("GET", ["plugins"]) => ok(Value::Array(store.plugins()?.iter().map(plugin_json).collect())),
         ("GET", ["plugins", "inbox"]) => ok(store.plugin_inbox()?),
+        ("GET", ["plugins", "staged"]) => {
+            let token = req.query_param("token").filter(|t| !t.is_empty()).ok_or_else(|| Error::new(400, "expected ?token"))?;
+            ok(store.plugin_staged(&token)?)
+        }
         ("POST", ["plugins", "inspect"]) => {
             let b = body(req)?;
             ok(store.plugin_inspect(str_field(&b, "path")?)?)
@@ -180,7 +189,10 @@ fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
         ("POST", ["plugins", "install"]) => {
             let b = body(req)?;
             let force = b.get("force").and_then(Value::as_bool).unwrap_or(false);
-            ok(store.plugin_install(str_field(&b, "path")?, force)?)
+            match b.get("staged").and_then(Value::as_str) {
+                Some(token) => ok(store.plugin_install_staged(token, force)?),
+                None => ok(store.plugin_install(str_field(&b, "path")?, force)?),
+            }
         }
         ("GET", ["plugins", uuid, "manifest"]) => {
             let p = store.plugins()?.into_iter().find(|p| p.uuid == *uuid).ok_or_else(|| Error::new(404, "no such plugin"))?;

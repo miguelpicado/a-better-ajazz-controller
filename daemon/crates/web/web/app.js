@@ -608,25 +608,27 @@ async function inspectPackage(path) {
 
 function renderPackage(p) {
   const box = $('#pdetail');
+  const staged = !!p.token;
   const install = h('button', { type: 'button', class: 'btn primary' }, p.installed ? 'Reemplazar plugin' : 'Instalar plugin');
   install.addEventListener('click', async () => {
     const ask = p.installed
       ? `Ya hay un «${p.uuid}» instalado. ¿Reemplazarlo? Se guardará una copia de seguridad.`
-      : `¿Instalar «${p.name || p.uuid}» desde ${p.path}?`;
+      : `¿Instalar «${p.name || p.uuid}»?`;
     if (!confirm(ask)) return;
     install.disabled = true;
     try {
-      const r = await api('POST', 'plugins/install', { path: p.path, force: p.installed });
+      const r = await api('POST', 'plugins/install', staged ? { staged: p.token, force: p.installed } : { path: p.path, force: p.installed });
+      if (staged) history.replaceState(null, '', '/');
       await loadPlugins();
       await loadActions();
       const found = (S.plugins || []).find((x) => x.uuid === r.uuid);
       if (found) { S.psel = found.uuid; renderPlugins(); renderPluginDetail(found); }
-      status(`«${p.name || r.uuid}» ${r.replaced ? 'reemplazado' : 'instalado'}${r.needsManifest ? ' (necesita un manifest)' : ''}`);
+      status(`«${p.name || r.uuid}» ${r.replaced ? 'reemplazado' : 'instalado'}${r.needsManifest ? ' (necesita un manifest)' : ''}. Arrastra sus acciones a una tecla en la vista Teclas.`);
     } catch (e) { fail(e); install.disabled = false; }
   });
   fill(box, [
     h('h2', null, 'Instalar plugin'),
-    h('p', { class: 'sub' }, p.path),
+    h('p', { class: 'sub' }, staged ? p.file : p.path),
     h('h3', null, p.name || p.uuid),
     p.description && h('p', null, p.description),
     h('dl', { class: 'kv' },
@@ -647,15 +649,27 @@ function renderPackage(p) {
 }
 
 // ---------- chrome: views, theme, device ----------
-for (const b of document.querySelectorAll('.views button')) {
-  b.addEventListener('click', () => {
-    const v = b.dataset.view;
-    for (const o of document.querySelectorAll('.views button')) o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
-    $('#keys-view').hidden = v !== 'keys';
-    $('#plugins-view').hidden = v !== 'plugins';
-    if (v === 'plugins' && !S.plugins) loadPlugins().catch(fail);
-  });
+function showView(v) {
+  for (const o of document.querySelectorAll('.views button')) o.setAttribute('aria-pressed', o.dataset.view === v ? 'true' : 'false');
+  $('#keys-view').hidden = v !== 'keys';
+  $('#plugins-view').hidden = v !== 'plugins';
+  if (v === 'plugins' && !S.plugins) loadPlugins().catch(fail);
 }
+for (const b of document.querySelectorAll('.views button')) {
+  b.addEventListener('click', () => showView(b.dataset.view));
+}
+
+// Package opened from the OS shell (`orcadeck install`, double click): the URL carries a one-use
+// token, never a path. The page only shows what will be installed; nothing happens without confirm.
+async function openStaged(token) {
+  try {
+    const p = await api('GET', 'plugins/staged?token=' + encodeURIComponent(token));
+    S.psel = null;
+    if (S.plugins) renderPlugins();
+    renderPackage(p);
+  } catch (e) { fail(e); }
+}
+const stagedToken = new URLSearchParams(location.search).get('install');
 
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 const savedTheme = store.get('orcadeck-theme');
@@ -684,5 +698,6 @@ window.addEventListener('beforeunload', (e) => { if (S.dirty) e.preventDefault()
     const first = S.scenes.find((s) => s.current) || S.scenes.find((s) => s.listed) || S.scenes[0];
     if (first) await openScene(first.id);
     else status('No hay escenas. Crea una con «Nueva escena».');
+    if (stagedToken) { showView('plugins'); await openStaged(stagedToken); }
   } catch (e) { fail(e); }
 })();

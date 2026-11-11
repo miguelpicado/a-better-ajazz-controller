@@ -10,7 +10,9 @@
 //! server thread sleeps in `ConnectNamedPipe`/`ReadFile`, so an idle daemon costs no CPU.
 //!
 //! Protocol is one ASCII line each way. `EDIT <port>` (`0` = any free port) answers `OK <url>` or
-//! `ERR <message>`; the session lasts until the client disconnects.
+//! `ERR <message>`; `INSTALL <path>` stages a plugin package in the daemon and answers exactly like
+//! `EDIT 0`, with `&install=<one-use-token>` appended to the URL. The session lasts until the client
+//! disconnects.
 
 #[cfg(windows)]
 mod imp {
@@ -66,11 +68,38 @@ mod imp {
     pub struct Conn {
         h: Handle,
         owner: bool,
+        /// Server end: it understands the one-shot `INSTALL` request and annotates the editor URL.
+        server: bool,
+        /// Line already produced by the server end (e.g. the `EDIT` an `INSTALL` becomes).
+        pending: Option<String>,
+        /// Single-use package token to append to the `OK <url>` reply.
+        staged: Option<String>,
     }
 
     impl Conn {
         /// One request line, without the newline. `None` on EOF or a broken pipe.
         pub fn read_line(&mut self) -> Option<String> {
+            if let Some(line) = self.pending.take() {
+                return Some(line);
+            }
+            let line = self.read_raw_line()?;
+            if !self.server {
+                return Some(line);
+            }
+            // `INSTALL <path>` from `orcadeck install`: stage the package here, in the process that
+            // owns the web server, and let `serve_edit` start the editor as if it had asked for it.
+            let Some(path) = super::parse_install(&line) else { return Some(line) };
+            match orcadeck_web::stage_package(&path) {
+                Ok(token) => {
+                    self.pending = Some("EDIT 0".into());
+                    self.staged = Some(token);
+                    self.read_line()
+                }
+                Err(e) => Some(format!("INSTALL-ERR {e}")),
+            }
+        }
+
+        fn read_raw_line(&mut self) -> Option<String> {
             let mut line = Vec::new();
             let mut buf = [0u8; 64];
             loop {
@@ -92,7 +121,12 @@ mod imp {
         }
 
         pub fn write_line(&mut self, line: &str) {
-            let mut bytes = line.as_bytes().to_vec();
+            // Only the editor URL carries the staged token; the client opens it in the browser.
+            let out = match (self.staged.take(), line.strip_prefix("OK ")) {
+                (Some(token), Some(url)) => format!("OK {url}&install={token}"),
+                _ => line.to_string(),
+            };
+            let mut bytes = out.into_bytes();
             bytes.push(b'\n');
             let mut off = 0;
             while off < bytes.len() {
@@ -170,7 +204,7 @@ mod imp {
                     _ => return false,
                 }
             }
-            handler(&mut Conn { h: self.h, owner: false });
+            handler(&mut Conn { h: self.h, owner: false, server: true, pending: None, staged: None });
             unsafe { DisconnectNamedPipe(h) };
             true
         }
@@ -195,8 +229,8 @@ mod imp {
         }
     }
 
-    /// Connects to `name` and asks for the editor. `None`: no live `run` (standalone fallback).
-    pub fn request(name: &str, port: u16) -> Option<Result<Session, String>> {
+    /// Connects to `name` and sends one request line. `None`: no live `run` (standalone fallback).
+    pub fn request_line(name: &str, request: &str) -> Option<Result<Session, String>> {
         let w = wide(name);
         let open = || unsafe {
             CreateFileW(
@@ -226,8 +260,8 @@ mod imp {
                 };
             }
         }
-        let mut conn = Conn { h, owner: true };
-        conn.write_line(&format!("EDIT {port}"));
+        let mut conn = Conn { h, owner: true, server: false, pending: None, staged: None };
+        conn.write_line(request);
         let reply = conn.read_line();
         match reply {
             Some(line) => match line.strip_prefix("OK ") {
@@ -238,6 +272,11 @@ mod imp {
             },
             None => Some(Err("run cerró el canal sin responder".into())),
         }
+    }
+
+    /// Asks for the editor on `port` (0 = any free port).
+    pub fn request(name: &str, port: u16) -> Option<Result<Session, String>> {
+        request_line(name, &format!("EDIT {port}"))
     }
 
     /// Serves `edit` requests forever on `name`, one at a time. Blocking: no polling.
@@ -279,6 +318,9 @@ mod imp {
     pub fn request(_name: &str, _port: u16) -> Option<Result<Session, String>> {
         None
     }
+    pub fn request_line(_name: &str, _request: &str) -> Option<Result<Session, String>> {
+        None
+    }
     pub fn serve(_name: String, _handler: impl Fn(&mut Conn)) {}
     pub fn spawn(_name: &str, _handler: impl Fn(&mut Conn) + Send + 'static) {}
 }
@@ -294,6 +336,17 @@ pub const NAME: &str = r"\\.\pipe\orcadeck-ctl";
 #[cfg(all(test, windows))]
 pub(crate) fn request_at(name: &str, port: u16) -> Option<Result<Session, String>> {
     imp::request(name, port)
+}
+
+/// Parses the install request. The rest of the line is the path, spaces included.
+pub fn parse_install(line: &str) -> Option<String> {
+    line.strip_prefix("INSTALL ").map(str::trim).filter(|p| !p.is_empty()).map(String::from)
+}
+
+/// Attaches to a live `run` and asks it for the editor with `path` staged for installation.
+/// `None` means "no daemon": the caller starts the standalone editor.
+pub fn request_install(path: &str) -> Option<Result<Session, String>> {
+    imp::request_line(NAME, &format!("INSTALL {path}"))
 }
 
 /// Parses the editor request. `EDIT` alone means any free port.
@@ -351,6 +404,44 @@ mod tests {
         drop(session); // what Ctrl+C does: the daemon sees EOF and drops its server
 
         assert_eq!(server.join().unwrap(), "EDIT 8123");
+    }
+
+    #[test]
+    fn the_install_protocol_keeps_the_path_after_the_verb() {
+        assert_eq!(parse_install(r"INSTALL C:\Users\me\a.streamDeckPlugin").as_deref(), Some(r"C:\Users\me\a.streamDeckPlugin"));
+        assert_eq!(parse_install(r"INSTALL C:\mis plugins\b.zip").as_deref(), Some(r"C:\mis plugins\b.zip"));
+        assert_eq!(parse_install("INSTALL"), None);
+        assert_eq!(parse_install("INSTALL   "), None);
+        assert_eq!(parse_install("EDIT 0"), None);
+    }
+
+    #[test]
+    fn an_install_request_stages_the_file_and_puts_a_token_in_the_url() {
+        let name = test_pipe("install");
+        let listener = imp::Listener::new(&name).expect("pipe instance");
+        let pkg = std::env::temp_dir().join(format!("orcadeck-ctl-test-{}.streamDeckPlugin", std::process::id()));
+        std::fs::write(&pkg, b"package body").unwrap();
+        let path = pkg.to_string_lossy().to_string();
+        let server = std::thread::spawn(move || {
+            let mut seen = String::new();
+            assert!(listener.accept(|c| {
+                seen = c.read_line().expect("request line");
+                c.write_line("OK http://127.0.0.1:9/?token=t");
+                c.wait_close();
+            }));
+            seen
+        });
+
+        let request = format!("INSTALL {path}");
+        let session = imp::request_line(&name, &request).expect("daemon present").expect("url");
+        let url = session.url();
+        let token = url.strip_prefix("http://127.0.0.1:9/?token=t&install=").expect("staged token in the URL");
+        assert_eq!(token.len(), 32);
+        assert!(token.bytes().all(|b| b.is_ascii_hexdigit()));
+        drop(session);
+
+        assert_eq!(server.join().unwrap(), "EDIT 0", "serve_edit sees the editor request it knows");
+        let _ = std::fs::remove_file(&pkg);
     }
 
     #[test]
