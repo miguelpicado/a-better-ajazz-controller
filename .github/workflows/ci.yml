@@ -33,6 +33,9 @@ jobs:
           key: cargo-${{ hashFiles('daemon/Cargo.lock') }}
           restore-keys: cargo-
       - run: cargo build --release --workspace
+      - name: smoke (release binary)
+        shell: pwsh
+        run: pwsh -File ../tools/smoke/smoke.ps1 -Exe target/release/orcadeck.exe
       - run: cargo test --release --workspace
 
   lint:
