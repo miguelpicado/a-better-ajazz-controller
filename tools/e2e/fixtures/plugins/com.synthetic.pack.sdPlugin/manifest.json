@@ -1,0 +1,23 @@
+{
+  "Name": "Synthetic Pack",
+  "Version": "1.2.3",
+  "Author": "Fixture Author",
+  "Description": "Synthetic plugin package for e2e testing",
+  "CodePath": "plugin.js",
+  "Icon": "imgs/icon",
+  "PropertyInspectorPath": "property_inspector.html",
+  "Actions": [
+    {
+      "UUID": "com.synthetic.pack.action",
+      "Name": "Synthetic Action",
+      "Icon": "imgs/action",
+      "PropertyInspectorPath": "property_inspector.html",
+      "States": [
+        {
+          "Image": "imgs/action",
+          "Title": "Pack Action"
+        }
+      ]
+    }
+  ]
+}
