@@ -76,5 +76,5 @@ No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `ed
 
 - Windows 10/11 x64, Rust `gnullvm-local` (1.99.0) y llvm-mingw portable en
   `C:\Tools\llvm-mingw-20261104-ucrt-x86_64\bin`.
-- Gate: `cargo test --release --workspace` desde `daemon/`; sin CI en el repositorio.
+- Gate: `cargo test --release --workspace` desde `daemon/`; CI en `.github/workflows/ci.yml`; releases en `release.yml`.
 - `libunwind.dll` debe estar en `PATH` o junto al `.exe`.

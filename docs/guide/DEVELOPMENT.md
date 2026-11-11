@@ -48,7 +48,7 @@ cargo test --release --workspace
 ```
 
 Es el único gate del repositorio. Debe compilar el workspace completo (binario + `host`, `plugman`,
-`builtin`, `web`) y pasar la suite. No hay CI configurado en el repo.
+`builtin`, `web`) y pasar la suite. El CI (`.github/workflows/ci.yml`) ejecuta lo mismo en cada push.
 
 Medidas que acompañan a un cambio de rendimiento (anotarlas, no estimarlas):
 
@@ -198,3 +198,30 @@ Get-Content .\orcadeck-v0.1.0-windows-x64.zip.sha256
 Los dos hashes deben coincidir; el `.sha256` lleva el hash y el nombre del zip, con el formato que
 espera `sha256sum -c`. El binario **no está firmado**: Windows SmartScreen puede avisar antes de
 ejecutarlo. Las herramientas de firmware no forman parte de la release.
+
+## 11. Publicar el espejo público
+
+El repo privado se publica en `miguelpicado/a-better-ajazz-controller` con la historia limpia: sin
+firmware del fabricante ni correos reales. No lo hagas a mano; usa el script (Node, sin
+dependencias):
+
+```powershell
+node tools/publish-public.mjs --dry-run   # clona y filtra en %TEMP%; no empuja
+node tools/publish-public.mjs             # publica main (push normal, sin --force)
+```
+
+- **Cuándo**: cuando `main` tenga algo que publicar y el árbol esté limpio. El script se niega si
+  hay cambios sin commitear, porque solo se publica la historia commiteada.
+- **Qué elimina**: los cuatro `.bin` de `docs/research/firmware/` y cualquier `*.bin`, `*.exe` o
+  `*.dll` de la historia (salvo lista blanca explícita), y reescribe los correos de autor y
+  committer al noreply de GitHub (`<id>+<login>@users.noreply.github.com`).
+- **Qué comprueba antes de empujar**: que no queden binarios ni correos ajenos, que no aparezca
+  ninguna cadena de `tools/publish-denylist.txt` (opcional, local y gitignorado: una por línea, `#`
+  para comentarios) y que sigan existiendo `LICENSE-MIT`, `LICENSE-APACHE` y `README.md`. Si algo
+  falla, sale con código 1 y no empuja nada.
+- **Requisitos**: `git filter-repo` en el `PATH` y `gh auth status` correcto.
+- **Nunca** ejecutes `git filter-repo` en este repo: reescribe todo el historial. El script clona
+  con `--no-local` en un temporal, filtra solo ahí y borra el temporal al terminar
+  (`--keep-tmp` lo conserva).
+- El push es `main:main` sin `--force`. Si lo rechazan por non-fast-forward, para y revisa qué hay
+  en el espejo; no fuerces.
