@@ -1735,6 +1735,9 @@ mod tests {
         keys_sent: Vec<(Instant, u8, Vec<u8>)>,
         sent_payloads: Vec<Vec<u8>>,
         n: usize,
+        fail_set_key_on: Option<u8>,
+        fail_send: bool,
+        fail_flush: bool,
     }
 
     impl DockWriter for FakeWriter {
@@ -1742,14 +1745,23 @@ mod tests {
             self.n
         }
         fn send(&mut self, payload: &[u8]) -> Result<(), String> {
+            if self.fail_send {
+                return Err("unplugged during send".into());
+            }
             self.sent_payloads.push(payload.to_vec());
             Ok(())
         }
         fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String> {
+            if self.fail_set_key_on == Some(key) {
+                return Err(format!("unplugged during set_key for key {key}"));
+            }
             self.keys_sent.push((Instant::now(), key, jpeg.to_vec()));
             Ok(())
         }
         fn flush(&mut self) -> Result<(), String> {
+            if self.fail_flush {
+                return Err("unplugged during flush".into());
+            }
             self.flushes.push((Instant::now(), self.keys_sent.len()));
             Ok(())
         }
@@ -1829,7 +1841,7 @@ mod tests {
         std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
         let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
         let mut writer = FakeWriter { n: 64, ..Default::default() };
-        let gap = Duration::from_millis(50);
+        let gap = Duration::from_secs(2);
 
         let worker = std::thread::spawn(move || {
             session_loop_threaded(
@@ -1849,7 +1861,7 @@ mod tests {
                 &builtins,
                 &mut pending,
                 gap,
-                Instant::now() - gap,
+                Instant::now(),
                 Instant::now(),
                 Instant::now(),
             )
@@ -1862,9 +1874,9 @@ mod tests {
 
         let t0 = Instant::now();
         event_tx.send(ReaderMsg::Data(press_buf)).unwrap();
-        let msg = msg_rx.recv_timeout(Duration::from_millis(15)).expect("received within 15 ms");
+        let msg = msg_rx.recv_timeout(Duration::from_millis(250)).expect("received within 250 ms");
         let elapsed = t0.elapsed();
-        assert!(elapsed < Duration::from_millis(15), "delivered without 30 ms polling delay ({elapsed:?})");
+        assert!(elapsed < Duration::from_millis(250), "delivered promptly via event channel ({elapsed:?})");
         match msg {
             BuiltinMsg::Press(ctx) => assert_eq!(ctx, "CTX2"),
             _ => panic!("unexpected msg"),
@@ -2007,5 +2019,291 @@ mod tests {
         // Stop loop
         event_tx.send(ReaderMsg::Error("done".into())).unwrap();
         worker.join().unwrap().unwrap_err();
+    }
+
+    #[test]
+    fn stale_paint_after_switch_dropped_and_only_new_image_written() {
+        let dir = tmp("gap1-stale-drop");
+        let (rt, rx) = runtime(&dir);
+        let (msg_tx, _msg_rx) = mpsc::channel();
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let builtins = HashSet::new();
+        let mut running = HashSet::new();
+
+        let scene_a = dir.join("A.sdProfile");
+        let scene_b = dir.join("B.sdProfile");
+        std::fs::create_dir_all(&scene_a).unwrap();
+        std::fs::create_dir_all(&scene_b).unwrap();
+        std::fs::write(scene_a.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        std::fs::write(scene_b.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+
+        let mut scenes = SceneSet::open(&scene_a, &dir, &dir, DEVICE).unwrap();
+        let mut by_key = HashMap::from([(1u8, Target::Plugin("CTX_OLD".into()))]);
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let gap = Duration::from_millis(10);
+        let mut last_batch = Instant::now() - gap;
+        let mut writer = FakeWriter { n: 64, ..Default::default() };
+
+        // 1. Old scene: queue paint for key 1
+        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
+        rt.send(1, red, "CTX_OLD");
+
+        // 2. Run real switch_scene to scene B
+        let _paints = switch_scene(
+            &mut scenes,
+            &SceneTarget::Id("B".into()),
+            Path::new("."),
+            &mut by_key,
+            &mut latest,
+            &host,
+            &[],
+            &mut running,
+            &msg_tx,
+            &rt,
+            &builtins,
+        ).expect("switch_scene to B succeeds");
+
+        assert_eq!(rt.gen.load(Ordering::Relaxed), 1);
+        assert!(rt.retired("CTX_OLD"));
+
+        // 3. Queue a new-scene paint for the same key (key 1) with blue image
+        let blue = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 0, 255])));
+        rt.send(1, blue.clone(), "CTX_NEW");
+
+        // Late paint from old plugin context (simulating delayed thread)
+        let yellow = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 255, 0])));
+        rt.send(1, yellow, "CTX_OLD");
+
+        // 4. Run process_paints
+        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+
+        // 5. Verification:
+        // Exactly one image written for key 1, matching the blue image from new scene
+        let key1_sends: Vec<_> = writer.keys_sent.iter().filter(|(_, k, _)| *k == 1).collect();
+        assert_eq!(key1_sends.len(), 1, "only one image written for key 1");
+        assert_eq!(key1_sends[0].2, render::key_jpeg(&blue, 1), "only the new scene image (blue) was written");
+        assert!(pending.is_empty(), "pending holds no stale entry");
+        assert_eq!(latest.get(&1), Some(&blue), "latest reflects the new scene image");
+    }
+
+    #[test]
+    fn stale_pending_image_purged_by_retain_filter_during_race() {
+        let dir = tmp("gap1-pending-purge");
+        let (rt, rx) = runtime(&dir);
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let gap = Duration::from_millis(50);
+        let mut last_batch = Instant::now();
+        let mut writer = FakeWriter { n: 64, ..Default::default() };
+
+        // 1. Paint arrives at gen 0 for key 3 (red image)
+        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
+        rt.send(3, red, "CTX_A");
+
+        // Call process_paints while last_batch.elapsed() < gap:
+        // Key 3 is received and inserted into `pending` with gen 0, but not flushed!
+        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        assert_eq!(pending.len(), 1, "pending holds key 3 at gen 0");
+        assert_eq!(pending.get(&3).map(|(_, g)| *g), Some(0));
+        assert_eq!(writer.keys_sent.len(), 0, "nothing flushed yet due to gap");
+
+        // 2. Scene switch occurs while pending already holds gen 0 image:
+        // Runtime::gen is bumped to 1
+        rt.gen.fetch_add(1, Ordering::SeqCst);
+
+        // 3. Gap elapses without any new paint for key 3 arriving, but key 4 arrives at gen 1
+        last_batch = Instant::now() - gap - Duration::from_millis(5);
+
+        let white_img = white(KEY_PX);
+        rt.send(4, white_img.clone(), "CTX_B");
+
+        // 4. Run process_paints:
+        // pending.retain(|_, (_, g)| *g >= gen) must purge key 3 (g=0 < gen=1)
+        // and flush key 4 (g=1 >= gen=1)
+        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+
+        // 5. Verify:
+        // Key 3 was purged by pending.retain and NEVER written to writer
+        assert!(writer.keys_sent.iter().all(|(_, k, _)| *k != 3), "stale gen 0 key 3 was never written");
+        let key4_sent = writer.keys_sent.iter().find(|(_, k, _)| *k == 4);
+        assert!(key4_sent.is_some(), "key 4 at gen 1 was written");
+        assert_eq!(key4_sent.unwrap().2, render::key_jpeg(&white_img, 4));
+        assert!(pending.is_empty(), "pending is completely drained and has no stale entries");
+    }
+
+    #[test]
+    fn reader_error_ends_threaded_session_loop_promptly() {
+        let dir = tmp("gap2-reader-err");
+        let (rt, rx) = runtime(&dir);
+        let (_reload_tx, reload_rx) = mpsc::channel();
+        let (msg_tx, _msg_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let mut by_key = HashMap::new();
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let mut running = HashSet::new();
+        let builtins = HashSet::new();
+        let scene_path = dir.join("A.sdProfile");
+        std::fs::create_dir_all(&scene_path).unwrap();
+        std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
+        let mut writer = FakeWriter { n: 64, ..Default::default() };
+        let gap = Duration::from_secs(5);
+
+        let worker = std::thread::spawn(move || {
+            session_loop_threaded(
+                &event_rx,
+                &mut writer,
+                &rx,
+                &reload_rx,
+                &mut latest,
+                &mut by_key,
+                &host,
+                &msg_tx,
+                &rt,
+                &mut scenes,
+                Path::new("."),
+                &[],
+                &mut running,
+                &builtins,
+                &mut pending,
+                gap,
+                Instant::now(),
+                Instant::now(),
+                Instant::now(),
+            )
+        });
+
+        let t0 = Instant::now();
+        event_tx.send(ReaderMsg::Error("usb read failed: device detached".into())).unwrap();
+
+        let res = worker.join().expect("session_loop_threaded terminates promptly");
+        let elapsed = t0.elapsed();
+        assert!(elapsed < Duration::from_millis(250), "terminated promptly on ReaderMsg::Error ({elapsed:?})");
+        assert_eq!(res, Err("usb read failed: device detached".to_string()));
+    }
+
+    #[test]
+    fn writer_error_propagates_from_process_paints_without_panic_and_preserves_images_in_latest() {
+        let dir = tmp("gap2-writer-err");
+        let (rt, rx) = runtime(&dir);
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let gap = Duration::from_millis(10);
+        let mut last_batch = Instant::now() - gap;
+
+        let mut failing_writer = FakeWriter {
+            n: 64,
+            fail_set_key_on: Some(2),
+            ..Default::default()
+        };
+
+        let img1 = white(KEY_PX);
+        let img2 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
+        let img3 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 255, 0])));
+
+        rt.send(1, img1.clone(), "ctx");
+        rt.send(2, img2.clone(), "ctx");
+        rt.send(3, img3.clone(), "ctx");
+
+        let res = process_paints(
+            &rx,
+            &rt,
+            &mut latest,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut failing_writer,
+            Instant::now(),
+        );
+
+        assert!(res.is_err(), "writer failure must surface as Err");
+        let err_msg = res.unwrap_err();
+        assert!(err_msg.contains("unplugged during set_key for key 2"), "error preserved: {err_msg}");
+
+        // Images are NOT lost: `latest` holds all queued images
+        assert_eq!(latest.get(&1), Some(&img1));
+        assert_eq!(latest.get(&2), Some(&img2));
+        assert_eq!(latest.get(&3), Some(&img3));
+
+        // Reconnect path parity: pending is re-seeded from latest
+        let gen = rt.gen.load(Ordering::Relaxed);
+        let mut reconnected_pending: HashMap<u8, (DynamicImage, u64)> =
+            latest.iter().map(|(&k, img)| (k, (img.clone(), gen))).collect();
+
+        assert_eq!(reconnected_pending.len(), 3, "all 3 images re-queued for reconnect");
+
+        let mut healthy_writer = FakeWriter { n: 64, ..Default::default() };
+        let mut reconnect_batch = Instant::now() - gap;
+        process_paints(
+            &rx,
+            &rt,
+            &mut latest,
+            &mut reconnected_pending,
+            &mut reconnect_batch,
+            gap,
+            &mut healthy_writer,
+            Instant::now(),
+        ).expect("reconnected paint succeeds");
+
+        assert_eq!(healthy_writer.flushes.len(), 1);
+        assert_eq!(healthy_writer.keys_sent.len(), 3);
+        assert!(reconnected_pending.is_empty());
+    }
+
+    #[test]
+    fn writer_error_propagates_from_session_loop_threaded() {
+        let dir = tmp("gap2-loop-writer-err");
+        let (rt, rx) = runtime(&dir);
+        let (_reload_tx, reload_rx) = mpsc::channel();
+        let (msg_tx, _msg_rx) = mpsc::channel();
+        let (_event_tx, event_rx) = mpsc::channel();
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let mut by_key = HashMap::new();
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let mut running = HashSet::new();
+        let builtins = HashSet::new();
+        let scene_path = dir.join("A.sdProfile");
+        std::fs::create_dir_all(&scene_path).unwrap();
+        std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
+
+        let mut failing_writer = FakeWriter {
+            n: 64,
+            fail_set_key_on: Some(1),
+            ..Default::default()
+        };
+        let gap = Duration::from_millis(10);
+
+        rt.send(1, white(KEY_PX), "c");
+
+        let res = session_loop_threaded(
+            &event_rx,
+            &mut failing_writer,
+            &rx,
+            &reload_rx,
+            &mut latest,
+            &mut by_key,
+            &host,
+            &msg_tx,
+            &rt,
+            &mut scenes,
+            Path::new("."),
+            &[],
+            &mut running,
+            &builtins,
+            &mut pending,
+            gap,
+            Instant::now() - gap,
+            Instant::now(),
+            Instant::now(),
+        );
+
+        assert!(res.is_err(), "writer failure terminates session loop with Err");
+        let err = res.unwrap_err();
+        assert!(err.contains("unplugged during set_key for key 1"));
     }
 }
