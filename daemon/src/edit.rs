@@ -144,7 +144,21 @@ fn wait_for_ctrl_c() {
     }
 }
 
+/// The only URLs the editor opens: loopback http with a plain query. The URL may come from the control
+/// pipe, so nothing else (quotes, spaces, other hosts) ever reaches `cmd`.
+fn is_editor_url(url: &str) -> bool {
+    url.strip_prefix("http://127.0.0.1:").is_some_and(|rest| {
+        rest.starts_with(|c: char| c.is_ascii_digit())
+            && rest
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || ":/?=&._-".contains(c))
+    })
+}
+
 fn open_browser(url: &str) -> Result<(), String> {
+    if !is_editor_url(url) {
+        return Err(format!("refusing to open unexpected url {url:?}"));
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -300,6 +314,25 @@ pub fn run_install(raw: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_loopback_editor_urls_are_opened() {
+        assert!(super::is_editor_url("http://127.0.0.1:18700/?token=ab12"));
+        assert!(super::is_editor_url(
+            "http://127.0.0.1:18700/?token=ab12&install=cd34"
+        ));
+        for bad in [
+            "http://evil.example/?token=1",
+            "http://127.0.0.1.evil.example:80/",
+            "http://127.0.0.1:80/\" & calc & \"",
+            "http://127.0.0.1:80/?a=b c",
+            "file:///C:/Windows/System32/calc.exe",
+            "http://127.0.0.1:/x",
+            "",
+        ] {
+            assert!(!super::is_editor_url(bad), "{bad}");
+        }
+    }
+
     use super::*;
 
     #[test]

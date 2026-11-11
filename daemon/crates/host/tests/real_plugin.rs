@@ -29,7 +29,8 @@ fn orcadock_plugin_paints_and_reacts() {
     let src = std::env::var_os("ORCADOCK_PLUGIN")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tools/legacy/com.miguelpicado.orcadock.sdPlugin")
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../tools/legacy/com.miguelpicado.orcadock.sdPlugin")
         });
     if !src.is_dir() || !src.join("manifest.json").is_file() {
         eprintln!(
