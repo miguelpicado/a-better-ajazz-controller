@@ -809,7 +809,7 @@ impl Store for FsStore {
                 }),
             ));
         }
-        items.sort_by(|a, b| b.0.cmp(&a.0));
+        items.sort_by_key(|i| std::cmp::Reverse(i.0));
         items.truncate(MAX);
         Ok(json!({
             "dir": dir.to_string_lossy(),

@@ -375,7 +375,9 @@ fn collect_action_uuids(dir: &Path, uuid: &str, locale: &Map<String, Value>) -> 
             // UTF-16LE view at even offsets, as Node's buf.toString('utf16le') decodes it.
             // Non-ASCII code units become a byte that never matches.
             let ascii: Vec<u8> = buf
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| match u16::from_le_bytes([c[0], c[1]]) {
                     u @ 0..=0x7f => u as u8,
                     _ => 0xff,

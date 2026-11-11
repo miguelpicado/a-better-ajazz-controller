@@ -1788,9 +1788,11 @@ mod tests {
         rt.tick_at(deadline - Duration::from_millis(1));
         assert!(rx.try_recv().is_err(), "restored just before the deadline");
         rt.tick_at(deadline);
-        let (k, restored) = match rx.try_recv().expect("restore") {
-            Paint { key, img, .. } => (key, img),
-        };
+        let Paint {
+            key: k,
+            img: restored,
+            ..
+        } = rx.try_recv().expect("restore");
         assert_eq!(k, 1);
         assert_eq!(restored.to_rgba8(), base.to_rgba8());
     }
@@ -1818,7 +1820,7 @@ mod tests {
         );
         rt.clear_cells();
         assert!(
-            rt.settings.lock().unwrap().cells.get("CTX").is_none(),
+            !rt.settings.lock().unwrap().cells.contains_key("CTX"),
             "old cell mapping is dropped"
         );
     }
@@ -2620,7 +2622,7 @@ mod tests {
         let deadline = t0 + gap + Duration::from_millis(50);
         let mut flushed = false;
         while Instant::now() < deadline {
-            if fake.lock().unwrap().flushes.len() >= 1 {
+            if !fake.lock().unwrap().flushes.is_empty() {
                 flushed = true;
                 break;
             }
@@ -2778,7 +2780,7 @@ mod tests {
         );
         assert!(pending.is_empty(), "pending holds no stale entry");
         assert!(
-            rt.view.lock().unwrap().base.get(&1).is_none(),
+            !rt.view.lock().unwrap().base.contains_key(&1),
             "the old scene image is not kept after the switch"
         );
     }

@@ -420,10 +420,7 @@ impl Host {
             .name(name)
             .spawn(move || host.supervise(plugin, child, stop))
             .map(|_| ())
-            .map_err(|e| {
-                self.stop(&id);
-                e
-            })
+            .inspect_err(|_| self.stop(&id))
     }
 
     /// Blocks until the child exits. A crash is retried with backoff; a `stop` (flag set, or run
@@ -661,6 +658,8 @@ impl Host {
         let config = WebSocketConfig::default()
             .max_frame_size(Some(MAX_WS_MESSAGE))
             .max_message_size(Some(MAX_WS_MESSAGE));
+        // ponytail: boxing the error costs more than the rare error path; revisit if this shows up in a profile.
+        #[allow(clippy::result_large_err)]
         let mut reader = tungstenite::accept_hdr_with_config(
             Muted {
                 s: stream,
@@ -700,19 +699,17 @@ impl Host {
                         }
                     }
                 }
-                Some(Role::Pi(ctx)) => {
-                    if st.pis.get(&ctx).is_some_and(|c| c.id == conn.id) {
-                        st.pis.remove(&ctx);
-                        if let Some(inst) = st.instances.get(&ctx) {
-                            let plugin = st.plugins.get(&inst.plugin).and_then(|s| s.conn.clone());
-                            fx.send(
-                                plugin.as_ref(),
-                                pi_event("propertyInspectorDidDisappear", inst),
-                            );
-                        }
+                Some(Role::Pi(ctx)) if st.pis.get(&ctx).is_some_and(|c| c.id == conn.id) => {
+                    st.pis.remove(&ctx);
+                    if let Some(inst) = st.instances.get(&ctx) {
+                        let plugin = st.plugins.get(&inst.plugin).and_then(|s| s.conn.clone());
+                        fx.send(
+                            plugin.as_ref(),
+                            pi_event("propertyInspectorDidDisappear", inst),
+                        );
                     }
                 }
-                None => {}
+                _ => {}
             }
         }
         self.run(fx);
@@ -906,6 +903,8 @@ fn command(st: &mut State, conn: &Arc<Conn>, role: Role, event: &str, msg: &Valu
 /// only from an origin listed in [`Config::origins`] (exact match) or, while an inspector session
 /// exists, from the opaque `null` origin of a sandboxed PI iframe. Registering as a PI still
 /// requires its single-use token, so an unrelated page cannot reach plugins.
+// ponytail: boxing the error costs more than the rare error path; revisit if this shows up in a profile.
+#[allow(clippy::result_large_err)]
 fn check_origin(
     allowed: &[String],
     req: &Request,

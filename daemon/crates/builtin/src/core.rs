@@ -325,7 +325,7 @@ pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) ->
     } else {
         17
     };
-    let on = blink && (frame / 2) % 2 == 0;
+    let on = blink && (frame / 2).is_multiple_of(2);
     let time = match a.state {
         State::Question | State::Done => a
             .since

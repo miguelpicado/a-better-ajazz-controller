@@ -323,10 +323,9 @@ fn pi_static_blocks_traversal_and_bad_ids() {
             r.text()
         );
     }
-    assert_eq!(
-        get_pi(&s, "/api/plugins/com.test.pi/pi/%2e%2e/secret.txt", "")
+    assert!(
+        !get_pi(&s, "/api/plugins/com.test.pi/pi/%2e%2e/secret.txt", "")
             .text()
-            .contains("outside"),
-        false
+            .contains("outside")
     );
 }

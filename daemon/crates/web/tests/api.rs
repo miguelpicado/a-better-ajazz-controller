@@ -587,7 +587,7 @@ fn plugins_actions_images_device() {
             .unwrap()
             .iter()
             .find(|p| p["uuid"] == u)
-            .map(|p| p.clone())
+            .cloned()
             .unwrap()
     };
     assert_eq!(
