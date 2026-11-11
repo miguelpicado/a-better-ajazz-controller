@@ -1,6 +1,10 @@
 //! Reads existing Stream Dock `.sdProfile\manifest.json` scenes unchanged.
 use serde::Deserialize;
-use std::{collections::BTreeMap, fs, path::{Component, Path, PathBuf}};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Component, Path, PathBuf},
+};
 
 #[derive(Deserialize, Debug)]
 pub struct State {
@@ -38,7 +42,12 @@ pub struct Scene {
 fn plain_relative(img: &str) -> bool {
     !img.is_empty()
         && !img.contains(':')
-        && !Path::new(img).components().any(|c| matches!(c, Component::Prefix(_) | Component::RootDir | Component::ParentDir))
+        && !Path::new(img).components().any(|c| {
+            matches!(
+                c,
+                Component::Prefix(_) | Component::RootDir | Component::ParentDir
+            )
+        })
 }
 
 /// `base/rel` when it is a file whose canonical path stays inside `base` (no link escapes).
@@ -56,7 +65,8 @@ impl Scene {
     }
 
     pub fn parse(dir: &Path, json: &str) -> Result<Scene, String> {
-        let m: Manifest = serde_json::from_str(json.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
+        let m: Manifest =
+            serde_json::from_str(json.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
         let actions = m
             .actions
             .into_iter()
@@ -65,7 +75,10 @@ impl Scene {
                 Some(((c.parse().ok()?, r.parse().ok()?), a))
             })
             .collect();
-        Ok(Scene { dir: dir.to_path_buf(), actions })
+        Ok(Scene {
+            dir: dir.to_path_buf(),
+            actions,
+        })
     }
 
     /// Static image of an action's current state. Bare names live in `<profile>/Images/`; otherwise the
@@ -81,30 +94,48 @@ impl Scene {
         if let Some(p) = inside(&self.dir.join("Images"), img) {
             return Some(p);
         }
-        let plugin = fs::read_dir(plugins).ok()?.flatten().map(|e| e.path()).find(|p| {
-            p.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".sdPlugin"))
-                .is_some_and(|stem| a.uuid.starts_with(&format!("{stem}.")))
-        })?;
-        ["", ".png", ".jpg", ".jpeg"].iter().find_map(|e| inside(&plugin, &format!("{img}{e}")))
+        let plugin = fs::read_dir(plugins)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(|n| n.strip_suffix(".sdPlugin"))
+                    .is_some_and(|stem| a.uuid.starts_with(&format!("{stem}.")))
+            })?;
+        ["", ".png", ".jpg", ".jpeg"]
+            .iter()
+            .find_map(|e| inside(&plugin, &format!("{img}{e}")))
     }
 }
 
 /// Re-reads `manifest`, sets only `Actions["<col>,<row>"].Settings` and writes it back atomically
 /// with the editor's layout (4-space, sorted keys). Every other field and cell is kept. Returns
 /// `false` (and does not write) when the value is already there.
-pub fn save_action_settings(manifest: &Path, col: u8, row: u8, settings: &serde_json::Value) -> Result<bool, String> {
+pub fn save_action_settings(
+    manifest: &Path,
+    col: u8,
+    row: u8,
+    settings: &serde_json::Value,
+) -> Result<bool, String> {
     let bytes = fs::read(manifest).map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes));
     let mut doc: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     let key = format!("{col},{row}");
-    let Some(action) = doc.get_mut("Actions").and_then(|a| a.get_mut(&key)).and_then(|a| a.as_object_mut()) else {
+    let Some(action) = doc
+        .get_mut("Actions")
+        .and_then(|a| a.get_mut(&key))
+        .and_then(|a| a.as_object_mut())
+    else {
         return Ok(false);
     };
     if action.get("Settings") == Some(settings) {
         return Ok(false);
     }
     action.insert("Settings".into(), settings.clone());
-    orcadeck_web::store::atomic_write(manifest, &orcadeck_web::store::to_pretty(&doc), true).map_err(|e| e.to_string())?;
+    orcadeck_web::store::atomic_write(manifest, &orcadeck_web::store::to_pretty(&doc), true)
+        .map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -114,7 +145,8 @@ mod tests {
     use serde_json::json;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -141,13 +173,27 @@ mod tests {
         assert_eq!(doc["Actions"]["0,0"]["Settings"], json!({"new": 1}));
         assert_eq!(doc["Actions"]["0,0"]["Extra"], 1);
         assert_eq!(doc["Actions"]["0,0"]["Name"], "A");
-        assert_eq!(doc["Actions"]["1,0"]["Settings"], json!({"k": 2}), "other cell untouched");
+        assert_eq!(
+            doc["Actions"]["1,0"]["Settings"],
+            json!({"k": 2}),
+            "other cell untouched"
+        );
         assert_eq!(doc["Name"], "S");
         assert_eq!(doc["Custom"], json!({"a": 2, "z": 1}));
-        assert_eq!(fs::read(&path).unwrap(), orcadeck_web::store::to_pretty(&doc), "4-space, sorted keys");
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            orcadeck_web::store::to_pretty(&doc),
+            "4-space, sorted keys"
+        );
 
-        assert!(!save_action_settings(&path, 0, 0, &json!({"new": 1})).unwrap(), "unchanged: no write");
-        assert!(!save_action_settings(&path, 9, 9, &json!({})).unwrap(), "missing cell: no write");
+        assert!(
+            !save_action_settings(&path, 0, 0, &json!({"new": 1})).unwrap(),
+            "unchanged: no write"
+        );
+        assert!(
+            !save_action_settings(&path, 9, 9, &json!({})).unwrap(),
+            "missing cell: no write"
+        );
     }
 }
 
@@ -158,7 +204,8 @@ mod manifest_image_containment {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -169,13 +216,18 @@ mod manifest_image_containment {
             uuid: "com.test.demo.one".into(),
             name: String::new(),
             state: 0,
-            states: vec![State { image: image.into() }],
+            states: vec![State {
+                image: image.into(),
+            }],
             settings: serde_json::Value::Null,
         }
     }
 
     fn scene(dir: &Path) -> Scene {
-        Scene { dir: dir.to_path_buf(), actions: vec![] }
+        Scene {
+            dir: dir.to_path_buf(),
+            actions: vec![],
+        }
     }
 
     #[test]
@@ -197,8 +249,12 @@ mod manifest_image_containment {
         let secret = t.join("secret.png");
         fs::write(&secret, b"secret").unwrap();
 
-        let found = scene(&profile).image_of(&action(&secret.to_string_lossy()), &t.join("plugins"));
-        assert_eq!(found, None, "read an absolute path outside the profile: {found:?}");
+        let found =
+            scene(&profile).image_of(&action(&secret.to_string_lossy()), &t.join("plugins"));
+        assert_eq!(
+            found, None,
+            "read an absolute path outside the profile: {found:?}"
+        );
     }
 
     #[test]

@@ -63,7 +63,11 @@ fn random<const N: usize>() -> [u8; N] {
 
 /// Stream Dock-style id: base36 `8-4-4-4-12`, uppercase for scenes, lowercase for `ActionID`.
 pub fn new_id(upper: bool) -> String {
-    let abc: &[u8] = if upper { b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" } else { b"0123456789abcdefghijklmnopqrstuvwxyz" };
+    let abc: &[u8] = if upper {
+        b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    } else {
+        b"0123456789abcdefghijklmnopqrstuvwxyz"
+    };
     let mut s = String::with_capacity(36);
     for (i, b) in random::<32>().iter().enumerate() {
         if matches!(i, 8 | 12 | 16 | 20) {
@@ -88,7 +92,12 @@ impl Server {
         let listener = TcpListener::bind(("127.0.0.1", port))?;
         let addr = listener.local_addr()?;
         let token: String = random::<32>().iter().map(|b| format!("{b:02x}")).collect();
-        let ctx = Arc::new(api::Ctx { store, token: token.clone(), port: addr.port(), lock: Mutex::new(()) });
+        let ctx = Arc::new(api::Ctx {
+            store,
+            token: token.clone(),
+            port: addr.port(),
+            lock: Mutex::new(()),
+        });
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         let thread = thread::spawn(move || {
@@ -101,7 +110,12 @@ impl Server {
                 thread::spawn(move || serve(&ctx, conn));
             }
         });
-        Ok(Server { addr, token, stop, thread: Some(thread) })
+        Ok(Server {
+            addr,
+            token,
+            stop,
+            thread: Some(thread),
+        })
     }
 
     pub fn token(&self) -> &str {
@@ -110,7 +124,11 @@ impl Server {
 
     /// URL to open in the browser.
     pub fn url(&self) -> String {
-        format!("http://127.0.0.1:{}/?token={}", self.addr.port(), self.token)
+        format!(
+            "http://127.0.0.1:{}/?token={}",
+            self.addr.port(),
+            self.token
+        )
     }
 
     pub fn stop(mut self) {
@@ -148,9 +166,16 @@ mod tests {
     fn ids_look_like_stream_dock() {
         let a = super::new_id(true);
         assert_eq!(a.len(), 36);
-        assert_eq!(a.split('-').map(str::len).collect::<Vec<_>>(), [8, 4, 4, 4, 12]);
-        assert!(a.bytes().all(|b| b == b'-' || b.is_ascii_digit() || b.is_ascii_uppercase()));
+        assert_eq!(
+            a.split('-').map(str::len).collect::<Vec<_>>(),
+            [8, 4, 4, 4, 12]
+        );
+        assert!(a
+            .bytes()
+            .all(|b| b == b'-' || b.is_ascii_digit() || b.is_ascii_uppercase()));
         assert_ne!(a, super::new_id(true));
-        assert!(super::new_id(false).bytes().all(|b| !b.is_ascii_uppercase()));
+        assert!(super::new_id(false)
+            .bytes()
+            .all(|b| !b.is_ascii_uppercase()));
     }
 }

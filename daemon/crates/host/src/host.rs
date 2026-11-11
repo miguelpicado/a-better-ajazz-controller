@@ -42,7 +42,13 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { port: 18618, node: "node".into(), devices: Vec::new(), language: "en".into(), origins: Vec::new() }
+        Config {
+            port: 18618,
+            node: "node".into(),
+            devices: Vec::new(),
+            language: "en".into(),
+            origins: Vec::new(),
+        }
     }
 }
 
@@ -86,7 +92,12 @@ impl Instance {
     }
 
     fn key(&self) -> Key {
-        Key { context: self.context.clone(), device: self.device.clone(), column: self.column, row: self.row }
+        Key {
+            context: self.context.clone(),
+            device: self.device.clone(),
+            column: self.column,
+            row: self.row,
+        }
     }
 }
 
@@ -104,15 +115,32 @@ pub struct Key {
 /// renderer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Output {
-    Image { key: Key, image: String, state: Option<u32> },
-    Title { key: Key, title: String, state: Option<u32> },
-    State { key: Key, state: u32 },
+    Image {
+        key: Key,
+        image: String,
+        state: Option<u32>,
+    },
+    Title {
+        key: Key,
+        title: String,
+        state: Option<u32>,
+    },
+    State {
+        key: Key,
+        state: u32,
+    },
     ShowOk(Key),
     ShowAlert(Key),
     /// Action settings changed: persist them in the profile.
-    Settings { context: String, settings: Value },
+    Settings {
+        context: String,
+        settings: Value,
+    },
     /// Plugin global settings changed: persist them, then seed with [`Host::load_global_settings`].
-    GlobalSettings { plugin: String, settings: Value },
+    GlobalSettings {
+        plugin: String,
+        settings: Value,
+    },
     OpenUrl(String),
 }
 
@@ -184,7 +212,9 @@ const RESTART_RESET: Duration = Duration::from_secs(60);
 pub const MAX_WS_MESSAGE: usize = 4 * 1024 * 1024;
 
 fn restart_delay(attempt: u32) -> Duration {
-    RESTART_MIN.saturating_mul(1 << attempt.min(6)).min(RESTART_MAX)
+    RESTART_MIN
+        .saturating_mul(1 << attempt.min(6))
+        .min(RESTART_MAX)
 }
 
 #[derive(Clone)]
@@ -262,17 +292,19 @@ impl Host {
             }),
         };
         let h = host.clone();
-        std::thread::Builder::new().name("host-accept".into()).spawn(move || {
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(s) => {
-                        let h = h.clone();
-                        std::thread::spawn(move || h.serve(s));
+        std::thread::Builder::new()
+            .name("host-accept".into())
+            .spawn(move || {
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(s) => {
+                            let h = h.clone();
+                            std::thread::spawn(move || h.serve(s));
+                        }
+                        Err(e) => log::warn!("accept failed: {e}"),
                     }
-                    Err(e) => log::warn!("accept failed: {e}"),
                 }
-            }
-        })?;
+            })?;
         Ok(host)
     }
 
@@ -318,27 +350,45 @@ impl Host {
     /// same plugin is stopped first (and is not restarted). `.html` plugins return `Unsupported`.
     pub fn launch(&self, plugin: Plugin) -> io::Result<()> {
         self.stop(&plugin.id);
-        let Some((child, stop)) = self.spawn(&plugin, None)? else { return Ok(()) };
+        let Some((child, stop)) = self.spawn(&plugin, None)? else {
+            return Ok(());
+        };
         self.watch(plugin, child, stop)
     }
 
     /// Starts one process and installs its run handle. With `expect`, gives up (`Ok(None)`) unless
     /// the current run is still that one, so a late restart cannot revive a stopped plugin.
-    fn spawn(&self, plugin: &Plugin, expect: Option<&Arc<AtomicBool>>) -> io::Result<Option<(Child, Arc<AtomicBool>)>> {
+    fn spawn(
+        &self,
+        plugin: &Plugin,
+        expect: Option<&Arc<AtomicBool>>,
+    ) -> io::Result<Option<(Child, Arc<AtomicBool>)>> {
         if expect.is_some_and(|current| !self.is_current(&plugin.id, current)) {
             return Ok(None);
         }
         let uuid = self.add(plugin);
         let info = launch::info(plugin, &self.inner.cfg.devices, &self.inner.cfg.language);
         let mut cmd = launch::command(plugin, &self.inner.cfg.node, self.inner.port, &uuid, &info)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, format!("cannot run {}", plugin.code_path)))?;
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("cannot run {}", plugin.code_path),
+                )
+            })?;
         let mut child = cmd.spawn()?;
         let stop = Arc::new(AtomicBool::new(false));
         let installed = {
             let mut st = self.lock();
             match st.plugins.get_mut(&plugin.id) {
-                Some(slot) if expect.is_none_or(|c| slot.run.as_ref().is_some_and(|r| Arc::ptr_eq(&r.stop, c))) => {
-                    slot.run = Some(Run { stop: stop.clone(), pid: Some(child.id()) });
+                Some(slot)
+                    if expect.is_none_or(|c| {
+                        slot.run.as_ref().is_some_and(|r| Arc::ptr_eq(&r.stop, c))
+                    }) =>
+                {
+                    slot.run = Some(Run {
+                        stop: stop.clone(),
+                        pid: Some(child.id()),
+                    });
                     true
                 }
                 _ => false,
@@ -354,7 +404,11 @@ impl Host {
     }
 
     fn is_current(&self, plugin: &str, flag: &Arc<AtomicBool>) -> bool {
-        self.lock().plugins.get(plugin).and_then(|s| s.run.as_ref()).is_some_and(|r| Arc::ptr_eq(&r.stop, flag))
+        self.lock()
+            .plugins
+            .get(plugin)
+            .and_then(|s| s.run.as_ref())
+            .is_some_and(|r| Arc::ptr_eq(&r.stop, flag))
     }
 
     /// Starts the one waiter thread of a plugin. It blocks on `Child::wait`; nothing polls.
@@ -362,10 +416,14 @@ impl Host {
         let host = self.clone();
         let id = plugin.id.clone();
         let name = format!("{}-wait", plugin.id);
-        std::thread::Builder::new().name(name).spawn(move || host.supervise(plugin, child, stop)).map(|_| ()).map_err(|e| {
-            self.stop(&id);
-            e
-        })
+        std::thread::Builder::new()
+            .name(name)
+            .spawn(move || host.supervise(plugin, child, stop))
+            .map(|_| ())
+            .map_err(|e| {
+                self.stop(&id);
+                e
+            })
     }
 
     /// Blocks until the child exits. A crash is retried with backoff; a `stop` (flag set, or run
@@ -378,7 +436,11 @@ impl Host {
             let uptime = started.elapsed();
             {
                 let mut st = self.lock();
-                let current = st.plugins.get_mut(&plugin.id).and_then(|s| s.run.as_mut()).filter(|r| Arc::ptr_eq(&r.stop, &stop));
+                let current = st
+                    .plugins
+                    .get_mut(&plugin.id)
+                    .and_then(|s| s.run.as_mut())
+                    .filter(|r| Arc::ptr_eq(&r.stop, &stop));
                 match current {
                     Some(run) => run.pid = None,
                     None => return, // stopped or relaunched while we waited
@@ -392,7 +454,12 @@ impl Host {
             }
             let delay = restart_delay(attempt);
             attempt = attempt.saturating_add(1);
-            log::warn!("{}: {status:?} after {} ms, restarting in {} ms", plugin.id, uptime.as_millis(), delay.as_millis());
+            log::warn!(
+                "{}: {status:?} after {} ms, restarting in {} ms",
+                plugin.id,
+                uptime.as_millis(),
+                delay.as_millis()
+            );
             std::thread::sleep(delay);
             if stop.load(Ordering::SeqCst) {
                 self.clear(&plugin.id, &stop);
@@ -415,7 +482,11 @@ impl Host {
 
     fn clear(&self, plugin: &str, flag: &Arc<AtomicBool>) {
         if let Some(slot) = self.lock().plugins.get_mut(plugin) {
-            if slot.run.as_ref().is_some_and(|r| Arc::ptr_eq(&r.stop, flag)) {
+            if slot
+                .run
+                .as_ref()
+                .is_some_and(|r| Arc::ptr_eq(&r.stop, flag))
+            {
                 slot.run = None;
             }
         }
@@ -426,7 +497,9 @@ impl Host {
     pub fn stop(&self, plugin_id: &str) {
         let (run, conn) = {
             let mut st = self.lock();
-            let Some(slot) = st.plugins.get_mut(plugin_id) else { return };
+            let Some(slot) = st.plugins.get_mut(plugin_id) else {
+                return;
+            };
             (slot.run.take(), slot.conn.take())
         };
         if let Some(c) = conn {
@@ -444,12 +517,15 @@ impl Host {
     /// slot when needed, so it may be called before [`Host::launch`].
     pub fn load_global_settings(&self, plugin_id: &str, settings: Value) {
         let mut st = self.lock();
-        let slot = st.plugins.entry(plugin_id.to_string()).or_insert_with(|| Slot {
-            uuid: String::new(),
-            conn: None,
-            global: json!({}),
-            run: None,
-        });
+        let slot = st
+            .plugins
+            .entry(plugin_id.to_string())
+            .or_insert_with(|| Slot {
+                uuid: String::new(),
+                conn: None,
+                global: json!({}),
+                run: None,
+            });
         slot.global = settings;
     }
 
@@ -486,7 +562,9 @@ impl Host {
         let mut fx = Fx::default();
         {
             let mut st = self.lock();
-            let Some(inst) = st.instances.remove(context) else { return };
+            let Some(inst) = st.instances.remove(context) else {
+                return;
+            };
             let conn = st.plugins.get(&inst.plugin).and_then(|s| s.conn.clone());
             fx.send(conn.as_ref(), instance_msg("willDisappear", &inst));
             st.pi_tokens.retain(|_, c| c != context);
@@ -503,9 +581,16 @@ impl Host {
         let mut fx = Fx::default();
         {
             let st = self.lock();
-            let Some(inst) = st.instances.get(context) else { return false };
-            let Some(conn) = st.plugins.get(&inst.plugin).and_then(|s| s.conn.clone()) else { return false };
-            fx.send(Some(&conn), instance_msg(if down { "keyDown" } else { "keyUp" }, inst));
+            let Some(inst) = st.instances.get(context) else {
+                return false;
+            };
+            let Some(conn) = st.plugins.get(&inst.plugin).and_then(|s| s.conn.clone()) else {
+                return false;
+            };
+            fx.send(
+                Some(&conn),
+                instance_msg(if down { "keyDown" } else { "keyUp" }, inst),
+            );
         }
         self.run(fx);
         true
@@ -548,7 +633,11 @@ impl Host {
         self.disconnected(&conn);
     }
 
-    fn handshake(&self, stream: TcpStream, id: u64) -> Result<(WebSocket<Muted>, Arc<Conn>), Box<dyn std::error::Error>> {
+    fn handshake(
+        &self,
+        stream: TcpStream,
+        id: u64,
+    ) -> Result<(WebSocket<Muted>, Arc<Conn>), Box<dyn std::error::Error>> {
         stream.set_nodelay(true)?;
         let writer = WebSocket::from_raw_socket(stream.try_clone()?, WsRole::Server, None);
         let raw = stream.try_clone()?;
@@ -559,7 +648,12 @@ impl Host {
             let st = self.lock();
             !st.pi_tokens.is_empty() || !st.pis.is_empty()
         };
-        let mut allowed = self.inner.origins.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut allowed = self
+            .inner
+            .origins
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if inspector_open {
             allowed.push("null".into());
         }
@@ -568,7 +662,10 @@ impl Host {
             .max_frame_size(Some(MAX_WS_MESSAGE))
             .max_message_size(Some(MAX_WS_MESSAGE));
         let mut reader = tungstenite::accept_hdr_with_config(
-            Muted { s: stream, mute: false },
+            Muted {
+                s: stream,
+                mute: false,
+            },
             |req: &Request, resp| {
                 opaque = req.headers().get("origin").and_then(|v| v.to_str().ok()) == Some("null");
                 check_origin(&allowed, req, resp)
@@ -579,7 +676,15 @@ impl Host {
         // From here the reader only reads; its automatic pong/close replies are discarded and
         // sent through the writer instead, so two threads never write frames to the socket.
         reader.get_mut().mute = true;
-        Ok((reader, Arc::new(Conn { id, opaque, ws: Mutex::new(writer), raw })))
+        Ok((
+            reader,
+            Arc::new(Conn {
+                id,
+                opaque,
+                ws: Mutex::new(writer),
+                raw,
+            }),
+        ))
     }
 
     fn disconnected(&self, conn: &Arc<Conn>) {
@@ -600,7 +705,10 @@ impl Host {
                         st.pis.remove(&ctx);
                         if let Some(inst) = st.instances.get(&ctx) {
                             let plugin = st.plugins.get(&inst.plugin).and_then(|s| s.conn.clone());
-                            fx.send(plugin.as_ref(), pi_event("propertyInspectorDidDisappear", inst));
+                            fx.send(
+                                plugin.as_ref(),
+                                pi_event("propertyInspectorDidDisappear", inst),
+                            );
                         }
                     }
                 }
@@ -630,7 +738,11 @@ impl Host {
                 let id = st.uuids[uuid].clone();
                 log::info!("{id}: registered");
                 st.roles.insert(conn.id, Role::Plugin(id.clone()));
-                if let Some(old) = st.plugins.get_mut(&id).and_then(|s| s.conn.replace(conn.clone())) {
+                if let Some(old) = st
+                    .plugins
+                    .get_mut(&id)
+                    .and_then(|s| s.conn.replace(conn.clone()))
+                {
                     fx.close = Some(old);
                 }
                 for d in &self.inner.cfg.devices {
@@ -638,7 +750,8 @@ impl Host {
                     m["deviceInfo"] = d.info();
                     fx.send(Some(conn), m.to_string());
                 }
-                let mut mine: Vec<&Instance> = st.instances.values().filter(|i| i.plugin == id).collect();
+                let mut mine: Vec<&Instance> =
+                    st.instances.values().filter(|i| i.plugin == id).collect();
                 mine.sort_by_key(|i| (i.device.clone(), i.row, i.column));
                 for i in mine {
                     fx.send(Some(conn), instance_msg("willAppear", i));
@@ -652,7 +765,10 @@ impl Host {
                 }
                 let inst = &st.instances[&ctx];
                 let plugin = st.plugins.get(&inst.plugin).and_then(|s| s.conn.clone());
-                fx.send(plugin.as_ref(), pi_event("propertyInspectorDidAppear", inst));
+                fx.send(
+                    plugin.as_ref(),
+                    pi_event("propertyInspectorDidAppear", inst),
+                );
                 fx.send(Some(conn), instance_msg("didReceiveSettings", inst));
             }
             _ => {
@@ -664,7 +780,8 @@ impl Host {
 }
 
 fn pi_event(event: &str, i: &Instance) -> String {
-    json!({"event": event, "action": i.action, "context": i.context, "device": i.device}).to_string()
+    json!({"event": event, "action": i.action, "context": i.context, "device": i.device})
+        .to_string()
 }
 
 /// One command from a registered socket.
@@ -687,12 +804,20 @@ fn command(st: &mut State, conn: &Arc<Conn>, role: Role, event: &str, msg: &Valu
             }
             return;
         }
-        "logMessage" => return log::info!("[{plugin_id}] {}", payload["message"].as_str().unwrap_or_default()),
+        "logMessage" => {
+            return log::info!(
+                "[{plugin_id}] {}",
+                payload["message"].as_str().unwrap_or_default()
+            )
+        }
         "setGlobalSettings" => {
             if let Some(slot) = st.plugins.get_mut(&plugin_id) {
                 slot.global = payload.clone();
             }
-            fx.outputs.push(Output::GlobalSettings { plugin: plugin_id.clone(), settings: payload.clone() });
+            fx.outputs.push(Output::GlobalSettings {
+                plugin: plugin_id.clone(),
+                settings: payload.clone(),
+            });
             // Like Elgato, echo to the other side only.
             if pi_ctx.is_some() {
                 fx.send(plugin_conn.as_ref(), global_msg(payload));
@@ -706,7 +831,11 @@ fn command(st: &mut State, conn: &Arc<Conn>, role: Role, event: &str, msg: &Valu
             return;
         }
         "getGlobalSettings" => {
-            let global = st.plugins.get(&plugin_id).map(|s| s.global.clone()).unwrap_or_else(|| json!({}));
+            let global = st
+                .plugins
+                .get(&plugin_id)
+                .map(|s| s.global.clone())
+                .unwrap_or_else(|| json!({}));
             return fx.send(Some(conn), global_msg(&global));
         }
         _ => {}
@@ -714,7 +843,9 @@ fn command(st: &mut State, conn: &Arc<Conn>, role: Role, event: &str, msg: &Valu
 
     // Per-instance commands. A PI acts on its own context whatever it puts in `context`; a plugin
     // may only touch its own instances.
-    let ctx = pi_ctx.clone().unwrap_or_else(|| msg["context"].as_str().unwrap_or_default().to_string());
+    let ctx = pi_ctx
+        .clone()
+        .unwrap_or_else(|| msg["context"].as_str().unwrap_or_default().to_string());
     let Some(inst) = st.instances.get_mut(&ctx).filter(|i| i.plugin == plugin_id) else {
         return log::debug!("[{plugin_id}] {event} for unknown context {ctx:?}");
     };
@@ -734,13 +865,19 @@ fn command(st: &mut State, conn: &Arc<Conn>, role: Role, event: &str, msg: &Valu
         }),
         "setState" => {
             inst.state = state.unwrap_or(0);
-            fx.outputs.push(Output::State { key: inst.key(), state: inst.state });
+            fx.outputs.push(Output::State {
+                key: inst.key(),
+                state: inst.state,
+            });
         }
         "showOk" => fx.outputs.push(Output::ShowOk(inst.key())),
         "showAlert" => fx.outputs.push(Output::ShowAlert(inst.key())),
         "setSettings" => {
             inst.settings = payload.clone();
-            fx.outputs.push(Output::Settings { context: ctx.clone(), settings: payload.clone() });
+            fx.outputs.push(Output::Settings {
+                context: ctx.clone(),
+                settings: payload.clone(),
+            });
             let text = instance_msg("didReceiveSettings", inst);
             if pi_ctx.is_some() {
                 fx.send(plugin_conn.as_ref(), text);
@@ -769,9 +906,15 @@ fn command(st: &mut State, conn: &Arc<Conn>, role: Role, event: &str, msg: &Valu
 /// only from an origin listed in [`Config::origins`] (exact match) or, while an inspector session
 /// exists, from the opaque `null` origin of a sandboxed PI iframe. Registering as a PI still
 /// requires its single-use token, so an unrelated page cannot reach plugins.
-fn check_origin(allowed: &[String], req: &Request, resp: Response) -> Result<Response, ErrorResponse> {
+fn check_origin(
+    allowed: &[String],
+    req: &Request,
+    resp: Response,
+) -> Result<Response, ErrorResponse> {
     let mut origins = req.headers().get_all("origin").iter();
-    let Some(origin) = origins.next() else { return Ok(resp) };
+    let Some(origin) = origins.next() else {
+        return Ok(resp);
+    };
     let origin = origin.to_str().unwrap_or_default();
     if origins.next().is_none() && allowed.iter().any(|a| a == origin) {
         return Ok(resp);
@@ -852,7 +995,10 @@ mod tests {
         let editor = ["http://127.0.0.1:8080"];
         assert!(origin(&[], None), "native plugins send no Origin");
         assert!(origin(&editor, Some("http://127.0.0.1:8080")));
-        assert!(!origin(&[], Some("http://127.0.0.1:8080")), "loopback is not implicitly trusted");
+        assert!(
+            !origin(&[], Some("http://127.0.0.1:8080")),
+            "loopback is not implicitly trusted"
+        );
         assert!(!origin(&editor, Some("http://127.0.0.1:9999")));
         assert!(!origin(&editor, Some("http://127.0.0.1:8080.evil.example")));
         assert!(!origin(&editor, Some("null")));
@@ -863,14 +1009,29 @@ mod tests {
 
     #[test]
     fn an_editor_origin_can_be_allowed_after_start() {
-        let host = Host::start(Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = Host::start(
+            Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         host.allow_origin("http://127.0.0.1:4321");
         host.allow_origin("http://127.0.0.1:4321");
         let allowed = host.inner.origins.lock().unwrap().clone();
         assert_eq!(allowed, ["http://127.0.0.1:4321"], "no duplicates");
-        let req = Request::builder().uri("ws://127.0.0.1/").header("Origin", "http://127.0.0.1:4321").body(()).unwrap();
+        let req = Request::builder()
+            .uri("ws://127.0.0.1/")
+            .header("Origin", "http://127.0.0.1:4321")
+            .body(())
+            .unwrap();
         assert!(check_origin(&allowed, &req, Response::default()).is_ok());
-        let req = Request::builder().uri("ws://127.0.0.1/").header("Origin", "http://127.0.0.1:9999").body(()).unwrap();
+        let req = Request::builder()
+            .uri("ws://127.0.0.1/")
+            .header("Origin", "http://127.0.0.1:9999")
+            .body(())
+            .unwrap();
         assert!(check_origin(&allowed, &req, Response::default()).is_err());
     }
 
@@ -878,7 +1039,9 @@ mod tests {
 
     fn connect(host: &Host) -> Ws {
         use tungstenite::client::IntoClientRequest;
-        let req = format!("ws://127.0.0.1:{}", host.port()).into_client_request().unwrap();
+        let req = format!("ws://127.0.0.1:{}", host.port())
+            .into_client_request()
+            .unwrap();
         let (ws, _) = tungstenite::connect(req).unwrap();
         if let tungstenite::stream::MaybeTlsStream::Plain(s) = ws.get_ref() {
             s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
@@ -911,7 +1074,13 @@ mod tests {
         let host = Host::start(
             Config {
                 port: 0,
-                devices: vec![Device { id: "DEV".into(), name: "AKP153E".into(), columns: 6, rows: 3, kind: 0 }],
+                devices: vec![Device {
+                    id: "DEV".into(),
+                    name: "AKP153E".into(),
+                    columns: 6,
+                    rows: 3,
+                    kind: 0,
+                }],
                 ..Config::default()
             },
             |_| {},
@@ -925,7 +1094,11 @@ mod tests {
         let uuid = host.add(&plugin);
 
         let mut first = connect(&host);
-        first.send(Message::text(json!({"event": "registerPlugin", "uuid": uuid}).to_string())).unwrap();
+        first
+            .send(Message::text(
+                json!({"event": "registerPlugin", "uuid": uuid}).to_string(),
+            ))
+            .unwrap();
         assert_eq!(recv(&mut first)["event"], "deviceDidConnect");
         let ctx = host.appear(Instance::new("com.fake", "com.fake.act", "DEV", 0, 0));
         assert!(host.key(&ctx, true));
@@ -937,18 +1110,33 @@ mod tests {
         while host.key(&ctx, false) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert!(!host.key(&ctx, false), "disconnected() cleared the dead plugin connection");
+        assert!(
+            !host.key(&ctx, false),
+            "disconnected() cleared the dead plugin connection"
+        );
 
         // A fresh client still registers, and a 1 MiB message is read and answered.
         let mut second = connect(&host);
-        second.send(Message::text(json!({"event": "registerPlugin", "uuid": uuid}).to_string())).unwrap();
+        second
+            .send(Message::text(
+                json!({"event": "registerPlugin", "uuid": uuid}).to_string(),
+            ))
+            .unwrap();
         assert_eq!(recv(&mut second)["event"], "deviceDidConnect");
         assert_eq!(recv(&mut second)["event"], "willAppear");
-        let big = json!({"event": "logMessage", "payload": {"message": "y".repeat(1024 * 1024)}}).to_string();
+        let big = json!({"event": "logMessage", "payload": {"message": "y".repeat(1024 * 1024)}})
+            .to_string();
         assert!(big.len() <= MAX_WS_MESSAGE);
         second.send(Message::text(big)).unwrap();
-        second.send(Message::text(json!({"event": "getGlobalSettings", "context": uuid}).to_string())).unwrap();
+        second
+            .send(Message::text(
+                json!({"event": "getGlobalSettings", "context": uuid}).to_string(),
+            ))
+            .unwrap();
         assert_eq!(recv(&mut second)["event"], "didReceiveGlobalSettings");
-        assert!(host.key(&ctx, false), "the new plugin socket still serves keys");
+        assert!(
+            host.key(&ctx, false),
+            "the new plugin socket still serves keys"
+        );
     }
 }

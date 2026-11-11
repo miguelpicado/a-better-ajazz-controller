@@ -19,12 +19,20 @@ static STAGED: Mutex<Vec<(String, Staged)>> = Mutex::new(Vec::new());
 
 /// Canonical package path. `None` when it is not an installable package.
 pub(crate) fn package_kind_error(path: &Path) -> Option<&'static str> {
-    let name = path.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase();
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_ascii_lowercase();
     if path.is_dir() {
         if !name.ends_with(".sdplugin") || !path.join("manifest.json").is_file() {
             return Some("la carpeta no es un .sdPlugin con manifest.json");
         }
-    } else if !path.is_file() || !["streamdeckplugin", "sdplugin", "zip"].iter().any(|e| name.ends_with(&format!(".{e}"))) {
+    } else if !path.is_file()
+        || !["streamdeckplugin", "sdplugin", "zip"]
+            .iter()
+            .any(|e| name.ends_with(&format!(".{e}")))
+    {
         return Some("se esperaba un .streamDeckPlugin/.sdPlugin/.zip o una carpeta .sdPlugin");
     }
     None
@@ -32,7 +40,9 @@ pub(crate) fn package_kind_error(path: &Path) -> Option<&'static str> {
 
 /// Validates a path from the shell and returns it canonicalized (`..` and links resolved).
 pub(crate) fn validate(raw: &Path) -> Result<PathBuf, String> {
-    let path = raw.canonicalize().map_err(|_| format!("no existe: {}", raw.display()))?;
+    let path = raw
+        .canonicalize()
+        .map_err(|_| format!("no existe: {}", raw.display()))?;
     match package_kind_error(&path) {
         Some(e) => Err(e.to_string()),
         None => Ok(path),
@@ -40,8 +50,15 @@ pub(crate) fn validate(raw: &Path) -> Result<PathBuf, String> {
 }
 
 fn insert(path: PathBuf) -> String {
-    let token: String = crate::random::<16>().iter().map(|b| format!("{b:02x}")).collect();
-    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let token: String = crate::random::<16>()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     let mut reg = STAGED.lock().unwrap_or_else(|e| e.into_inner());
     // ponytail: last 8 staged packages win; nobody double-clicks faster than that.
     if reg.len() >= 8 {
@@ -52,11 +69,19 @@ fn insert(path: PathBuf) -> String {
 }
 
 pub(crate) fn peek(token: &str) -> Option<Staged> {
-    STAGED.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(t, _)| t == token).map(|(_, s)| s.clone())
+    STAGED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|(t, _)| t == token)
+        .map(|(_, s)| s.clone())
 }
 
 pub(crate) fn consume(token: &str) {
-    STAGED.lock().unwrap_or_else(|e| e.into_inner()).retain(|(t, _)| t != token);
+    STAGED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .retain(|(t, _)| t != token);
 }
 
 /// Validates `raw` and keeps it for one install. Returns the single-use token.
@@ -80,7 +105,10 @@ mod tests {
         assert!(stage_package(&dir.join("notes.txt").to_string_lossy()).is_err());
         assert!(stage_package(&dir.join("missing.zip").to_string_lossy()).is_err());
         assert!(stage_package(&dir.join("com.test.one.sdPlugin").to_string_lossy()).is_ok());
-        assert!(stage_package(&dir.join("bundle.sdPlugin").to_string_lossy()).is_ok(), "a .sdPlugin file is a zip package");
+        assert!(
+            stage_package(&dir.join("bundle.sdPlugin").to_string_lossy()).is_ok(),
+            "a .sdPlugin file is a zip package"
+        );
 
         let token = stage_package(&dir.join("com.test.one.sdPlugin").to_string_lossy()).unwrap();
         assert_eq!(token.len(), 32);

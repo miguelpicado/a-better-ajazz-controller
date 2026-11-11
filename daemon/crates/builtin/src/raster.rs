@@ -15,7 +15,10 @@ fn fonts() -> Arc<usvg::fontdb::Database> {
 
 /// Renders `svg` scaled to `px` x `px` and returns straight (non-premultiplied) RGBA, row-major.
 pub fn svg_to_rgba(svg: &str, px: u32) -> Result<Vec<u8>, String> {
-    let opt = usvg::Options { fontdb: fonts(), ..Default::default() };
+    let opt = usvg::Options {
+        fontdb: fonts(),
+        ..Default::default()
+    };
     let tree = usvg::Tree::from_str(svg, &opt).map_err(|e| e.to_string())?;
     let mut pixmap = tiny_skia::Pixmap::new(px, px).ok_or("bad size")?;
     let size = tree.size();

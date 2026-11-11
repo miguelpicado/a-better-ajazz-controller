@@ -48,7 +48,10 @@ impl Plugin {
         if !manifest.is_object() {
             return Err(Skip::Invalid("not a JSON object".into()));
         }
-        if manifest.get("PrivateAPI").is_some_and(|v| v != &Value::Bool(false)) {
+        if manifest
+            .get("PrivateAPI")
+            .is_some_and(|v| v != &Value::Bool(false))
+        {
             return Err(Skip::PrivateApi);
         }
         let code_path = ["CodePathWin", "CodePath"]
@@ -60,7 +63,12 @@ impl Plugin {
             Some(u) if !u.is_empty() => u.to_string(),
             _ => folder_id(dir),
         };
-        Ok(Plugin { id, dir: dir.to_path_buf(), code_path, manifest })
+        Ok(Plugin {
+            id,
+            dir: dir.to_path_buf(),
+            code_path,
+            manifest,
+        })
     }
 
     /// `Software.MinimumVersion`, if the manifest has one.
@@ -69,13 +77,19 @@ impl Plugin {
     }
 
     pub fn version(&self) -> &str {
-        self.manifest.get("Version").and_then(Value::as_str).unwrap_or("0.0.0")
+        self.manifest
+            .get("Version")
+            .and_then(Value::as_str)
+            .unwrap_or("0.0.0")
     }
 }
 
 /// Folder name without the `.sdPlugin` suffix.
 fn folder_id(dir: &Path) -> String {
-    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     match name.len().checked_sub(".sdPlugin".len()) {
         Some(n) if name[n..].eq_ignore_ascii_case(".sdPlugin") => name[..n].to_string(),
         _ => name,
@@ -103,10 +117,14 @@ pub fn load(dir: &Path, data_root: Option<&Path>) -> Result<Plugin, Skip> {
 pub fn discover(roots: &[PathBuf], data_root: Option<&Path>) -> Vec<Plugin> {
     let mut out: Vec<Plugin> = Vec::new();
     for root in roots {
-        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
         for dir in entries.flatten().map(|e| e.path()) {
             let is_plugin = dir.is_dir()
-                && dir.extension().is_some_and(|e| e.eq_ignore_ascii_case("sdPlugin"));
+                && dir
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("sdPlugin"));
             if !is_plugin {
                 continue;
             }
@@ -144,7 +162,11 @@ mod tests {
     #[test]
     fn plain_manifest_with_bom_and_folder_id() {
         let root = tmp("plain");
-        let d = plugin_dir(&root, "com.x.y.sdPlugin", b"\xEF\xBB\xBF{\"CodePath\":\"a.js\",\"CodePathWin\":\"b.exe\"}");
+        let d = plugin_dir(
+            &root,
+            "com.x.y.sdPlugin",
+            b"\xEF\xBB\xBF{\"CodePath\":\"a.js\",\"CodePathWin\":\"b.exe\"}",
+        );
         let p = load(&d, None).unwrap();
         assert_eq!(p.id, "com.x.y");
         assert_eq!(p.code_path, "b.exe");
@@ -153,7 +175,11 @@ mod tests {
     #[test]
     fn skips() {
         let root = tmp("skips");
-        let d = plugin_dir(&root, "a.sdPlugin", br#"{"CodePath":"x.exe","PrivateAPI":true}"#);
+        let d = plugin_dir(
+            &root,
+            "a.sdPlugin",
+            br#"{"CodePath":"x.exe","PrivateAPI":true}"#,
+        );
         assert_eq!(load(&d, None).unwrap_err(), Skip::PrivateApi);
         let d = plugin_dir(&root, "b.sdPlugin", br#"{"UUID":"b"}"#);
         assert_eq!(load(&d, None).unwrap_err(), Skip::NoCodePath);
@@ -168,16 +194,31 @@ mod tests {
         let d = plugin_dir(&root, "com.enc.sdPlugin", b"ELGATO\x01\x00ciphertext");
         let data = root.join("data");
         fs::create_dir_all(data.join("manifests")).unwrap();
-        fs::write(data.join("manifests/com.enc.json"), br#"{"UUID":"com.enc","CodePath":"bin/p.exe"}"#).unwrap();
+        fs::write(
+            data.join("manifests/com.enc.json"),
+            br#"{"UUID":"com.enc","CodePath":"bin/p.exe"}"#,
+        )
+        .unwrap();
         let p = load(&d, Some(&data)).unwrap();
-        assert_eq!((p.id.as_str(), p.code_path.as_str()), ("com.enc", "bin/p.exe"));
+        assert_eq!(
+            (p.id.as_str(), p.code_path.as_str()),
+            ("com.enc", "bin/p.exe")
+        );
     }
 
     #[test]
     fn discover_skips_and_dedups() {
         let root = tmp("discover");
-        plugin_dir(&root, "one.sdPlugin", br#"{"UUID":"dup","CodePath":"a.js"}"#);
-        plugin_dir(&root, "two.sdPlugin", br#"{"UUID":"dup","CodePath":"b.js"}"#);
+        plugin_dir(
+            &root,
+            "one.sdPlugin",
+            br#"{"UUID":"dup","CodePath":"a.js"}"#,
+        );
+        plugin_dir(
+            &root,
+            "two.sdPlugin",
+            br#"{"UUID":"dup","CodePath":"b.js"}"#,
+        );
         plugin_dir(&root, "bad.sdPlugin", b"{not json");
         plugin_dir(&root, "notaplugin", br#"{"CodePath":"a.js"}"#);
         let found = discover(&[root], None);

@@ -39,7 +39,8 @@ fn test_real_folders_read_only() {
         }
     };
 
-    let temp_data = std::env::temp_dir().join(format!("orcadeck-web-test-data-{}", std::process::id()));
+    let temp_data =
+        std::env::temp_dir().join(format!("orcadeck-web-test-data-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_data);
     std::fs::create_dir_all(&temp_data).unwrap();
 
@@ -55,45 +56,79 @@ fn test_real_folders_read_only() {
 
     // 1. Scenes: verify real scenes loaded and metadata matches
     let scenes = store.scenes().expect("scenes should load");
-    assert!(scenes.len() >= 3, "expected at least 3 device scenes, got {}", scenes.len());
+    assert!(
+        scenes.len() >= 3,
+        "expected at least 3 device scenes, got {}",
+        scenes.len()
+    );
 
-    let orca = scenes.iter().find(|s| s.id == ORCA_ID).expect("Orca scene should exist");
+    let orca = scenes
+        .iter()
+        .find(|s| s.id == ORCA_ID)
+        .expect("Orca scene should exist");
     assert_eq!(orca.name, "Orca");
     assert_eq!(orca.device, "AKP153E");
     assert_eq!(orca.keys, 17, "Orca scene should have 17 keys");
     assert!(orca.listed, "Orca scene should be listed");
     assert!(orca.current, "Orca scene should be current");
 
-    let mon = scenes.iter().find(|s| s.id == MON_ID).expect("Monitorización scene should exist");
+    let mon = scenes
+        .iter()
+        .find(|s| s.id == MON_ID)
+        .expect("Monitorización scene should exist");
     assert_eq!(mon.name, "Monitorización");
     assert_eq!(mon.device, "AKP153E");
     assert_eq!(mon.keys, 17);
     assert!(mon.listed);
 
-    let rec = scenes.iter().find(|s| s.id == REC_ID).expect("Grabación scene should exist");
+    let rec = scenes
+        .iter()
+        .find(|s| s.id == REC_ID)
+        .expect("Grabación scene should exist");
     assert_eq!(rec.name, "Grabación");
     assert_eq!(rec.device, "AKP153E");
     assert_eq!(rec.keys, 15);
     assert!(rec.listed);
 
     // 2. Specific scene cells
-    let doc = store.scene(ORCA_ID).expect("Orca scene manifest should load");
-    let actions = doc.get("Actions").and_then(Value::as_object).expect("Actions map");
+    let doc = store
+        .scene(ORCA_ID)
+        .expect("Orca scene manifest should load");
+    let actions = doc
+        .get("Actions")
+        .and_then(Value::as_object)
+        .expect("Actions map");
     assert_eq!(actions.len(), 17);
     assert_eq!(actions["0,0"]["UUID"], "com.miguelpicado.orcadock.agent");
     assert_eq!(actions["0,2"]["UUID"], "com.miguelpicado.orcadock.quota");
-    assert_eq!(actions["2,0"]["UUID"], "com.hotspot.streamdock.profile.rotate");
+    assert_eq!(
+        actions["2,0"]["UUID"],
+        "com.hotspot.streamdock.profile.rotate"
+    );
     assert_eq!(actions["5,0"]["UUID"], "com.miguelpicado.orcadock.clock");
     assert_eq!(actions["5,2"]["UUID"], "com.miguelpicado.orcadock.summary");
 
     // 3. Plugins: Orca Deck actions are builtin
     let all_plugins = store.plugins().expect("plugins should load");
-    let orcadock = all_plugins.iter().find(|p| p.uuid == "com.miguelpicado.orcadock").expect("com.miguelpicado.orcadock should exist");
+    let orcadock = all_plugins
+        .iter()
+        .find(|p| p.uuid == "com.miguelpicado.orcadock")
+        .expect("com.miguelpicado.orcadock should exist");
     assert_eq!(orcadock.status, "ok");
-    assert!(orcadock.builtin, "com.miguelpicado.orcadock should be marked builtin");
+    assert!(
+        orcadock.builtin,
+        "com.miguelpicado.orcadock should be marked builtin"
+    );
 
-    let acts = orcadock.manifest.get("Actions").and_then(Value::as_array).expect("Actions array");
-    let act_uuids: Vec<&str> = acts.iter().filter_map(|a| a.get("UUID").and_then(Value::as_str)).collect();
+    let acts = orcadock
+        .manifest
+        .get("Actions")
+        .and_then(Value::as_array)
+        .expect("Actions array");
+    let act_uuids: Vec<&str> = acts
+        .iter()
+        .filter_map(|a| a.get("UUID").and_then(Value::as_str))
+        .collect();
     assert!(act_uuids.contains(&"com.miguelpicado.orcadock.agent"));
     assert!(act_uuids.contains(&"com.miguelpicado.orcadock.quota"));
     assert!(act_uuids.contains(&"com.miguelpicado.orcadock.clock"));
@@ -101,13 +136,19 @@ fn test_real_folders_read_only() {
 
     // 4. Image resolution: profile images and plugin images
     let arrow_img = store.image(Some(ORCA_ID), None, "ARROW_RIGHT.png");
-    assert!(arrow_img.is_some(), "ARROW_RIGHT.png should be found in Orca profile Images");
+    assert!(
+        arrow_img.is_some(),
+        "ARROW_RIGHT.png should be found in Orca profile Images"
+    );
     let (bytes, mime) = arrow_img.unwrap();
     assert_eq!(mime, "image/png");
     assert!(!bytes.is_empty());
 
     let action_img = store.image(None, Some("com.miguelpicado.orcadock"), "imgs/action");
-    assert!(action_img.is_some(), "imgs/action should be found in com.miguelpicado.orcadock plugin");
+    assert!(
+        action_img.is_some(),
+        "imgs/action should be found in com.miguelpicado.orcadock plugin"
+    );
     let (bytes, mime) = action_img.unwrap();
     assert_eq!(mime, "image/png");
     assert!(!bytes.is_empty());

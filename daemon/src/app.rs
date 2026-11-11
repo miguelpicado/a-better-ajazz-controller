@@ -8,8 +8,7 @@
 //! two sends (overlay, then the current image ~600 ms later), never a direct device write.
 //! The AKP153E reports a press only on release, so a press is delivered as a click (down + up).
 use crate::{
-    ctl,
-    load_img,
+    ctl, load_img,
     profile::{self, Scene},
     proto::*,
     render,
@@ -39,7 +38,12 @@ pub const BATCH_GAP_MS: u64 = 250;
 /// presses while busy with images, so paint traffic must leave idle gaps. Default is 250 ms (smooth 4 fps
 /// spinner); ORCADECK_GAP_MS=400 restores the conservative 400 ms gap if needed.
 fn batch_gap() -> Duration {
-    Duration::from_millis(std::env::var("ORCADECK_GAP_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(BATCH_GAP_MS))
+    Duration::from_millis(
+        std::env::var("ORCADECK_GAP_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(BATCH_GAP_MS),
+    )
 }
 const DEVICE: &str = "AKP153E";
 
@@ -49,7 +53,11 @@ fn pct_decode(s: &str) -> Vec<u8> {
     let mut i = 0;
     while i < b.len() {
         let hex = |x: u8| (x as char).to_digit(16);
-        match (b[i], b.get(i + 1).and_then(|&x| hex(x)), b.get(i + 2).and_then(|&x| hex(x))) {
+        match (
+            b[i],
+            b.get(i + 1).and_then(|&x| hex(x)),
+            b.get(i + 2).and_then(|&x| hex(x)),
+        ) {
             (b'%', Some(h), Some(l)) => {
                 out.push((h * 16 + l) as u8);
                 i += 3;
@@ -72,14 +80,18 @@ fn svg_image(svg: &str, px: u32) -> Option<DynamicImage> {
 fn decode_uri(uri: &str, px: u32) -> Option<DynamicImage> {
     let (meta, data) = uri.strip_prefix("data:")?.split_once(',')?;
     let bytes = if meta.ends_with(";base64") {
-        base64::engine::general_purpose::STANDARD.decode(data.trim()).ok()?
+        base64::engine::general_purpose::STANDARD
+            .decode(data.trim())
+            .ok()?
     } else {
         pct_decode(data)
     };
     if meta.starts_with("image/svg") {
         svg_image(std::str::from_utf8(&bytes).ok()?, px)
     } else {
-        image::load_from_memory(&bytes).ok().map(|img| render::fit_px(img, px))
+        image::load_from_memory(&bytes)
+            .ok()
+            .map(|img| render::fit_px(img, px))
     }
 }
 
@@ -91,7 +103,9 @@ const FEEDBACK_MS: u64 = 600;
 const RETIRE_MS: u64 = 2000;
 
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Transparent SVG with the title bar and text, sized for one key image.
@@ -132,7 +146,8 @@ fn blend(base: &DynamicImage, top: &image::RgbaImage, px: u32) -> DynamicImage {
     let mut out = if (base.width(), base.height()) == (px, px) {
         base.to_rgba8()
     } else {
-        base.resize_exact(px, px, imageops::FilterType::Lanczos3).to_rgba8()
+        base.resize_exact(px, px, imageops::FilterType::Lanczos3)
+            .to_rgba8()
     };
     imageops::overlay(&mut out, top, 0, 0);
     DynamicImage::ImageRgba8(out)
@@ -177,7 +192,11 @@ impl ViewState {
     /// size: every consumer (`send`, reconnect repaint) feeds `key_jpeg`, which then skips its resize.
     fn effective(&self, key: u8) -> DynamicImage {
         let px = image_px(key);
-        let base = self.base.get(&key).cloned().unwrap_or_else(|| DynamicImage::new_rgb8(px, px));
+        let base = self
+            .base
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| DynamicImage::new_rgb8(px, px));
         let base = render::fit_px(base, px);
         match self.title.get(&key) {
             Some(top) => blend(&base, top, px),
@@ -272,7 +291,11 @@ impl Runtime {
 
     /// Registers where a plugin instance's context lives in the scene.
     fn set_cell(&self, context: &str, cell: (u8, u8)) {
-        self.settings.lock().unwrap_or_else(|e| e.into_inner()).cells.insert(context.to_string(), cell);
+        self.settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cells
+            .insert(context.to_string(), cell);
     }
 
     /// Forgets the old scene's plugin cells and any settings queued for them.
@@ -284,14 +307,22 @@ impl Runtime {
 
     /// One paint, tagged so the device loop can drop it after a scene switch.
     fn send(&self, key: u8, img: DynamicImage, context: &str) {
-        let _ = self.tx.send(Paint { key, img, gen: self.gen.load(Ordering::Relaxed), ctx: context.to_string() });
+        let _ = self.tx.send(Paint {
+            key,
+            img,
+            gen: self.gen.load(Ordering::Relaxed),
+            ctx: context.to_string(),
+        });
         self.wake();
     }
 
     /// Tells the device loop that the editor saved a cell of `scene` (see [`ReloadCmd`]).
     #[allow(dead_code)] // crates/web's mutation hook sends these once its merge lands
     fn reload(&self, scene: &str, cell: (u8, u8)) {
-        let _ = self.reload_tx.send(ReloadCmd::Cell { scene: scene.to_string(), cell });
+        let _ = self.reload_tx.send(ReloadCmd::Cell {
+            scene: scene.to_string(),
+            cell,
+        });
         self.wake();
     }
 
@@ -309,7 +340,10 @@ impl Runtime {
     }
 
     fn retired(&self, context: &str) -> bool {
-        self.retired.lock().unwrap_or_else(|e| e.into_inner()).contains(context)
+        self.retired
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(context)
     }
 
     /// Forgets a plugin context: whatever it paints from now on is a late paint.
@@ -324,7 +358,12 @@ impl Runtime {
 
     /// Deadlines for the plugins the switch left unused (`running - used`). A plugin already
     /// waiting keeps its first deadline, so chained switches cannot postpone it forever.
-    fn retire_unused(&self, used: &HashMap<String, usize>, running: &HashSet<String>, now: Instant) {
+    fn retire_unused(
+        &self,
+        used: &HashMap<String, usize>,
+        running: &HashSet<String>,
+        now: Instant,
+    ) {
         let mut retire = self.retire.lock().unwrap_or_else(|e| e.into_inner());
         retire.retain(|id, _| running.contains(id) && !used.contains_key(id));
         let deadline = now + Duration::from_millis(RETIRE_MS);
@@ -337,13 +376,20 @@ impl Runtime {
 
     /// The scene now on the deck (or an editor reload) needs this plugin: drop any pending stop.
     fn cancel_retire(&self, plugin: &str) {
-        self.retire.lock().unwrap_or_else(|e| e.into_inner()).remove(plugin);
+        self.retire
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(plugin);
     }
 
     /// Plugins whose grace period expired without another scene asking for them.
     fn due_retires(&self, now: Instant) -> Vec<String> {
         let mut retire = self.retire.lock().unwrap_or_else(|e| e.into_inner());
-        let due = retire.iter().filter(|(_, t)| **t <= now).map(|(id, _)| id.clone()).collect();
+        let due = retire
+            .iter()
+            .filter(|(_, t)| **t <= now)
+            .map(|(id, _)| id.clone())
+            .collect();
         retire.retain(|_, t| *t > now);
         due
     }
@@ -353,14 +399,20 @@ impl Runtime {
     fn output(&self, out: host::Output) {
         let Some(key) = out_key(&out) else {
             match out {
-                host::Output::Settings { context, settings } => self.queue_settings(&context, settings),
-                host::Output::GlobalSettings { plugin, settings } => save_global(&self.data, &plugin, &settings),
+                host::Output::Settings { context, settings } => {
+                    self.queue_settings(&context, settings)
+                }
+                host::Output::GlobalSettings { plugin, settings } => {
+                    save_global(&self.data, &plugin, &settings)
+                }
                 host::Output::OpenUrl(url) => open_url(&url),
                 _ => {}
             }
             return;
         };
-        let Some(k) = key_index(key.column as u8, key.row as u8) else { return };
+        let Some(k) = key_index(key.column as u8, key.row as u8) else {
+            return;
+        };
         if self.retired(&key.context) {
             return;
         }
@@ -388,7 +440,12 @@ impl Runtime {
                 if v.state.insert(k, state) == Some(state) {
                     return;
                 }
-                let path = v.states.get(&k).and_then(|s| s.get(state as usize)).cloned().flatten();
+                let path = v
+                    .states
+                    .get(&k)
+                    .and_then(|s| s.get(state as usize))
+                    .cloned()
+                    .flatten();
                 if let Some(img) = path.and_then(|p| load_img(&p).ok()) {
                     v.base.insert(k, render::fit_px(img, px));
                     image = Some(v.effective(k));
@@ -412,7 +469,10 @@ impl Runtime {
     fn feedback(&self, context: &str, key: u8, ok: bool, base: DynamicImage) {
         self.send(key, compose_feedback(&base, ok, image_px(key)), context);
         let deadline = Instant::now() + Duration::from_millis(FEEDBACK_MS);
-        self.restores.lock().unwrap_or_else(|e| e.into_inner()).insert(key, deadline);
+        self.restores
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key, deadline);
     }
 
     /// Builtin images go through the same channel and view as plugin images.
@@ -421,7 +481,11 @@ impl Runtime {
             return;
         }
         let img = render::fit_px(img, image_px(key));
-        self.view.lock().unwrap_or_else(|e| e.into_inner()).base.insert(key, img.clone());
+        self.view
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .base
+            .insert(key, img.clone());
         self.send(key, img, context);
     }
 
@@ -434,12 +498,20 @@ impl Runtime {
     fn tick_at(&self, now: Instant) {
         let due: Vec<u8> = {
             let mut m = self.restores.lock().unwrap_or_else(|e| e.into_inner());
-            let due = m.iter().filter(|(_, t)| **t <= now).map(|(k, _)| *k).collect();
+            let due = m
+                .iter()
+                .filter(|(_, t)| **t <= now)
+                .map(|(k, _)| *k)
+                .collect();
             m.retain(|_, t| *t > now);
             due
         };
         for k in due {
-            let img = self.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
+            let img = self
+                .view
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .effective(k);
             // Restores are dropped on a scene switch, so this is always the current scene.
             self.send(k, img, "");
         }
@@ -499,20 +571,32 @@ impl Runtime {
     /// window; a value the manifest already has is never rewritten.
     fn flush_settings(&self, now: Instant) {
         let mut p = self.settings.lock().unwrap_or_else(|e| e.into_inner());
-        if p.pending.is_empty() || p.last.is_some_and(|t| now.duration_since(t) < Duration::from_millis(SETTINGS_WRITE_MS)) {
+        if p.pending.is_empty()
+            || p.last
+                .is_some_and(|t| now.duration_since(t) < Duration::from_millis(SETTINGS_WRITE_MS))
+        {
             return;
         }
         p.last = Some(now);
         let pending = std::mem::take(&mut p.pending);
         drop(p);
-        let manifest = self.manifest.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let manifest = self
+            .manifest
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         for (cell, settings) in pending {
             match profile::save_action_settings(&manifest, cell.0, cell.1, &settings) {
                 Ok(true) => eprintln!("settings {},{} saved", cell.0, cell.1),
                 Ok(false) => {}
                 Err(e) => {
                     eprintln!("settings {},{}: {e}", cell.0, cell.1);
-                    self.settings.lock().unwrap_or_else(|e| e.into_inner()).pending.entry(cell).or_insert(settings);
+                    self.settings
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .pending
+                        .entry(cell)
+                        .or_insert(settings);
                 }
             }
         }
@@ -523,7 +607,11 @@ impl Runtime {
     fn flush_now(&self) {
         self.settings.lock().unwrap_or_else(|e| e.into_inner()).last = None;
         self.flush_settings(Instant::now());
-        self.settings.lock().unwrap_or_else(|e| e.into_inner()).pending.clear();
+        self.settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pending
+            .clear();
     }
 }
 
@@ -542,7 +630,11 @@ fn current_scene(rt: &Runtime) -> String {
 
 /// Directory of the scene now on the deck.
 fn scene_dir(rt: &Runtime) -> Option<PathBuf> {
-    rt.manifest.lock().unwrap_or_else(|e| e.into_inner()).parent().map(Path::to_path_buf)
+    rt.manifest
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .parent()
+        .map(Path::to_path_buf)
 }
 
 /// Live bridge from the web editor to the plugin host: a one-use inspector token for the plugin
@@ -578,7 +670,10 @@ impl RunInspector {
             .find(|(_, c)| **c == cell)
             .map(|(ctx, _)| ctx.clone())
             .ok_or_else(|| format!("no plugin action at {key}"))?;
-        let token = self.host.open_inspector(&ctx).ok_or_else(|| format!("action at {key} is not live"))?;
+        let token = self
+            .host
+            .open_inspector(&ctx)
+            .ok_or_else(|| format!("action at {key} is not live"))?;
         Ok((token, self.port, ctx))
     }
 }
@@ -586,23 +681,32 @@ impl RunInspector {
 impl orcadeck_web::InspectorBridge for RunInspector {
     fn open(&self, scene: &str, key: &str) -> Result<orcadeck_web::InspectorSession, String> {
         let (token, port, context) = RunInspector::open(self, scene, key)?;
-        Ok(orcadeck_web::InspectorSession { token, port, context })
+        Ok(orcadeck_web::InspectorSession {
+            token,
+            port,
+            context,
+        })
     }
 }
 
 /// `%APPDATA%\OrcaDeck\globals\<plugin>.json`, or `None` for an id unsafe as a file name.
 fn globals_path(data: &Path, plugin: &str) -> Option<PathBuf> {
-    orcadeck_web::store::safe_id(plugin).then(|| data.join("globals").join(format!("{plugin}.json")))
+    orcadeck_web::store::safe_id(plugin)
+        .then(|| data.join("globals").join(format!("{plugin}.json")))
 }
 
 fn save_global(data: &Path, plugin: &str, settings: &Value) {
-    let Some(path) = globals_path(data, plugin) else { return };
+    let Some(path) = globals_path(data, plugin) else {
+        return;
+    };
     if let Some(dir) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(dir) {
             return eprintln!("globals {plugin}: {e}");
         }
     }
-    if let Err(e) = orcadeck_web::store::atomic_write(&path, &orcadeck_web::store::to_pretty(settings), false) {
+    if let Err(e) =
+        orcadeck_web::store::atomic_write(&path, &orcadeck_web::store::to_pretty(settings), false)
+    {
         eprintln!("globals {plugin}: {e}");
     }
 }
@@ -643,7 +747,9 @@ fn open_url(url: &str) {
 #[cfg(not(windows))]
 fn open_url(url: &str) {
     if is_web_url(url) {
-        let _ = std::process::Command::new("cmd").args(["/c", "start", "", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", "", url])
+            .spawn();
     }
 }
 
@@ -661,12 +767,20 @@ enum BuiltinMsg {
     Scene(SceneCmd),
     /// One cell was re-placed by the editor: drop `old` and/or register `new` at `key`, leaving
     /// the rest of the scene's builtin keys untouched.
-    Cell { key: u8, old: Option<String>, new: Option<bi::Key> },
+    Cell {
+        key: u8,
+        old: Option<String>,
+        new: Option<bi::Key>,
+    },
 }
 
 /// Builtin half of a scene switch: the registry stays on its thread, only its keys change.
 enum SceneCmd {
-    Replace { old: Vec<String>, new: Vec<bi::Key>, ctx_keys: HashMap<String, u8> },
+    Replace {
+        old: Vec<String>,
+        new: Vec<bi::Key>,
+        ctx_keys: HashMap<String, u8>,
+    },
 }
 
 /// Result of putting a scene on the deck.
@@ -694,20 +808,40 @@ fn place_scene(
     let mut view = ViewState::default();
     let mut appearing: Vec<((u8, u8), &profile::Action, &host::Plugin)> = Vec::new();
     for ((c, r), a) in &scene.actions {
-        let Some(key) = key_index(*c, *r) else { continue };
-        if let Some(img) = scene.image_of(a, plugins).and_then(|path| load_img(&path).ok()) {
+        let Some(key) = key_index(*c, *r) else {
+            continue;
+        };
+        if let Some(img) = scene
+            .image_of(a, plugins)
+            .and_then(|path| load_img(&path).ok())
+        {
             view.base.insert(key, render::fit_px(img, image_px(key)));
         }
-        view.states.insert(key, (0..a.states.len()).map(|i| state_path(scene, a, plugins, i)).collect());
+        view.states.insert(
+            key,
+            (0..a.states.len())
+                .map(|i| state_path(scene, a, plugins, i))
+                .collect(),
+        );
         view.state.insert(key, a.state as u32);
         let ctx = format!("{c},{r}");
         if let Some(target) = scenes::target_of(a) {
             p.by_key.insert(key, Target::Scene(target));
         } else if builtins.contains(a.uuid.as_str()) {
             p.ctx_keys.insert(ctx.clone(), key);
-            p.builtin_keys.push(bi::Key { uuid: a.uuid.clone(), context: ctx.clone(), device: DEVICE.into(), row: *r as u32, col: *c as u32 });
+            p.builtin_keys.push(bi::Key {
+                uuid: a.uuid.clone(),
+                context: ctx.clone(),
+                device: DEVICE.into(),
+                row: *r as u32,
+                col: *c as u32,
+            });
             p.by_key.insert(key, Target::Builtin(ctx));
-        } else if let Some(plugin) = found.iter().filter(|p| a.uuid.starts_with(&format!("{}.", p.id))).max_by_key(|p| p.id.len()) {
+        } else if let Some(plugin) = found
+            .iter()
+            .filter(|p| a.uuid.starts_with(&format!("{}.", p.id)))
+            .max_by_key(|p| p.id.len())
+        {
             appearing.push(((*c, *r), a, plugin));
         } else {
             eprintln!("no handler for {} at {c},{r} ({})", a.uuid, a.name);
@@ -761,7 +895,9 @@ fn launch_plugins(
         if running.contains(id) {
             continue;
         }
-        let Some(plugin) = found.iter().find(|p| &p.id == id) else { continue };
+        let Some(plugin) = found.iter().find(|p| &p.id == id) else {
+            continue;
+        };
         if let Some(settings) = load_global(data, id) {
             host.load_global_settings(id, settings);
         }
@@ -799,7 +935,10 @@ fn switch_scene(
     rt.gen.fetch_add(1, Ordering::SeqCst);
     rt.flush_now();
     rt.clear_cells();
-    rt.restores.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    rt.restores
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear();
     let mut old = Vec::new();
     for t in by_key.values() {
         match t {
@@ -812,19 +951,30 @@ fn switch_scene(
         }
     }
     let placed = place_scene(&scene, plugins, found, host, rt, builtins);
-    let _ = tx.send(BuiltinMsg::Scene(SceneCmd::Replace { old, new: placed.builtin_keys, ctx_keys: placed.ctx_keys }));
+    let _ = tx.send(BuiltinMsg::Scene(SceneCmd::Replace {
+        old,
+        new: placed.builtin_keys,
+        ctx_keys: placed.ctx_keys,
+    }));
     launch_plugins(&placed.used, found, host, rt, &rt.data, running);
     rt.retire_unused(&placed.used, running, Instant::now());
     // Keys that held an action in either scene, were painted, or are main keys: the new view
     // already holds the placeholder (or black, for a key the new scene dropped), so repainting
     // reads the same composed source the reconnect path uses.
-    let mut keys: Vec<u8> = by_key.keys().copied().chain(placed.by_key.keys().copied()).collect();
+    let mut keys: Vec<u8> = by_key
+        .keys()
+        .copied()
+        .chain(placed.by_key.keys().copied())
+        .collect();
     keys.extend(1..=15);
     let v = rt.view.lock().unwrap_or_else(|e| e.into_inner());
     keys.extend(v.base.keys().copied());
     keys.sort_unstable();
     keys.dedup();
-    let paints = keys.into_iter().map(|key| (key, v.effective(key))).collect();
+    let paints = keys
+        .into_iter()
+        .map(|key| (key, v.effective(key)))
+        .collect();
     drop(v);
     *by_key = placed.by_key;
     Ok(paints)
@@ -849,7 +999,13 @@ fn reload_cell(
 ) -> Option<(u8, DynamicImage)> {
     let key = key_index(cell.0, cell.1)?;
     let dir = scene_dir(rt)?;
-    if dir.file_name().and_then(|n| n.to_str()).unwrap_or_default().trim_end_matches(".sdProfile") != scene_id {
+    if dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .trim_end_matches(".sdProfile")
+        != scene_id
+    {
         return None; // another scene: only its file changed
     }
     let scene = match Scene::load(&dir) {
@@ -859,7 +1015,11 @@ fn reload_cell(
             return None;
         }
     };
-    let action = scene.actions.iter().find(|((c, r), _)| (*c, *r) == cell).map(|(_, a)| a);
+    let action = scene
+        .actions
+        .iter()
+        .find(|((c, r), _)| (*c, *r) == cell)
+        .map(|(_, a)| a);
 
     // The action that was here goes away: a plugin instance is retired and re-created with the
     // settings the editor wrote (`willAppear` carries them), a builtin is re-registered below.
@@ -892,8 +1052,13 @@ fn reload_cell(
                     col: cell.0 as u32,
                 });
                 by_key.insert(key, Target::Builtin(ctx));
-            } else if let Some(plugin) = found.iter().filter(|p| a.uuid.starts_with(&format!("{}.", p.id))).max_by_key(|p| p.id.len()) {
-                let mut inst = host::Instance::new(&plugin.id, &a.uuid, DEVICE, cell.0 as u32, cell.1 as u32);
+            } else if let Some(plugin) = found
+                .iter()
+                .filter(|p| a.uuid.starts_with(&format!("{}.", p.id)))
+                .max_by_key(|p| p.id.len())
+            {
+                let mut inst =
+                    host::Instance::new(&plugin.id, &a.uuid, DEVICE, cell.0 as u32, cell.1 as u32);
                 inst.settings = a.settings.clone();
                 inst.state = a.state as u32;
                 let ctx = host.appear(inst);
@@ -908,7 +1073,11 @@ fn reload_cell(
         }
     }
     if old_builtin.is_some() || new_builtin.is_some() {
-        let _ = msg_tx.send(BuiltinMsg::Cell { key, old: old_builtin, new: new_builtin });
+        let _ = msg_tx.send(BuiltinMsg::Cell {
+            key,
+            old: old_builtin,
+            new: new_builtin,
+        });
     }
 
     // Placeholder from the profile and the state the editor left selected; a plugin repaints on
@@ -916,10 +1085,19 @@ fn reload_cell(
     let mut v = rt.view.lock().unwrap_or_else(|e| e.into_inner());
     v.title.remove(&key);
     v.base.remove(&key);
-    if let Some(img) = action.and_then(|a| scene.image_of(a, plugins)).and_then(|path| load_img(&path).ok()) {
+    if let Some(img) = action
+        .and_then(|a| scene.image_of(a, plugins))
+        .and_then(|path| load_img(&path).ok())
+    {
         v.base.insert(key, render::fit_px(img, image_px(key)));
     }
-    let states = action.map(|a| (0..a.states.len()).map(|i| state_path(&scene, a, plugins, i)).collect()).unwrap_or_default();
+    let states = action
+        .map(|a| {
+            (0..a.states.len())
+                .map(|i| state_path(&scene, a, plugins, i))
+                .collect()
+        })
+        .unwrap_or_default();
     v.states.insert(key, states);
     v.state.insert(key, action.map_or(0, |a| a.state as u32));
     Some((key, v.effective(key)))
@@ -942,8 +1120,16 @@ fn serve_edit(
     // Same file layout as the standalone editor, but the profile `run` was started with wins over
     // the editor's default profiles directory.
     let parent = profile.parent().unwrap_or(Path::new(""));
-    let profiles = if parent.as_os_str().is_empty() { PathBuf::from(".") } else { parent.to_path_buf() };
-    let legacy_config = profiles.parent().filter(|p| !p.as_os_str().is_empty()).map(|p| p.join("config")).filter(|p| p.is_dir());
+    let profiles = if parent.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        parent.to_path_buf()
+    };
+    let legacy_config = profiles
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.join("config"))
+        .filter(|p| p.is_dir());
     let store = orcadeck_web::FsStore {
         profiles,
         plugins: plugins.to_path_buf(),
@@ -992,7 +1178,13 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let events = Arc::clone(&runtime);
     let host = host::Host::start(
         host::Config {
-            devices: vec![host::Device { id: DEVICE.into(), name: "AKP153E".into(), columns: 5, rows: 3, kind: 0 }],
+            devices: vec![host::Device {
+                id: DEVICE.into(),
+                name: "AKP153E".into(),
+                columns: 5,
+                rows: 3,
+                kind: 0,
+            }],
             ..Default::default()
         },
         move |out: host::Output| events.output(out),
@@ -1005,13 +1197,24 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let ctl_plugins = plugins.to_path_buf();
     let ctl_data = data_root.clone();
     let ctl_host = host.clone();
-    let ctl_inspector: Arc<dyn orcadeck_web::InspectorBridge> = Arc::new(RunInspector::new(Arc::clone(&runtime), host.clone()));
+    let ctl_inspector: Arc<dyn orcadeck_web::InspectorBridge> =
+        Arc::new(RunInspector::new(Arc::clone(&runtime), host.clone()));
     ctl::spawn(ctl::NAME, move |conn| {
-        serve_edit(conn, &ctl_profile, &ctl_plugins, &ctl_data, &ctl_host, Some(Arc::clone(&ctl_inspector)))
+        serve_edit(
+            conn,
+            &ctl_profile,
+            &ctl_plugins,
+            &ctl_data,
+            &ctl_host,
+            Some(Arc::clone(&ctl_inspector)),
+        )
     });
 
     // Built-in actions on their own thread: Orca RPC blocks for ~450 ms now and then.
-    let mut registry = bi::Registry::new(bi::Deck::new(Box::new(bi::PipeOrca::from_env()), bi::Deck::default_quota_dir()));
+    let mut registry = bi::Registry::new(bi::Deck::new(
+        Box::new(bi::PipeOrca::from_env()),
+        bi::Deck::default_quota_dir(),
+    ));
     let builtins: HashSet<&'static str> = registry.uuids().into_iter().collect();
     let builtin = Arc::clone(&runtime);
     thread::Builder::new()
@@ -1021,7 +1224,9 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
             loop {
                 let now = bi::now_ms();
                 for (ctx, svg) in registry.tick(now) {
-                    let Some(&k) = ctx_key.get(&ctx) else { continue };
+                    let Some(&k) = ctx_key.get(&ctx) else {
+                        continue;
+                    };
                     if let Some(img) = svg_image(&svg, image_px(k)) {
                         builtin.paint(&ctx, k, img);
                     }
@@ -1032,7 +1237,11 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
                         let fb = registry.key_down(&ctx, bi::now_ms());
                         if fb != bi::Feedback::None {
                             if let Some(&k) = ctx_key.get(&ctx) {
-                                let base = builtin.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k);
+                                let base = builtin
+                                    .view
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .effective(k);
                                 builtin.feedback(&ctx, k, fb == bi::Feedback::Ok, base);
                             }
                         }
@@ -1065,15 +1274,39 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         .map_err(|e| e.to_string())?;
 
     let placed = place_scene(&scene, plugins, &found, &host, &runtime, &builtins);
-    let _ = msg_tx.send(BuiltinMsg::Scene(SceneCmd::Replace { old: Vec::new(), new: placed.builtin_keys, ctx_keys: placed.ctx_keys }));
+    let _ = msg_tx.send(BuiltinMsg::Scene(SceneCmd::Replace {
+        old: Vec::new(),
+        new: placed.builtin_keys,
+        ctx_keys: placed.ctx_keys,
+    }));
     let mut running: HashSet<String> = HashSet::new();
-    launch_plugins(&placed.used, &found, &host, &runtime, &data_root, &mut running);
+    launch_plugins(
+        &placed.used,
+        &found,
+        &host,
+        &runtime,
+        &data_root,
+        &mut running,
+    );
     let mut by_key = placed.by_key;
     drop(tx);
 
     // Main loop: reconnect forever; each new session repaints the keys from the composed view.
     loop {
-        let s = session(n, &rx, &reload_rx, &mut by_key, &host, &msg_tx, &runtime, &mut scenes, plugins, &found, &mut running, &builtins);
+        let s = session(
+            n,
+            &rx,
+            &reload_rx,
+            &mut by_key,
+            &host,
+            &msg_tx,
+            &runtime,
+            &mut scenes,
+            plugins,
+            &found,
+            &mut running,
+            &builtins,
+        );
         match s {
             Ok(()) => return Ok(()),
             Err(e) => {
@@ -1115,7 +1348,10 @@ impl DockWriter for Dock {
 }
 
 fn open_read_device(api: &HidApi) -> Result<HidDevice, String> {
-    let mut cands: Vec<_> = api.device_list().filter(|d| d.vendor_id() == VID && d.product_id() == PID).collect();
+    let mut cands: Vec<_> = api
+        .device_list()
+        .filter(|d| d.vendor_id() == VID && d.product_id() == PID)
+        .collect();
     cands.sort_by_key(|d| if d.usage_page() >= 0xFF00 { 0 } else { 1 });
     let info = cands.first().ok_or("device not found (reader handle)")?;
     info.open_device(api).map_err(|e| e.to_string())
@@ -1147,7 +1383,9 @@ fn view_paints(rt: &Runtime) -> HashMap<u8, (DynamicImage, u64)> {
     let mut keys: Vec<u8> = v.base.keys().copied().chain(1..=15).collect();
     keys.sort_unstable();
     keys.dedup();
-    keys.into_iter().map(|key| (key, (v.effective(key), gen))).collect()
+    keys.into_iter()
+        .map(|key| (key, (v.effective(key), gen)))
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1167,7 +1405,11 @@ fn handle_input_packet<W: DockWriter>(
     t0: Instant,
 ) -> Result<(), String> {
     if std::env::var_os("ORCADECK_TRACE").is_some() {
-        eprintln!("{:>6}ms in {:02x?}", t0.elapsed().as_millis(), &buf[..buf.len().min(16)]);
+        eprintln!(
+            "{:>6}ms in {:02x?}",
+            t0.elapsed().as_millis(),
+            &buf[..buf.len().min(16)]
+        );
     }
     match parse_input(buf) {
         Input::Handshake => dock.send(&handshake_reply(dock.report_n()))?,
@@ -1180,7 +1422,9 @@ fn handle_input_packet<W: DockWriter>(
                 host.key(&ctx, false);
             }
             Some(Target::Scene(target)) => {
-                match switch_scene(scenes, &target, plugins, by_key, host, found, running, msg_tx, rt, builtins) {
+                match switch_scene(
+                    scenes, &target, plugins, by_key, host, found, running, msg_tx, rt, builtins,
+                ) {
                     Ok(paints) => {
                         let gen = rt.gen.load(Ordering::Relaxed);
                         pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
@@ -1224,7 +1468,11 @@ fn process_paints<W: DockWriter>(
             dock.flush()?;
             *last_batch = Instant::now();
             if std::env::var_os("ORCADECK_TRACE").is_some() {
-                eprintln!("{:>6}ms painted {count} keys {bytes} B in {} ms", t0.elapsed().as_millis(), started.elapsed().as_millis());
+                eprintln!(
+                    "{:>6}ms painted {count} keys {bytes} B in {} ms",
+                    t0.elapsed().as_millis(),
+                    started.elapsed().as_millis()
+                );
             }
         }
     }
@@ -1259,7 +1507,10 @@ fn session_loop_threaded<W: DockWriter>(
 
         match event_rx.recv_timeout(timeout) {
             Ok(ReaderMsg::Data(buf)) => {
-                handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, found, running, rt, builtins, pending, t0)?;
+                handle_input_packet(
+                    &buf, dock, by_key, msg_tx, host, scenes, plugins, found, running, rt,
+                    builtins, pending, t0,
+                )?;
             }
             Ok(ReaderMsg::Wake) => {}
             Ok(ReaderMsg::Error(err)) => {
@@ -1274,7 +1525,10 @@ fn session_loop_threaded<W: DockWriter>(
         while let Ok(msg) = event_rx.try_recv() {
             match msg {
                 ReaderMsg::Data(buf) => {
-                    handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, found, running, rt, builtins, pending, t0)?;
+                    handle_input_packet(
+                        &buf, dock, by_key, msg_tx, host, scenes, plugins, found, running, rt,
+                        builtins, pending, t0,
+                    )?;
                 }
                 ReaderMsg::Wake => {}
                 ReaderMsg::Error(err) => return Err(err),
@@ -1285,7 +1539,9 @@ fn session_loop_threaded<W: DockWriter>(
         retire_due(rt, host, running, Instant::now());
 
         while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
-            if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
+            if let Some((key, img)) = reload_cell(
+                &scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins,
+            ) {
                 pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
             }
         }
@@ -1328,15 +1584,34 @@ fn session(
     if !hid_reader_mode() {
         let mut buf = vec![0u8; dock.n + 1];
         loop {
-            let k = dock.dev.read_timeout(&mut buf, 30).map_err(|e| e.to_string())?;
+            let k = dock
+                .dev
+                .read_timeout(&mut buf, 30)
+                .map_err(|e| e.to_string())?;
             if k > 0 {
-                handle_input_packet(&buf[..k], &mut dock, by_key, msg_tx, host, scenes, plugins, found, running, rt, builtins, &mut pending, t0)?;
+                handle_input_packet(
+                    &buf[..k],
+                    &mut dock,
+                    by_key,
+                    msg_tx,
+                    host,
+                    scenes,
+                    plugins,
+                    found,
+                    running,
+                    rt,
+                    builtins,
+                    &mut pending,
+                    t0,
+                )?;
             }
             rt.tick();
             retire_due(rt, host, running, Instant::now());
             // Editor saves: repaint just that key, through the same pending batch as everything else.
             while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
-                if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
+                if let Some((key, img)) = reload_cell(
+                    &scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins,
+                ) {
                     pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
                 }
             }
@@ -1363,7 +1638,9 @@ fn session(
                             }
                         }
                         Ok(_) => {
-                            let _ = reader_tx.send(ReaderMsg::Error("read returned 0 bytes (device disconnected)".into()));
+                            let _ = reader_tx.send(ReaderMsg::Error(
+                                "read returned 0 bytes (device disconnected)".into(),
+                            ));
                             break;
                         }
                         Err(e) => {
@@ -1407,7 +1684,11 @@ mod tests {
     use serde_json::json;
 
     fn white(px: u32) -> DynamicImage {
-        DynamicImage::ImageRgb8(image::RgbImage::from_pixel(px, px, image::Rgb([255, 255, 255])))
+        DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            px,
+            px,
+            image::Rgb([255, 255, 255]),
+        ))
     }
 
     fn tmp(name: &str) -> PathBuf {
@@ -1422,7 +1703,10 @@ mod tests {
         runtime_with_reload(dir, reload_tx)
     }
 
-    fn runtime_with_reload(dir: &Path, reload_tx: mpsc::Sender<ReloadCmd>) -> (Runtime, mpsc::Receiver<Paint>) {
+    fn runtime_with_reload(
+        dir: &Path,
+        reload_tx: mpsc::Sender<ReloadCmd>,
+    ) -> (Runtime, mpsc::Receiver<Paint>) {
         let (tx, rx) = mpsc::channel();
         let rt = Runtime {
             tx,
@@ -1449,7 +1733,11 @@ mod tests {
     fn settings_are_debounced_and_unchanged_is_not_written() {
         let dir = tmp("settings");
         let path = dir.join("manifest.json");
-        std::fs::write(&path, r#"{"Actions":{"2,1":{"UUID":"a","Settings":{"v":0}}}}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"Actions":{"2,1":{"UUID":"a","Settings":{"v":0}}}}"#,
+        )
+        .unwrap();
         let (rt, _rx) = runtime(&dir);
         rt.set_cell("CTX", (2, 1));
         let t0 = Instant::now();
@@ -1470,7 +1758,11 @@ mod tests {
         let stamp = std::fs::metadata(&path).unwrap().modified().unwrap();
         rt.queue_settings("CTX", json!({"v": 3}));
         rt.flush_settings(t0 + Duration::from_millis(2500));
-        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), stamp, "unchanged value is not rewritten");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            stamp,
+            "unchanged value is not rewritten"
+        );
     }
 
     #[test]
@@ -1481,7 +1773,11 @@ mod tests {
         rt.view.lock().unwrap().base.insert(1, base.clone());
         let t0 = Instant::now();
         rt.feedback("", 1, true, base.clone());
-        let Paint { key: k, img: overlay, .. } = rx.try_recv().expect("overlay");
+        let Paint {
+            key: k,
+            img: overlay,
+            ..
+        } = rx.try_recv().expect("overlay");
         assert_eq!(k, 1);
         assert_ne!(overlay.to_rgba8(), base.to_rgba8());
 
@@ -1505,11 +1801,26 @@ mod tests {
         let (rt, rx) = runtime(&dir);
         rt.set_cell("CTX", (2, 1));
         rt.retire("CTX");
-        let key = host::Key { context: "CTX".into(), device: DEVICE.into(), column: 2, row: 1 };
-        rt.output(host::Output::Title { key, title: "x".into(), state: None });
-        assert!(rx.try_recv().is_err(), "late paint from the old scene is dropped");
+        let key = host::Key {
+            context: "CTX".into(),
+            device: DEVICE.into(),
+            column: 2,
+            row: 1,
+        };
+        rt.output(host::Output::Title {
+            key,
+            title: "x".into(),
+            state: None,
+        });
+        assert!(
+            rx.try_recv().is_err(),
+            "late paint from the old scene is dropped"
+        );
         rt.clear_cells();
-        assert!(rt.settings.lock().unwrap().cells.get("CTX").is_none(), "old cell mapping is dropped");
+        assert!(
+            rt.settings.lock().unwrap().cells.get("CTX").is_none(),
+            "old cell mapping is dropped"
+        );
     }
 
     #[test]
@@ -1521,58 +1832,113 @@ mod tests {
         let t0 = Instant::now();
 
         rt.retire_unused(&used_b, &running, t0);
-        assert!(rt.due_retires(t0 + Duration::from_millis(RETIRE_MS - 1)).is_empty(), "not before 2 s");
+        assert!(
+            rt.due_retires(t0 + Duration::from_millis(RETIRE_MS - 1))
+                .is_empty(),
+            "not before 2 s"
+        );
         // A switch back to the scene that uses both cancels com.a's pending stop.
         let used_ab: HashMap<String, usize> =
             HashMap::from([("com.a".to_string(), 1), ("com.b".to_string(), 1)]);
         rt.retire_unused(&used_ab, &running, t0 + Duration::from_millis(500));
-        assert!(rt.due_retires(t0 + Duration::from_secs(10)).is_empty(), "a used plugin is not retired");
+        assert!(
+            rt.due_retires(t0 + Duration::from_secs(10)).is_empty(),
+            "a used plugin is not retired"
+        );
 
         // Chained switches do not extend an existing deadline.
         rt.retire_unused(&used_b, &running, t0);
         rt.retire_unused(&used_b, &running, t0 + Duration::from_millis(1000));
         let mut due = rt.due_retires(t0 + Duration::from_millis(RETIRE_MS));
         due.sort();
-        assert_eq!(due, ["com.a"], "only the unused plugin, at its first deadline");
-        assert!(rt.due_retires(t0 + Duration::from_secs(10)).is_empty(), "the deadline is one-shot");
+        assert_eq!(
+            due,
+            ["com.a"],
+            "only the unused plugin, at its first deadline"
+        );
+        assert!(
+            rt.due_retires(t0 + Duration::from_secs(10)).is_empty(),
+            "the deadline is one-shot"
+        );
     }
 
     #[test]
     fn retiring_flushes_settings_first_and_forgets_the_plugin() {
         let dir = tmp("retire-flush");
         let path = dir.join("manifest.json");
-        std::fs::write(&path, r#"{"Actions":{"2,1":{"UUID":"a","Settings":{"v":0}}}}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"Actions":{"2,1":{"UUID":"a","Settings":{"v":0}}}}"#,
+        )
+        .unwrap();
         let (rt, _rx) = runtime(&dir);
         rt.set_cell("CTX", (2, 1));
         rt.queue_settings("CTX", json!({"v": 1}));
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let mut running: HashSet<String> = ["com.a".to_string()].into_iter().collect();
         let t0 = Instant::now();
         rt.retire_unused(&HashMap::new(), &running, t0);
 
-        retire_due(&rt, &host, &mut running, t0 + Duration::from_millis(RETIRE_MS - 1));
+        retire_due(
+            &rt,
+            &host,
+            &mut running,
+            t0 + Duration::from_millis(RETIRE_MS - 1),
+        );
         assert!(running.contains("com.a"), "still inside the grace period");
         assert_eq!(settings_at(&path), json!({"v": 0}), "nothing flushed early");
 
-        retire_due(&rt, &host, &mut running, t0 + Duration::from_millis(RETIRE_MS));
-        assert_eq!(settings_at(&path), json!({"v": 1}), "pending settings are written before the stop");
-        assert!(!running.contains("com.a"), "running forgets the retired plugin so a scene can launch it again");
+        retire_due(
+            &rt,
+            &host,
+            &mut running,
+            t0 + Duration::from_millis(RETIRE_MS),
+        );
+        assert_eq!(
+            settings_at(&path),
+            json!({"v": 1}),
+            "pending settings are written before the stop"
+        );
+        assert!(
+            !running.contains("com.a"),
+            "running forgets the retired plugin so a scene can launch it again"
+        );
     }
 
     #[test]
     fn global_settings_round_trip() {
         let dir = tmp("globals");
         save_global(&dir, "com.foo.bar", &json!({"b": 2, "a": 1}));
-        assert_eq!(load_global(&dir, "com.foo.bar"), Some(json!({"a": 1, "b": 2})));
+        assert_eq!(
+            load_global(&dir, "com.foo.bar"),
+            Some(json!({"a": 1, "b": 2}))
+        );
         assert_eq!(load_global(&dir, "missing"), None);
         let raw = std::fs::read_to_string(dir.join("globals").join("com.foo.bar.json")).unwrap();
-        assert!(raw.starts_with("{\n    \"a\": 1"), "4-space sorted file: {raw}");
-        assert!(globals_path(&dir, "../evil").is_none(), "path traversal rejected");
+        assert!(
+            raw.starts_with("{\n    \"a\": 1"),
+            "4-space sorted file: {raw}"
+        );
+        assert!(
+            globals_path(&dir, "../evil").is_none(),
+            "path traversal rejected"
+        );
     }
 
     #[test]
     fn only_web_urls_pass() {
-        for ok in ["http://x", "HTTPS://example.com/a?b=1&c=2", "https://127.0.0.1:8080/"] {
+        for ok in [
+            "http://x",
+            "HTTPS://example.com/a?b=1&c=2",
+            "https://127.0.0.1:8080/",
+        ] {
             assert!(is_web_url(ok), "{ok}");
         }
         for bad in [
@@ -1596,7 +1962,11 @@ mod tests {
         let out = blend(&base, &top, KEY_PX);
         assert_eq!((out.width(), out.height()), (KEY_PX, KEY_PX));
         let (b, o) = (base.to_rgba8(), out.to_rgba8());
-        assert_ne!(b.get_pixel(KEY_PX / 2, KEY_PX - 3), o.get_pixel(KEY_PX / 2, KEY_PX - 3), "bottom bar not drawn");
+        assert_ne!(
+            b.get_pixel(KEY_PX / 2, KEY_PX - 3),
+            o.get_pixel(KEY_PX / 2, KEY_PX - 3),
+            "bottom bar not drawn"
+        );
     }
 
     #[test]
@@ -1618,18 +1988,37 @@ mod tests {
         rt.paint("c", 16, big(200));
         {
             let v = rt.view.lock().unwrap();
-            assert_eq!((v.base[&1].width(), v.base[&1].height()), (KEY_PX, KEY_PX), "main key stored at 85");
-            assert_eq!((v.base[&16].width(), v.base[&16].height()), (SIDE_PX, SIDE_PX), "side key stored at 80");
+            assert_eq!(
+                (v.base[&1].width(), v.base[&1].height()),
+                (KEY_PX, KEY_PX),
+                "main key stored at 85"
+            );
+            assert_eq!(
+                (v.base[&16].width(), v.base[&16].height()),
+                (SIDE_PX, SIDE_PX),
+                "side key stored at 80"
+            );
         }
         for p in [rx.try_recv().unwrap(), rx.try_recv().unwrap()] {
-            assert_eq!((p.img.width(), p.img.height()), (image_px(p.key), image_px(p.key)), "paint already at key size");
+            assert_eq!(
+                (p.img.width(), p.img.height()),
+                (image_px(p.key), image_px(p.key)),
+                "paint already at key size"
+            );
         }
 
         let png = dir.join("big.png");
         big(200).save(&png).unwrap();
-        let uri = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(std::fs::read(&png).unwrap()));
+        let uri = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(std::fs::read(&png).unwrap())
+        );
         let img = decode_uri(&uri, image_px(1)).expect("data uri");
-        assert_eq!((img.width(), img.height()), (KEY_PX, KEY_PX), "raster data URI scaled at decode");
+        assert_eq!(
+            (img.width(), img.height()),
+            (KEY_PX, KEY_PX),
+            "raster data URI scaled at decode"
+        );
     }
 
     #[test]
@@ -1639,13 +2028,19 @@ mod tests {
             let out = compose_feedback(&base, ok, KEY_PX);
             assert_eq!((out.width(), out.height()), (KEY_PX, KEY_PX));
             let (b, o) = (base.to_rgba8(), out.to_rgba8());
-            assert_ne!(b.get_pixel(KEY_PX / 4, KEY_PX / 2), o.get_pixel(KEY_PX / 4, KEY_PX / 2), "badge missing (ok={ok})");
+            assert_ne!(
+                b.get_pixel(KEY_PX / 4, KEY_PX / 2),
+                o.get_pixel(KEY_PX / 4, KEY_PX / 2),
+                "badge missing (ok={ok})"
+            );
         }
     }
 
     /// A real image file, so `Scene::image_of` and `load_img` run exactly as on disk.
     fn png(path: &Path, rgb: [u8; 3]) {
-        image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb(rgb)).save(path).expect("png");
+        image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb(rgb))
+            .save(path)
+            .expect("png");
     }
 
     #[test]
@@ -1656,11 +2051,22 @@ mod tests {
         png(&dir.join("Images/old.png"), [255, 0, 0]);
         png(&dir.join("Images/new.png"), [0, 255, 0]);
         let manifest = dir.join("manifest.json");
-        std::fs::write(&manifest, r#"{"Actions":{"0,0":{"UUID":"com.x.action","States":[{"Image":"old.png"}]}}}"#).unwrap();
+        std::fs::write(
+            &manifest,
+            r#"{"Actions":{"0,0":{"UUID":"com.x.action","States":[{"Image":"old.png"}]}}}"#,
+        )
+        .unwrap();
 
         let (rt, _paints) = runtime(&root);
         *rt.manifest.lock().unwrap() = manifest.clone();
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let old = host.appear(host::Instance::new("com.x", "com.x.action", DEVICE, 0, 0));
         rt.set_cell(&old, (0, 0));
         rt.view.lock().unwrap().base.insert(13, white(KEY_PX));
@@ -1672,33 +2078,103 @@ mod tests {
         let found: Vec<host::Plugin> = Vec::new();
 
         assert!(
-            reload_cell("B", (0, 0), &rt, &mut by_key, &host, &found, &mut running, &tx, &builtins, &root).is_none(),
+            reload_cell(
+                "B",
+                (0, 0),
+                &rt,
+                &mut by_key,
+                &host,
+                &found,
+                &mut running,
+                &tx,
+                &builtins,
+                &root
+            )
+            .is_none(),
             "a scene that is not on the deck is only written to disk"
         );
 
         // The editor replaces the action and its image; only key 13 is repainted.
-        std::fs::write(&manifest, r#"{"Actions":{"0,0":{"UUID":"com.test.builtin","States":[{"Image":"new.png"}]}}}"#).unwrap();
-        let (key, img) = reload_cell("A", (0, 0), &rt, &mut by_key, &host, &found, &mut running, &tx, &builtins, &root)
-            .expect("reload");
+        std::fs::write(
+            &manifest,
+            r#"{"Actions":{"0,0":{"UUID":"com.test.builtin","States":[{"Image":"new.png"}]}}}"#,
+        )
+        .unwrap();
+        let (key, img) = reload_cell(
+            "A",
+            (0, 0),
+            &rt,
+            &mut by_key,
+            &host,
+            &found,
+            &mut running,
+            &tx,
+            &builtins,
+            &root,
+        )
+        .expect("reload");
         assert_eq!(key, 13);
-        assert_eq!(*img.to_rgb8().get_pixel(0, 0), image::Rgb([0, 255, 0]), "placeholder from the fresh manifest");
-        assert!(rt.retired(&old), "the old plugin instance gets no more paints");
+        assert_eq!(
+            *img.to_rgb8().get_pixel(0, 0),
+            image::Rgb([0, 255, 0]),
+            "placeholder from the fresh manifest"
+        );
+        assert!(
+            rt.retired(&old),
+            "the old plugin instance gets no more paints"
+        );
         assert_eq!(by_key.get(&13), Some(&Target::Builtin("0,0".into())));
         match rx.try_recv().unwrap() {
-            BuiltinMsg::Cell { key: k, old: gone, new: Some(new) } => {
-                assert_eq!((k, gone), (13, None), "a plugin has no builtin registration to drop");
-                assert_eq!((new.uuid.as_str(), new.context.as_str(), new.row, new.col), ("com.test.builtin", "0,0", 0, 0));
+            BuiltinMsg::Cell {
+                key: k,
+                old: gone,
+                new: Some(new),
+            } => {
+                assert_eq!(
+                    (k, gone),
+                    (13, None),
+                    "a plugin has no builtin registration to drop"
+                );
+                assert_eq!(
+                    (new.uuid.as_str(), new.context.as_str(), new.row, new.col),
+                    ("com.test.builtin", "0,0", 0, 0)
+                );
             }
             _ => panic!("the builtin thread is not told about the new action"),
         }
 
         // A builtin replaced by another builtin keeps the same context and re-registers in place.
-        let builtins: HashSet<&'static str> = ["com.test.builtin", "com.test.builtin2"].into_iter().collect();
-        std::fs::write(&manifest, r#"{"Actions":{"0,0":{"UUID":"com.test.builtin2","States":[{"Image":"old.png"}]}}}"#).unwrap();
-        assert!(reload_cell("A", (0, 0), &rt, &mut by_key, &host, &found, &mut running, &tx, &builtins, &root).is_some());
+        let builtins: HashSet<&'static str> = ["com.test.builtin", "com.test.builtin2"]
+            .into_iter()
+            .collect();
+        std::fs::write(
+            &manifest,
+            r#"{"Actions":{"0,0":{"UUID":"com.test.builtin2","States":[{"Image":"old.png"}]}}}"#,
+        )
+        .unwrap();
+        assert!(reload_cell(
+            "A",
+            (0, 0),
+            &rt,
+            &mut by_key,
+            &host,
+            &found,
+            &mut running,
+            &tx,
+            &builtins,
+            &root
+        )
+        .is_some());
         match rx.try_recv().unwrap() {
-            BuiltinMsg::Cell { key: 13, old: Some(gone), new: Some(new) } => {
-                assert_eq!((gone.as_str(), new.uuid.as_str()), ("0,0", "com.test.builtin2"));
+            BuiltinMsg::Cell {
+                key: 13,
+                old: Some(gone),
+                new: Some(new),
+            } => {
+                assert_eq!(
+                    (gone.as_str(), new.uuid.as_str()),
+                    ("0,0", "com.test.builtin2")
+                );
             }
             _ => panic!("the old builtin is not dropped"),
         }
@@ -1713,7 +2189,14 @@ mod tests {
         let (rt, _paints) = runtime(&root);
         *rt.manifest.lock().unwrap() = dir.join("manifest.json");
 
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let ctx = host.appear(host::Instance::new("com.x", "com.x.action", DEVICE, 2, 1));
         rt.set_cell(&ctx, (2, 1));
         let inspector = RunInspector::new(Arc::new(rt), host.clone());
@@ -1722,8 +2205,14 @@ mod tests {
         assert!(!token.is_empty());
         assert_eq!((got.as_str(), port), (ctx.as_str(), host.port()));
         assert!(inspector.open("B", "2,1").is_err(), "scene not on the deck");
-        assert!(inspector.open("A", "0,0").is_err(), "no plugin action in that cell");
-        assert!(inspector.open("A", "2,1").is_ok(), "each request gets its own single-use token");
+        assert!(
+            inspector.open("A", "0,0").is_err(),
+            "no plugin action in that cell"
+        );
+        assert!(
+            inspector.open("A", "2,1").is_ok(),
+            "each request gets its own single-use token"
+        );
     }
 
     /// Task 4 end to end, without a device: a client asks the daemon for the editor, the server
@@ -1734,22 +2223,39 @@ mod tests {
         let root = tmp("serve-edit");
         let scene = root.join("profiles").join("A.sdProfile");
         std::fs::create_dir_all(&scene).unwrap();
-        std::fs::write(scene.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        std::fs::write(
+            scene.join("manifest.json"),
+            r#"{"DeviceUUID":"AKP153E","Actions":{}}"#,
+        )
+        .unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let name = format!(r"\\.\pipe\orcadeck-ctl-test-edit-{}", std::process::id());
         let listener = ctl::Listener::new(&name).expect("pipe instance");
         let (profile, plugins, data) = (scene.clone(), root.join("plugins"), root.clone());
         let server = std::thread::spawn(move || {
-            assert!(listener.accept(|conn| serve_edit(conn, &profile, &plugins, &data, &host, None)));
+            assert!(
+                listener.accept(|conn| serve_edit(conn, &profile, &plugins, &data, &host, None))
+            );
         });
 
-        let session = ctl::request_at(&name, 0).expect("daemon present").expect("editor url");
+        let session = ctl::request_at(&name, 0)
+            .expect("daemon present")
+            .expect("editor url");
         let rest = session.url().trim_start_matches("http://127.0.0.1:");
         let port: u16 = rest.split('/').next().unwrap().parse().unwrap();
         std::net::TcpStream::connect(("127.0.0.1", port)).expect("the embedded editor listens");
 
         drop(session); // Ctrl+C in `orcadeck edit`
-        server.join().expect("serve_edit returns and stops the server");
+        server
+            .join()
+            .expect("serve_edit returns and stops the server");
     }
 
     #[derive(Default)]
@@ -1797,12 +2303,27 @@ mod tests {
         let mut pending = HashMap::new();
         let gap = Duration::from_millis(50);
         let mut last_batch = Instant::now() - gap;
-        let mut writer = FakeWriter { n: 512, ..Default::default() };
+        let mut writer = FakeWriter {
+            n: 512,
+            ..Default::default()
+        };
 
         // 1. Queue multiple frames for key 3 (e.g. Red, Green, Blue) during one gap
-        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
-        let green = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 255, 0])));
-        let blue = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 0, 255])));
+        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([255, 0, 0]),
+        ));
+        let green = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([0, 255, 0]),
+        ));
+        let blue = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([0, 0, 255]),
+        ));
 
         rt.send(3, red, "c");
         rt.send(3, green, "c");
@@ -1813,32 +2334,85 @@ mod tests {
         rt.send(4, white_img, "c");
 
         // Process batch
-        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(
+            &rx,
+            &rt,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut writer,
+            Instant::now(),
+        )
+        .unwrap();
 
         // Verification:
         // Key 3 must be sent only ONCE (coalesced to the latest image: blue)
         // Key 4 must be sent once
-        assert_eq!(writer.flushes.len(), 1, "exactly one STP flush for the batch");
+        assert_eq!(
+            writer.flushes.len(),
+            1,
+            "exactly one STP flush for the batch"
+        );
         assert_eq!(writer.keys_sent.len(), 2, "2 keys sent");
 
-        let key3_sent = writer.keys_sent.iter().find(|(_, k, _)| *k == 3).expect("key 3 sent");
+        let key3_sent = writer
+            .keys_sent
+            .iter()
+            .find(|(_, k, _)| *k == 3)
+            .expect("key 3 sent");
         let expected_blue_jpeg = render::key_jpeg(&blue, 3);
-        assert_eq!(key3_sent.2, expected_blue_jpeg, "key 3 received the latest image (blue)");
+        assert_eq!(
+            key3_sent.2, expected_blue_jpeg,
+            "key 3 received the latest image (blue)"
+        );
 
         // 2. Queue another frame for key 3 immediately (during the gap)
-        let yellow = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 255, 0])));
+        let yellow = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([255, 255, 0]),
+        ));
         rt.send(3, yellow.clone(), "c");
 
         // Try to process batch immediately: last_batch.elapsed() < gap
-        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
-        assert_eq!(writer.flushes.len(), 1, "no new batch sent before gap elapsed");
+        process_paints(
+            &rx,
+            &rt,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut writer,
+            Instant::now(),
+        )
+        .unwrap();
+        assert_eq!(
+            writer.flushes.len(),
+            1,
+            "no new batch sent before gap elapsed"
+        );
 
         // Sleep until gap elapses
         std::thread::sleep(gap + Duration::from_millis(10));
-        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(
+            &rx,
+            &rt,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut writer,
+            Instant::now(),
+        )
+        .unwrap();
 
-        assert_eq!(writer.flushes.len(), 2, "second batch sent after gap elapsed");
-        assert!(writer.flushes[1].0.duration_since(writer.flushes[0].0) >= gap, "batches stay separated by the gap");
+        assert_eq!(
+            writer.flushes.len(),
+            2,
+            "second batch sent after gap elapsed"
+        );
+        assert!(
+            writer.flushes[1].0.duration_since(writer.flushes[0].0) >= gap,
+            "batches stay separated by the gap"
+        );
 
         let key3_second_sent = writer.keys_sent.last().expect("second key sent");
         assert_eq!(key3_second_sent.1, 3);
@@ -1852,16 +2426,30 @@ mod tests {
         let (_reload_tx, reload_rx) = mpsc::channel();
         let (msg_tx, msg_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let mut by_key = HashMap::from([(2u8, Target::Builtin("CTX2".into()))]);
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
         let scene_path = dir.join("A.sdProfile");
         std::fs::create_dir_all(&scene_path).unwrap();
-        std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        std::fs::write(
+            scene_path.join("manifest.json"),
+            r#"{"DeviceUUID":"AKP153E","Actions":{}}"#,
+        )
+        .unwrap();
         let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
-        let mut writer = FakeWriter { n: 64, ..Default::default() };
+        let mut writer = FakeWriter {
+            n: 64,
+            ..Default::default()
+        };
         let gap = Duration::from_secs(2);
 
         let worker = std::thread::spawn(move || {
@@ -1894,18 +2482,29 @@ mod tests {
 
         let t0 = Instant::now();
         event_tx.send(ReaderMsg::Data(press_buf)).unwrap();
-        let msg = msg_rx.recv_timeout(Duration::from_millis(250)).expect("received within 250 ms");
+        let msg = msg_rx
+            .recv_timeout(Duration::from_millis(250))
+            .expect("received within 250 ms");
         let elapsed = t0.elapsed();
-        assert!(elapsed < Duration::from_millis(250), "delivered promptly via event channel ({elapsed:?})");
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "delivered promptly via event channel ({elapsed:?})"
+        );
         match msg {
             BuiltinMsg::Press(ctx) => assert_eq!(ctx, "CTX2"),
             _ => panic!("unexpected msg"),
         }
 
         // Stop the worker thread with an error (simulating unplug)
-        event_tx.send(ReaderMsg::Error("device unplugged".into())).unwrap();
+        event_tx
+            .send(ReaderMsg::Error("device unplugged".into()))
+            .unwrap();
         let res = worker.join().expect("thread join");
-        assert_eq!(res, Err("device unplugged".to_string()), "reader exit on error triggers reconnect path");
+        assert_eq!(
+            res,
+            Err("device unplugged".to_string()),
+            "reader exit on error triggers reconnect path"
+        );
     }
 
     #[test]
@@ -1953,21 +2552,39 @@ mod tests {
         rt.set_manifest(scene_path.join("manifest.json"));
         let rt = Arc::new(rt);
 
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let mut by_key = HashMap::new();
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
-        let fake = Arc::new(Mutex::new(FakeWriter { n: 64, ..Default::default() }));
+        let fake = Arc::new(Mutex::new(FakeWriter {
+            n: 64,
+            ..Default::default()
+        }));
         let fake_clone = Arc::clone(&fake);
         let gap = Duration::from_millis(50);
 
         struct SharedWriter(Arc<Mutex<FakeWriter>>);
         impl DockWriter for SharedWriter {
-            fn report_n(&self) -> usize { self.0.lock().unwrap().report_n() }
-            fn send(&mut self, payload: &[u8]) -> Result<(), String> { self.0.lock().unwrap().send(payload) }
-            fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String> { self.0.lock().unwrap().set_key(key, jpeg) }
-            fn flush(&mut self) -> Result<(), String> { self.0.lock().unwrap().flush() }
+            fn report_n(&self) -> usize {
+                self.0.lock().unwrap().report_n()
+            }
+            fn send(&mut self, payload: &[u8]) -> Result<(), String> {
+                self.0.lock().unwrap().send(payload)
+            }
+            fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String> {
+                self.0.lock().unwrap().set_key(key, jpeg)
+            }
+            fn flush(&mut self) -> Result<(), String> {
+                self.0.lock().unwrap().flush()
+            }
         }
 
         let mut writer = SharedWriter(fake_clone);
@@ -2010,8 +2627,14 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         let elapsed = t0.elapsed();
-        assert!(flushed, "paint flushed within gap + 50 ms (took {elapsed:?}, heartbeat is 10s)");
-        assert!(elapsed < Duration::from_millis(150), "woke immediately without waiting for 10s heartbeat");
+        assert!(
+            flushed,
+            "paint flushed within gap + 50 ms (took {elapsed:?}, heartbeat is 10s)"
+        );
+        assert!(
+            elapsed < Duration::from_millis(150),
+            "woke immediately without waiting for 10s heartbeat"
+        );
 
         // Wait gap before testing reload so batch gap doesn't hold back the reload paint
         std::thread::sleep(gap);
@@ -2031,8 +2654,14 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         let reload_elapsed = t_reload.elapsed();
-        assert!(reloaded, "reload caused repaint and flushed within gap + 50 ms (took {reload_elapsed:?})");
-        assert!(reload_elapsed < Duration::from_millis(150), "reload woke immediately without waiting for 10s heartbeat");
+        assert!(
+            reloaded,
+            "reload caused repaint and flushed within gap + 50 ms (took {reload_elapsed:?})"
+        );
+        assert!(
+            reload_elapsed < Duration::from_millis(150),
+            "reload woke immediately without waiting for 10s heartbeat"
+        );
 
         // Stop loop
         event_tx.send(ReaderMsg::Error("done".into())).unwrap();
@@ -2044,7 +2673,14 @@ mod tests {
         let dir = tmp("gap1-stale-drop");
         let (rt, rx) = runtime(&dir);
         let (msg_tx, _msg_rx) = mpsc::channel();
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let builtins = HashSet::new();
         let mut running = HashSet::new();
 
@@ -2052,18 +2688,33 @@ mod tests {
         let scene_b = dir.join("B.sdProfile");
         std::fs::create_dir_all(&scene_a).unwrap();
         std::fs::create_dir_all(&scene_b).unwrap();
-        std::fs::write(scene_a.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
-        std::fs::write(scene_b.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        std::fs::write(
+            scene_a.join("manifest.json"),
+            r#"{"DeviceUUID":"AKP153E","Actions":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            scene_b.join("manifest.json"),
+            r#"{"DeviceUUID":"AKP153E","Actions":{}}"#,
+        )
+        .unwrap();
 
         let mut scenes = SceneSet::open(&scene_a, &dir, &dir, DEVICE).unwrap();
         let mut by_key = HashMap::from([(1u8, Target::Plugin("CTX_OLD".into()))]);
         let mut pending = HashMap::new();
         let gap = Duration::from_millis(10);
         let mut last_batch = Instant::now() - gap;
-        let mut writer = FakeWriter { n: 64, ..Default::default() };
+        let mut writer = FakeWriter {
+            n: 64,
+            ..Default::default()
+        };
 
         // 1. Old scene: queue paint for key 1
-        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
+        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([255, 0, 0]),
+        ));
         rt.send(1, red, "CTX_OLD");
 
         // 2. Run real switch_scene to scene B
@@ -2078,29 +2729,58 @@ mod tests {
             &msg_tx,
             &rt,
             &builtins,
-        ).expect("switch_scene to B succeeds");
+        )
+        .expect("switch_scene to B succeeds");
 
         assert_eq!(rt.gen.load(Ordering::Relaxed), 1);
         assert!(rt.retired("CTX_OLD"));
 
         // 3. Queue a new-scene paint for the same key (key 1) with blue image
-        let blue = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 0, 255])));
+        let blue = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([0, 0, 255]),
+        ));
         rt.send(1, blue.clone(), "CTX_NEW");
 
         // Late paint from old plugin context (simulating delayed thread)
-        let yellow = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 255, 0])));
+        let yellow = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([255, 255, 0]),
+        ));
         rt.send(1, yellow, "CTX_OLD");
 
         // 4. Run process_paints
-        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(
+            &rx,
+            &rt,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut writer,
+            Instant::now(),
+        )
+        .unwrap();
 
         // 5. Verification:
         // Exactly one image written for key 1, matching the blue image from new scene
-        let key1_sends: Vec<_> = writer.keys_sent.iter().filter(|(_, k, _)| *k == 1).collect();
+        let key1_sends: Vec<_> = writer
+            .keys_sent
+            .iter()
+            .filter(|(_, k, _)| *k == 1)
+            .collect();
         assert_eq!(key1_sends.len(), 1, "only one image written for key 1");
-        assert_eq!(key1_sends[0].2, render::key_jpeg(&blue, 1), "only the new scene image (blue) was written");
+        assert_eq!(
+            key1_sends[0].2,
+            render::key_jpeg(&blue, 1),
+            "only the new scene image (blue) was written"
+        );
         assert!(pending.is_empty(), "pending holds no stale entry");
-        assert!(rt.view.lock().unwrap().base.get(&1).is_none(), "the old scene image is not kept after the switch");
+        assert!(
+            rt.view.lock().unwrap().base.get(&1).is_none(),
+            "the old scene image is not kept after the switch"
+        );
     }
 
     #[test]
@@ -2110,15 +2790,31 @@ mod tests {
         let mut pending = HashMap::new();
         let gap = Duration::from_millis(50);
         let mut last_batch = Instant::now();
-        let mut writer = FakeWriter { n: 64, ..Default::default() };
+        let mut writer = FakeWriter {
+            n: 64,
+            ..Default::default()
+        };
 
         // 1. Paint arrives at gen 0 for key 3 (red image)
-        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
+        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([255, 0, 0]),
+        ));
         rt.send(3, red, "CTX_A");
 
         // Call process_paints while last_batch.elapsed() < gap:
         // Key 3 is received and inserted into `pending` with gen 0, but not flushed!
-        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(
+            &rx,
+            &rt,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut writer,
+            Instant::now(),
+        )
+        .unwrap();
         assert_eq!(pending.len(), 1, "pending holds key 3 at gen 0");
         assert_eq!(pending.get(&3).map(|(_, g)| *g), Some(0));
         assert_eq!(writer.keys_sent.len(), 0, "nothing flushed yet due to gap");
@@ -2136,15 +2832,30 @@ mod tests {
         // 4. Run process_paints:
         // pending.retain(|_, (_, g)| *g >= gen) must purge key 3 (g=0 < gen=1)
         // and flush key 4 (g=1 >= gen=1)
-        process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        process_paints(
+            &rx,
+            &rt,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut writer,
+            Instant::now(),
+        )
+        .unwrap();
 
         // 5. Verify:
         // Key 3 was purged by pending.retain and NEVER written to writer
-        assert!(writer.keys_sent.iter().all(|(_, k, _)| *k != 3), "stale gen 0 key 3 was never written");
+        assert!(
+            writer.keys_sent.iter().all(|(_, k, _)| *k != 3),
+            "stale gen 0 key 3 was never written"
+        );
         let key4_sent = writer.keys_sent.iter().find(|(_, k, _)| *k == 4);
         assert!(key4_sent.is_some(), "key 4 at gen 1 was written");
         assert_eq!(key4_sent.unwrap().2, render::key_jpeg(&white_img, 4));
-        assert!(pending.is_empty(), "pending is completely drained and has no stale entries");
+        assert!(
+            pending.is_empty(),
+            "pending is completely drained and has no stale entries"
+        );
     }
 
     #[test]
@@ -2154,16 +2865,30 @@ mod tests {
         let (_reload_tx, reload_rx) = mpsc::channel();
         let (msg_tx, _msg_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let mut by_key = HashMap::new();
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
         let scene_path = dir.join("A.sdProfile");
         std::fs::create_dir_all(&scene_path).unwrap();
-        std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        std::fs::write(
+            scene_path.join("manifest.json"),
+            r#"{"DeviceUUID":"AKP153E","Actions":{}}"#,
+        )
+        .unwrap();
         let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
-        let mut writer = FakeWriter { n: 64, ..Default::default() };
+        let mut writer = FakeWriter {
+            n: 64,
+            ..Default::default()
+        };
         let gap = Duration::from_secs(5);
 
         let worker = std::thread::spawn(move || {
@@ -2190,11 +2915,18 @@ mod tests {
         });
 
         let t0 = Instant::now();
-        event_tx.send(ReaderMsg::Error("usb read failed: device detached".into())).unwrap();
+        event_tx
+            .send(ReaderMsg::Error("usb read failed: device detached".into()))
+            .unwrap();
 
-        let res = worker.join().expect("session_loop_threaded terminates promptly");
+        let res = worker
+            .join()
+            .expect("session_loop_threaded terminates promptly");
         let elapsed = t0.elapsed();
-        assert!(elapsed < Duration::from_millis(250), "terminated promptly on ReaderMsg::Error ({elapsed:?})");
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "terminated promptly on ReaderMsg::Error ({elapsed:?})"
+        );
         assert_eq!(res, Err("usb read failed: device detached".to_string()));
     }
 
@@ -2213,19 +2945,38 @@ mod tests {
         };
 
         let img1 = white(KEY_PX);
-        let img2 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
-        let img3 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 255, 0])));
+        let img2 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([255, 0, 0]),
+        ));
+        let img3 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            KEY_PX,
+            KEY_PX,
+            image::Rgb([0, 255, 0]),
+        ));
 
         // The same path plugin images take: into the composed view, then the paint channel.
         rt.paint("ctx", 1, img1.clone());
         rt.paint("ctx", 2, img2.clone());
         rt.paint("ctx", 3, img3.clone());
 
-        let res = process_paints(&rx, &rt, &mut pending, &mut last_batch, gap, &mut failing_writer, Instant::now());
+        let res = process_paints(
+            &rx,
+            &rt,
+            &mut pending,
+            &mut last_batch,
+            gap,
+            &mut failing_writer,
+            Instant::now(),
+        );
 
         assert!(res.is_err(), "writer failure must surface as Err");
         let err_msg = res.unwrap_err();
-        assert!(err_msg.contains("unplugged during set_key for key 2"), "error preserved: {err_msg}");
+        assert!(
+            err_msg.contains("unplugged during set_key for key 2"),
+            "error preserved: {err_msg}"
+        );
 
         // Images are NOT lost: the composed view keeps them, and that is what a reconnect repaints.
         let reconnect = view_paints(&rt);
@@ -2233,16 +2984,35 @@ mod tests {
         assert_eq!(reconnect.get(&2).map(|(img, _)| img), Some(&img2));
         assert_eq!(reconnect.get(&3).map(|(img, _)| img), Some(&img3));
 
-        let mut healthy_writer = FakeWriter { n: 64, ..Default::default() };
+        let mut healthy_writer = FakeWriter {
+            n: 64,
+            ..Default::default()
+        };
         let mut reconnected_pending = reconnect;
         let mut reconnect_batch = Instant::now() - gap;
-        process_paints(&rx, &rt, &mut reconnected_pending, &mut reconnect_batch, gap, &mut healthy_writer, Instant::now())
-            .expect("reconnected paint succeeds");
+        process_paints(
+            &rx,
+            &rt,
+            &mut reconnected_pending,
+            &mut reconnect_batch,
+            gap,
+            &mut healthy_writer,
+            Instant::now(),
+        )
+        .expect("reconnected paint succeeds");
 
         assert_eq!(healthy_writer.flushes.len(), 1);
-        let mut keys: Vec<u8> = healthy_writer.keys_sent.iter().map(|(_, k, _)| *k).collect();
+        let mut keys: Vec<u8> = healthy_writer
+            .keys_sent
+            .iter()
+            .map(|(_, k, _)| *k)
+            .collect();
         keys.sort_unstable();
-        assert_eq!(keys, (1..=15).collect::<Vec<u8>>(), "every key is repainted after the reconnect");
+        assert_eq!(
+            keys,
+            (1..=15).collect::<Vec<u8>>(),
+            "every key is repainted after the reconnect"
+        );
         for (_, k, jpeg) in &healthy_writer.keys_sent {
             let expected = render::key_jpeg(&rt.view.lock().unwrap().effective(*k), *k);
             assert_eq!(jpeg, &expected, "key {k} repainted with what it shows");
@@ -2257,14 +3027,25 @@ mod tests {
         let (_reload_tx, reload_rx) = mpsc::channel();
         let (msg_tx, _msg_rx) = mpsc::channel();
         let (_event_tx, event_rx) = mpsc::channel();
-        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let host = host::Host::start(
+            host::Config {
+                port: 0,
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .unwrap();
         let mut by_key = HashMap::new();
         let mut pending = HashMap::new();
         let mut running = HashSet::new();
         let builtins = HashSet::new();
         let scene_path = dir.join("A.sdProfile");
         std::fs::create_dir_all(&scene_path).unwrap();
-        std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        std::fs::write(
+            scene_path.join("manifest.json"),
+            r#"{"DeviceUUID":"AKP153E","Actions":{}}"#,
+        )
+        .unwrap();
         let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
 
         let mut failing_writer = FakeWriter {
@@ -2297,7 +3078,10 @@ mod tests {
             Instant::now(),
         );
 
-        assert!(res.is_err(), "writer failure terminates session loop with Err");
+        assert!(
+            res.is_err(),
+            "writer failure terminates session loop with Err"
+        );
         let err = res.unwrap_err();
         assert!(err.contains("unplugged during set_key for key 1"));
     }

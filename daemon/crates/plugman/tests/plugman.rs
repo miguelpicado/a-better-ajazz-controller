@@ -47,7 +47,11 @@ fn fixture(root: &Path) -> PathBuf {
         "com.example.demo.stop": { "Name": "Stop", "States": [{ "Name": "Idle" }] },
     });
     fs::write(dir.join("en.json"), locale.to_string()).unwrap();
-    fs::write(dir.join("bin/plugin.js"), r#"const actions = ["com.example.demo.launch", "com.example.demo.stop"];"#).unwrap();
+    fs::write(
+        dir.join("bin/plugin.js"),
+        r#"const actions = ["com.example.demo.launch", "com.example.demo.stop"];"#,
+    )
+    .unwrap();
     dir
 }
 
@@ -63,7 +67,8 @@ fn action_uuids(r: &Reconstruction) -> Vec<String> {
 /// Zip `dir` (a `<uuid>.sdPlugin` folder) so entries start with its folder name.
 fn zip_dir(dir: &Path, zip_path: &Path) {
     let mut zip = zip::ZipWriter::new(fs::File::create(zip_path).unwrap());
-    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     let base = dir.parent().unwrap();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -73,7 +78,11 @@ fn zip_dir(dir: &Path, zip_path: &Path) {
                 stack.push(p);
                 continue;
             }
-            let name = p.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+            let name = p
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             zip.start_file(name, opts).unwrap();
             zip.write_all(&fs::read(&p).unwrap()).unwrap();
         }
@@ -98,7 +107,10 @@ fn reconstructs_an_encrypted_manifest_from_locale_and_code_path() {
     assert_eq!(r.confidence, Confidence::Full);
     assert_eq!(r.manifest.as_ref().unwrap()["CodePath"], "bin/plugin.js");
     assert_eq!(r.manifest.as_ref().unwrap()["Nodejs"]["Version"], "20");
-    assert_eq!(action_uuids(&r), ["com.example.demo.launch", "com.example.demo.stop"]);
+    assert_eq!(
+        action_uuids(&r),
+        ["com.example.demo.launch", "com.example.demo.stop"]
+    );
     let launch = &r.manifest.as_ref().unwrap()["Actions"][0];
     assert_eq!(launch["Name"], "Launch");
     assert_eq!(launch["Tooltip"], "Start it");
@@ -110,7 +122,11 @@ fn falls_back_to_code_literals_when_there_is_no_locale_or_registry() {
     let root = Root::new();
     let dir = fixture(&root.0);
     fs::write(dir.join("en.json"), "{}").unwrap();
-    fs::write(dir.join("bin/plugin.js"), r#"const a = "com.example.demo.launch"; const b = "com.example.other.action";"#).unwrap();
+    fs::write(
+        dir.join("bin/plugin.js"),
+        r#"const a = "com.example.demo.launch"; const b = "com.example.other.action";"#,
+    )
+    .unwrap();
     let r = reconstruct_manifest(&dir);
     assert_eq!(r.confidence, Confidence::Full);
     let ids = action_uuids(&r);
@@ -124,15 +140,24 @@ fn scans_exe_literals_in_ascii_and_utf16le() {
     let dir = fixture(&root.0);
     fs::remove_file(dir.join("en.json")).unwrap();
     fs::remove_dir_all(dir.join("bin")).unwrap();
-    let mut exe = b"MZ\0\0com.example.demo.alpha\0com.example.demo.sdPlugin\0com.example.demo.helper.dll\0".to_vec();
+    let mut exe =
+        b"MZ\0\0com.example.demo.alpha\0com.example.demo.sdPlugin\0com.example.demo.helper.dll\0"
+            .to_vec();
     if exe.len() % 2 == 1 {
         exe.push(0);
     }
-    exe.extend("com.example.demo.beta_".encode_utf16().flat_map(u16::to_le_bytes));
+    exe.extend(
+        "com.example.demo.beta_"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes),
+    );
     fs::write(dir.join("demo.exe"), exe).unwrap();
     let r = reconstruct_manifest(&dir);
     assert_eq!(r.code_path.as_deref(), Some("demo.exe"));
-    assert_eq!(action_uuids(&r), ["com.example.demo.alpha", "com.example.demo.beta"]);
+    assert_eq!(
+        action_uuids(&r),
+        ["com.example.demo.alpha", "com.example.demo.beta"]
+    );
     assert_eq!(r.confidence, Confidence::Full);
     assert!(r.manifest.as_ref().unwrap().get("Nodejs").is_none());
 }
@@ -161,7 +186,10 @@ fn installs_a_zip_and_writes_the_overlay() {
     let installed = o.plugins_root.join(format!("{UUID}.sdPlugin"));
     assert!(installed.join("bin/plugin.js").exists());
     // The plugin folder is a byte copy: the encrypted manifest is untouched.
-    assert_eq!(fs::read(installed.join("manifest.json")).unwrap(), encrypted_manifest());
+    assert_eq!(
+        fs::read(installed.join("manifest.json")).unwrap(),
+        encrypted_manifest()
+    );
     let overlay = root.0.join("data/manifests").join(format!("{UUID}.json"));
     assert_eq!(r.overlay.as_deref(), Some(overlay.as_path()));
     assert!(r.removed_overlay.is_none());
@@ -171,19 +199,45 @@ fn installs_a_zip_and_writes_the_overlay() {
 
     let e = install_package(&zip, &o).unwrap_err();
     assert!(e.to_string().contains("already exists"), "{e}");
-    install_package(&zip, &InstallOptions { force: true, ..o.clone() }).unwrap();
-    let names: Vec<String> = fs::read_dir(&o.plugins_root).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into()).collect();
-    assert!(names.iter().any(|n| n.starts_with(&format!("{UUID}.sdPlugin.bak-"))), "{names:?}");
+    install_package(
+        &zip,
+        &InstallOptions {
+            force: true,
+            ..o.clone()
+        },
+    )
+    .unwrap();
+    let names: Vec<String> = fs::read_dir(&o.plugins_root)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into())
+        .collect();
+    assert!(
+        names
+            .iter()
+            .any(|n| n.starts_with(&format!("{UUID}.sdPlugin.bak-"))),
+        "{names:?}"
+    );
 }
 
 #[test]
 fn rejects_zip_slip_entries() {
-    for bad in ["../evil.txt", "/abs.txt", "\\abs.txt", "C:/evil.txt", "c:evil.txt", "x.sdPlugin/../../evil.txt", "a\\..\\evil.txt", "a/b.txt:stream"] {
+    for bad in [
+        "../evil.txt",
+        "/abs.txt",
+        "\\abs.txt",
+        "C:/evil.txt",
+        "c:evil.txt",
+        "x.sdPlugin/../../evil.txt",
+        "a\\..\\evil.txt",
+        "a/b.txt:stream",
+    ] {
         let root = Root::new();
         let zip_path = root.0.join("bad.streamDeckPlugin");
         let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
         let o = zip::write::SimpleFileOptions::default();
-        zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o).unwrap();
+        zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o)
+            .unwrap();
         zip.write_all(b"{}").unwrap();
         zip.start_file(bad, o).unwrap();
         zip.write_all(b"pwned").unwrap();
@@ -192,7 +246,10 @@ fn rejects_zip_slip_entries() {
         let e = install_package(&zip_path, &opts(&root.0)).unwrap_err();
         assert!(e.to_string().contains("Unsafe path"), "{bad}: {e}");
         assert!(inspect_package(&zip_path).is_err(), "{bad}");
-        assert!(!root.0.join("plugins").exists(), "{bad}: nothing may be installed");
+        assert!(
+            !root.0.join("plugins").exists(),
+            "{bad}: nothing may be installed"
+        );
         assert!(!root.0.parent().unwrap().join("evil.txt").exists());
     }
     assert!(check_entry_name("com.x.sdPlugin/imgs/a..b.png").is_ok());
@@ -203,10 +260,13 @@ fn rejects_a_zip_bomb_by_compression_ratio() {
     let root = Root::new();
     let zip_path = root.0.join("bomb.streamDeckPlugin");
     let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
-    let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o).unwrap();
+    let o = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o)
+        .unwrap();
     zip.write_all(b"{}").unwrap();
-    zip.start_file(format!("{UUID}.sdPlugin/bomb.bin"), o).unwrap();
+    zip.start_file(format!("{UUID}.sdPlugin/bomb.bin"), o)
+        .unwrap();
     zip.write_all(&vec![0u8; 4 * 1024 * 1024]).unwrap();
     zip.finish().unwrap();
 
@@ -214,7 +274,11 @@ fn rejects_a_zip_bomb_by_compression_ratio() {
     assert!(e.to_string().contains("Package rejected"), "{e}");
     assert!(inspect_package(&zip_path).is_err());
     assert!(!root.0.join("plugins").exists(), "nothing may be installed");
-    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 1, "no files may be left behind");
+    assert_eq!(
+        fs::read_dir(&root.0).unwrap().count(),
+        1,
+        "no files may be left behind"
+    );
 }
 
 #[test]
@@ -223,15 +287,20 @@ fn rejects_a_package_with_too_many_entries() {
     let zip_path = root.0.join("many.streamDeckPlugin");
     let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
     let o = zip::write::SimpleFileOptions::default();
-    zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o).unwrap();
+    zip.start_file(format!("{UUID}.sdPlugin/manifest.json"), o)
+        .unwrap();
     zip.write_all(b"{}").unwrap();
     for i in 0..20_001 {
-        zip.start_file(format!("{UUID}.sdPlugin/f{i}.txt"), o).unwrap();
+        zip.start_file(format!("{UUID}.sdPlugin/f{i}.txt"), o)
+            .unwrap();
     }
     zip.finish().unwrap();
 
     let e = install_package(&zip_path, &opts(&root.0)).unwrap_err();
-    assert!(e.to_string().contains("Package rejected") && e.to_string().contains("entries"), "{e}");
+    assert!(
+        e.to_string().contains("Package rejected") && e.to_string().contains("entries"),
+        "{e}"
+    );
     assert!(!root.0.join("plugins").exists(), "nothing may be installed");
 }
 
@@ -255,11 +324,20 @@ fn force_removes_the_previous_overlay_when_the_new_install_is_not_full() {
 fn detects_manifest_state_without_decrypting() {
     let root = Root::new();
     let dir = fixture(&root.0);
-    assert_eq!(read_manifest_state(&dir), ManifestState::Encrypted { size: 72 });
+    assert_eq!(
+        read_manifest_state(&dir),
+        ManifestState::Encrypted { size: 72 }
+    );
     fs::write(dir.join("manifest.json"), "\u{feff}{\"UUID\":\"x\"}").unwrap();
-    assert_eq!(read_manifest_state(&dir), ManifestState::Plain(json!({ "UUID": "x" })));
+    assert_eq!(
+        read_manifest_state(&dir),
+        ManifestState::Plain(json!({ "UUID": "x" }))
+    );
     fs::write(dir.join("manifest.json"), "ELGAT0 not json").unwrap();
-    assert_eq!(read_manifest_state(&dir), ManifestState::Invalid { size: 15 });
+    assert_eq!(
+        read_manifest_state(&dir),
+        ManifestState::Invalid { size: 15 }
+    );
     fs::remove_file(dir.join("manifest.json")).unwrap();
     assert_eq!(read_manifest_state(&dir), ManifestState::Missing);
 }
@@ -276,14 +354,35 @@ fn partial_needs_manifest_then_vendor_manifest_is_provided() {
     assert!(!root.0.join("data/manifests").exists());
 
     let vendor = root.0.join("vendor.json");
-    fs::write(&vendor, json!({ "UUID": UUID, "CodePath": "x.exe", "Actions": [{ "UUID": "com.example.demo.a" }] }).to_string()).unwrap();
-    let r = install_package(&dir, &InstallOptions { force: true, manifest_path: Some(vendor.clone()), ..o.clone() }).unwrap();
+    fs::write(
+        &vendor,
+        json!({ "UUID": UUID, "CodePath": "x.exe", "Actions": [{ "UUID": "com.example.demo.a" }] })
+            .to_string(),
+    )
+    .unwrap();
+    let r = install_package(
+        &dir,
+        &InstallOptions {
+            force: true,
+            manifest_path: Some(vendor.clone()),
+            ..o.clone()
+        },
+    )
+    .unwrap();
     assert_eq!(r.reconstruction.confidence, Confidence::Provided);
     assert_eq!(r.reconstruction.action_count, 1);
     assert!(!r.needs_manifest && r.overlay.unwrap().exists());
 
     fs::write(&vendor, "{\"UUID\":\"x\"}").unwrap();
-    assert!(install_package(&dir, &InstallOptions { force: true, manifest_path: Some(vendor), ..o }).is_err());
+    assert!(install_package(
+        &dir,
+        &InstallOptions {
+            force: true,
+            manifest_path: Some(vendor),
+            ..o
+        }
+    )
+    .is_err());
 }
 
 #[test]
@@ -295,7 +394,10 @@ fn exports_and_imports_overlays() {
     assert_eq!(export_overlays(&root.0.join("data"), &out).unwrap(), 1);
     let other = root.0.join("other-data");
     assert_eq!(import_overlays(&out, &other).unwrap(), 1);
-    assert!(other.join("manifests").join(format!("{UUID}.json")).exists());
+    assert!(other
+        .join("manifests")
+        .join(format!("{UUID}.json"))
+        .exists());
 
     fs::write(out.join("broken.json"), "{\"UUID\":\"x\"}").unwrap();
     let fresh = root.0.join("fresh-data");
@@ -318,8 +420,14 @@ fn watcher_waits_for_a_stable_size() {
     assert!(w.poll().is_empty());
     let events = w.poll();
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].1.as_ref().unwrap().reconstruction.confidence, Confidence::Full);
+    assert_eq!(
+        events[0].1.as_ref().unwrap().reconstruction.confidence,
+        Confidence::Full
+    );
     for _ in 0..4 {
-        assert!(w.poll().is_empty(), "an unchanged package is installed once");
+        assert!(
+            w.poll().is_empty(),
+            "an unchanged package is installed once"
+        );
     }
 }

@@ -26,9 +26,17 @@ pub fn route(store: &dyn Store, req: &Request, editor_port: u16) -> Option<Respo
     Some(serve(store, &uuid, &parts, req, editor_port))
 }
 
-fn serve(store: &dyn Store, uuid: &str, parts: &[String], req: &Request, editor_port: u16) -> Response {
+fn serve(
+    store: &dyn Store,
+    uuid: &str,
+    parts: &[String],
+    req: &Request,
+    editor_port: u16,
+) -> Response {
     let host = req.header("host").unwrap_or_default();
-    let origin = |h: &str| h == format!("127.0.0.1:{editor_port}") || h == format!("localhost:{editor_port}");
+    let origin = |h: &str| {
+        h == format!("127.0.0.1:{editor_port}") || h == format!("localhost:{editor_port}")
+    };
     if !origin(host) {
         return Response::error(403, "bad Host");
     }
@@ -41,9 +49,15 @@ fn serve(store: &dyn Store, uuid: &str, parts: &[String], req: &Request, editor_
     if !safe_id(uuid) {
         return Response::error(400, "bad plugin id");
     }
-    let Some(dir) = store.plugin_dir(uuid) else { return Response::error(404, "no such plugin") };
-    let Some((path, ctype)) = resolve(&dir, parts) else { return Response::error(404, "not found") };
-    let Ok(bytes) = fs::read(&path) else { return Response::error(404, "not found") };
+    let Some(dir) = store.plugin_dir(uuid) else {
+        return Response::error(404, "no such plugin");
+    };
+    let Some((path, ctype)) = resolve(&dir, parts) else {
+        return Response::error(404, "not found");
+    };
+    let Ok(bytes) = fs::read(&path) else {
+        return Response::error(404, "not found");
+    };
     let body = if ctype.starts_with("text/html") {
         let mut html = String::from_utf8_lossy(&bytes).into_owned();
         html.push_str(BOOTSTRAP);
@@ -52,7 +66,10 @@ fn serve(store: &dyn Store, uuid: &str, parts: &[String], req: &Request, editor_
         bytes
     };
     let origin = format!("http://127.0.0.1:{editor_port}");
-    let ws = req.query_param("ws").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0);
+    let ws = req
+        .query_param("ws")
+        .and_then(|p| p.parse::<u16>().ok())
+        .filter(|p| *p != 0);
     let connect = ws.map_or_else(|| "'none'".to_string(), |p| format!("ws://127.0.0.1:{p}"));
     let csp = format!(
         "default-src 'none'; script-src {origin} 'unsafe-inline'; style-src {origin} 'unsafe-inline'; \
@@ -69,17 +86,28 @@ fn serve(store: &dyn Store, uuid: &str, parts: &[String], req: &Request, editor_
 pub(crate) fn resolve(base: &Path, parts: &[String]) -> Option<(std::path::PathBuf, &'static str)> {
     let rel: Vec<&str> = parts.iter().map(String::as_str).collect();
     if rel.is_empty()
-        || rel.iter().any(|s| s.is_empty() || *s == "." || *s == ".." || s.contains(['\\', '/', ':', '\0']))
+        || rel
+            .iter()
+            .any(|s| s.is_empty() || *s == "." || *s == ".." || s.contains(['\\', '/', ':', '\0']))
     {
         return None;
     }
     let root = base.canonicalize().ok()?;
-    let file = rel.iter().fold(base.to_path_buf(), |p, s| p.join(s)).canonicalize().ok()?;
+    let file = rel
+        .iter()
+        .fold(base.to_path_buf(), |p, s| p.join(s))
+        .canonicalize()
+        .ok()?;
     (file.starts_with(&root) && file.is_file()).then(|| (file.clone(), mime(&file)))
 }
 
 fn mime(p: &Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+    match p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("html" | "htm") => "text/html; charset=utf-8",
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",

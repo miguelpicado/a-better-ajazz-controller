@@ -88,7 +88,11 @@ impl Deck {
         if let Some(dir) = std::env::var_os("QUOTA_DIR") {
             return PathBuf::from(dir);
         }
-        std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("OrcaDeck").join("quota")
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("OrcaDeck")
+            .join("quota")
     }
 
     pub fn agent(&self, key: &str) -> Option<&Agent> {
@@ -114,7 +118,12 @@ impl Deck {
     }
 
     fn fetch_agents(&mut self, now: i64) -> Result<(), String> {
-        let list = |v: Value, k: &str| v.get(k).and_then(Value::as_array).cloned().unwrap_or_default();
+        let list = |v: Value, k: &str| {
+            v.get(k)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
         if now - self.repos_at > REPOS_MS {
             self.repos = list(self.orca.call("repo.list", json!({}))?, "repos");
             self.repos_at = now;
@@ -144,7 +153,8 @@ impl Deck {
                 _ => {}
             }
         }
-        self.blinking.retain(|k, end| *end > now && next.iter().any(|a| &a.key == k));
+        self.blinking
+            .retain(|k, end| *end > now && next.iter().any(|a| &a.key == k));
         self.agents = next;
         self.counts = core::agent_counts(&ps);
         Ok(())
@@ -162,7 +172,11 @@ impl Deck {
     /// Re-reads quota-status.json every QUOTA_MS, or every 3 s during a forced refresh.
     /// Read-only: orca-dock-rs owns the file, so both always show the same numbers.
     pub fn poll_quota(&mut self, now: i64) {
-        let every = if self.wake.is_some() { WAKE_EVERY_MS } else { QUOTA_MS };
+        let every = if self.wake.is_some() {
+            WAKE_EVERY_MS
+        } else {
+            QUOTA_MS
+        };
         if now - self.quota_at < every {
             return;
         }
@@ -178,7 +192,10 @@ impl Deck {
             }
             (_, r) => {
                 self.quota_stale = true;
-                self.last_error = Some(format!("quota read failed: {}", r.err().unwrap_or_else(|| "no mtime".into())));
+                self.last_error = Some(format!(
+                    "quota read failed: {}",
+                    r.err().unwrap_or_else(|| "no mtime".into())
+                ));
             }
         }
         if let Some((until, before)) = self.wake {
@@ -249,10 +266,21 @@ impl BuiltinAction for AgentAction {
         core::render_agent(a, frame(ctx.now), ctx.now, blink)
     }
     fn on_key(&mut self, ctx: &mut Ctx, context: &str) -> Feedback {
-        let Some(a) = self.slots.get(context).and_then(|k| ctx.deck.agent(k)).cloned() else { return Feedback::None };
+        let Some(a) = self
+            .slots
+            .get(context)
+            .and_then(|k| ctx.deck.agent(k))
+            .cloned()
+        else {
+            return Feedback::None;
+        };
         ctx.deck.blinking.remove(&a.key);
         ctx.deck.orca.raise();
-        match ctx.deck.orca.call("terminal.focus", json!({ "terminal": a.handle })) {
+        match ctx
+            .deck
+            .orca
+            .call("terminal.focus", json!({ "terminal": a.handle }))
+        {
             Ok(_) => Feedback::None,
             Err(e) => {
                 ctx.deck.last_error = Some(format!("focus failed {}: {e}", a.label));
@@ -261,8 +289,12 @@ impl BuiltinAction for AgentAction {
         }
     }
     fn activity(&self, deck: &Deck, context: &str, now: i64) -> (bool, bool) {
-        let Some(k) = self.slots.get(context) else { return (false, false); };
-        let Some(a) = deck.agent(k) else { return (false, false); };
+        let Some(k) = self.slots.get(context) else {
+            return (false, false);
+        };
+        let Some(a) = deck.agent(k) else {
+            return (false, false);
+        };
         let wb = a.state == core::State::Working || deck.is_blinking(&a.key, now);
         let tm = (a.state == core::State::Question || a.state == core::State::Done)
             && a.since.map(|s| s != 0).unwrap_or(false);
@@ -286,7 +318,10 @@ impl BuiltinAction for QuotaAction {
         self.slots = core::assign(ctx.keys, &keys, &self.slots);
     }
     fn render(&self, ctx: &Ctx, context: &str) -> String {
-        let q = self.slots.get(context).and_then(|k| ctx.deck.quota.iter().find(|q| &q.key == k));
+        let q = self
+            .slots
+            .get(context)
+            .and_then(|k| ctx.deck.quota.iter().find(|q| &q.key == k));
         core::render_quota(q, ctx.deck.quota_stale, ctx.now)
     }
     fn on_key(&mut self, ctx: &mut Ctx, _context: &str) -> Feedback {
@@ -343,9 +378,18 @@ pub struct Registry {
 impl Registry {
     /// Registry with the four Orca Deck actions.
     pub fn new(deck: Deck) -> Self {
-        let list: Vec<Box<dyn BuiltinAction>> =
-            vec![Box::new(AgentAction::default()), Box::new(QuotaAction::default()), Box::new(ClockAction), Box::new(SummaryAction)];
-        Registry { deck, actions: list.into_iter().map(|a| (a.uuid(), a)).collect(), keys: Vec::new(), shown: HashMap::new() }
+        let list: Vec<Box<dyn BuiltinAction>> = vec![
+            Box::new(AgentAction::default()),
+            Box::new(QuotaAction::default()),
+            Box::new(ClockAction),
+            Box::new(SummaryAction),
+        ];
+        Registry {
+            deck,
+            actions: list.into_iter().map(|a| (a.uuid(), a)).collect(),
+            keys: Vec::new(),
+            shown: HashMap::new(),
+        }
     }
 
     pub fn handles(&self, uuid: &str) -> bool {
@@ -376,15 +420,29 @@ impl Registry {
     /// Refreshes data and returns `(context, svg)` for every key whose image changed.
     pub fn tick(&mut self, now: i64) -> Vec<(String, String)> {
         let mut out = Vec::new();
-        let Registry { deck, actions, keys, shown } = self;
+        let Registry {
+            deck,
+            actions,
+            keys,
+            shown,
+        } = self;
         for (uuid, action) in actions.iter_mut() {
             let mut mine: Vec<&Key> = keys.iter().filter(|k| k.uuid == *uuid).collect();
             if mine.is_empty() {
                 continue;
             }
-            mine.sort_by(|a, b| a.device.cmp(&b.device).then(a.row.cmp(&b.row)).then(a.col.cmp(&b.col)));
+            mine.sort_by(|a, b| {
+                a.device
+                    .cmp(&b.device)
+                    .then(a.row.cmp(&b.row))
+                    .then(a.col.cmp(&b.col))
+            });
             let ctxs: Vec<String> = mine.iter().map(|k| k.context.clone()).collect();
-            let mut ctx = Ctx { deck: &mut *deck, keys: &ctxs, now };
+            let mut ctx = Ctx {
+                deck: &mut *deck,
+                keys: &ctxs,
+                now,
+            };
             action.tick(&mut ctx);
             for c in &ctxs {
                 let img = action.render(&ctx, c);
@@ -399,10 +457,32 @@ impl Registry {
 
     /// Handles a press (keyDown: Stream Dock delivers keyUp late). Call `tick` afterwards to repaint.
     pub fn key_down(&mut self, context: &str, now: i64) -> Feedback {
-        let Some(uuid) = self.keys.iter().find(|k| k.context == context).map(|k| k.uuid.clone()) else { return Feedback::None };
-        let ctxs: Vec<String> = self.keys.iter().filter(|k| k.uuid == uuid).map(|k| k.context.clone()).collect();
-        let action = self.actions.get_mut(uuid.as_str()).expect("appear checks the uuid");
-        action.on_key(&mut Ctx { deck: &mut self.deck, keys: &ctxs, now }, context)
+        let Some(uuid) = self
+            .keys
+            .iter()
+            .find(|k| k.context == context)
+            .map(|k| k.uuid.clone())
+        else {
+            return Feedback::None;
+        };
+        let ctxs: Vec<String> = self
+            .keys
+            .iter()
+            .filter(|k| k.uuid == uuid)
+            .map(|k| k.context.clone())
+            .collect();
+        let action = self
+            .actions
+            .get_mut(uuid.as_str())
+            .expect("appear checks the uuid");
+        action.on_key(
+            &mut Ctx {
+                deck: &mut self.deck,
+                keys: &ctxs,
+                now,
+            },
+            context,
+        )
     }
 
     /// Checks all currently visible keys and returns `(has_working_or_blinking, has_timer)`.
@@ -412,8 +492,12 @@ impl Registry {
         for k in &self.keys {
             if let Some(action) = self.actions.get(k.uuid.as_str()) {
                 let (w, t) = action.activity(&self.deck, &k.context, now);
-                if w { wb = true; }
-                if t { tm = true; }
+                if w {
+                    wb = true;
+                }
+                if t {
+                    tm = true;
+                }
             }
         }
         (wb, tm)
@@ -444,7 +528,12 @@ impl Registry {
 /// - Otherwise (idle): base interval is `slow_cadence_ms` (e.g. `POLL_MS` = 2000 ms).
 ///
 /// The wait duration is clamped to `base.min(nearest_deadline_ms).max(1)`.
-pub fn next_wait_ms(working_or_blinking: bool, has_timer: bool, nearest_deadline_ms: u64, slow_cadence_ms: u64) -> u64 {
+pub fn next_wait_ms(
+    working_or_blinking: bool,
+    has_timer: bool,
+    nearest_deadline_ms: u64,
+    slow_cadence_ms: u64,
+) -> u64 {
     let base = if working_or_blinking {
         SPIN_MS as u64
     } else if has_timer {
@@ -457,7 +546,10 @@ pub fn next_wait_ms(working_or_blinking: bool, has_timer: bool, nearest_deadline
 
 /// ms since the epoch, for `tick` / `key_down`.
 pub fn now_ms() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -473,10 +565,16 @@ mod tests {
 
         std::env::remove_var("QUOTA_DIR");
         std::env::set_var("APPDATA", "appdata-dir");
-        assert_eq!(Deck::default_quota_dir(), PathBuf::from("appdata-dir").join("OrcaDeck").join("quota"));
+        assert_eq!(
+            Deck::default_quota_dir(),
+            PathBuf::from("appdata-dir").join("OrcaDeck").join("quota")
+        );
 
         std::env::remove_var("APPDATA");
-        assert_eq!(Deck::default_quota_dir(), std::env::temp_dir().join("OrcaDeck").join("quota"));
+        assert_eq!(
+            Deck::default_quota_dir(),
+            std::env::temp_dir().join("OrcaDeck").join("quota")
+        );
     }
 
     #[test]

@@ -27,7 +27,11 @@ const MIN_APP_VERSION: &str = "6.9";
 
 /// Numeric dotted-version max ("3.10" > "3.9"). Non-numeric parts count as 0.
 pub fn version_max<'a>(a: &'a str, b: &'a str) -> &'a str {
-    let parse = |s: &str| s.split('.').map(|p| p.trim().parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    let parse = |s: &str| {
+        s.split('.')
+            .map(|p| p.trim().parse::<u64>().unwrap_or(0))
+            .collect::<Vec<_>>()
+    };
     if parse(a) >= parse(b) {
         a
     } else {
@@ -37,7 +41,10 @@ pub fn version_max<'a>(a: &'a str, b: &'a str) -> &'a str {
 
 /// The `-info` argument (plugin-host-protocol.md §1.3).
 pub fn info(plugin: &Plugin, devices: &[Device], language: &str) -> Value {
-    let version = version_max(plugin.min_version().unwrap_or(MIN_APP_VERSION), MIN_APP_VERSION);
+    let version = version_max(
+        plugin.min_version().unwrap_or(MIN_APP_VERSION),
+        MIN_APP_VERSION,
+    );
     json!({
         "application": {"font": "Segoe UI", "language": language, "platform": "windows",
                         "platformVersion": "10.0", "version": version},
@@ -73,7 +80,13 @@ pub fn random_uuid() -> String {
 
 /// Builds the command for a plugin, or `None` for code it cannot run (`.html` needs a browser).
 /// `.exe` runs directly, `.js/.mjs/.cjs` through `node`. The working directory is the plugin folder.
-pub fn command(plugin: &Plugin, node: &Path, port: u16, uuid: &str, info: &Value) -> Option<Command> {
+pub fn command(
+    plugin: &Plugin,
+    node: &Path,
+    port: u16,
+    uuid: &str,
+    info: &Value,
+) -> Option<Command> {
     let code = plugin.dir.join(&plugin.code_path);
     let ext = code.extension()?.to_string_lossy().to_ascii_lowercase();
     let mut cmd = match ext.as_str() {
@@ -85,13 +98,20 @@ pub fn command(plugin: &Plugin, node: &Path, port: u16, uuid: &str, info: &Value
         }
         _ => return None,
     };
-    cmd.args(["-port", &port.to_string(), "-pluginUUID", uuid, "-registerEvent", "registerPlugin"])
-        .arg("-info")
-        .arg(info.to_string())
-        .current_dir(&plugin.dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    cmd.args([
+        "-port",
+        &port.to_string(),
+        "-pluginUUID",
+        uuid,
+        "-registerEvent",
+        "registerPlugin",
+    ])
+    .arg("-info")
+    .arg(info.to_string())
+    .current_dir(&plugin.dir)
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -123,7 +143,13 @@ mod tests {
 
     #[test]
     fn info_shape() {
-        let dev = Device { id: "D1".into(), name: "AKP153E".into(), columns: 6, rows: 3, kind: 0 };
+        let dev = Device {
+            id: "D1".into(),
+            name: "AKP153E".into(),
+            columns: 6,
+            rows: 3,
+            kind: 0,
+        };
         let i = info(&plugin("a.js", Some("3.10")), &[dev], "es");
         assert_eq!(i["application"]["version"], "6.9");
         assert_eq!(i["application"]["language"], "es");
@@ -136,7 +162,9 @@ mod tests {
     fn uuid_format() {
         let (a, b) = (random_uuid(), random_uuid());
         assert_eq!(a.len(), 32);
-        assert!(a.bytes().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
+        assert!(a
+            .bytes()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
         assert_ne!(a, b);
     }
 
@@ -146,9 +174,24 @@ mod tests {
         let info = json!({"k": "v"});
         let c = command(&plugin("bin/plugin.js", None), node, 18618, "U", &info).unwrap();
         assert_eq!(c.get_program(), "node");
-        let args: Vec<_> = c.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert!(args[0].ends_with("plugin.js"));
-        assert_eq!(&args[1..], ["-port", "18618", "-pluginUUID", "U", "-registerEvent", "registerPlugin", "-info", r#"{"k":"v"}"#]);
+        assert_eq!(
+            &args[1..],
+            [
+                "-port",
+                "18618",
+                "-pluginUUID",
+                "U",
+                "-registerEvent",
+                "registerPlugin",
+                "-info",
+                r#"{"k":"v"}"#
+            ]
+        );
         assert_eq!(c.get_current_dir(), Some(Path::new("C:/p/com.t.sdPlugin")));
 
         let c = command(&plugin("x.EXE", None), node, 1, "U", &info).unwrap();

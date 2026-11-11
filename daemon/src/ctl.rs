@@ -34,15 +34,42 @@ mod imp {
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn CreateNamedPipeW(name: *const u16, open_mode: u32, pipe_mode: u32, max_instances: u32,
-            out_size: u32, in_size: u32, timeout: u32, sa: *mut c_void) -> *mut c_void;
+        fn CreateNamedPipeW(
+            name: *const u16,
+            open_mode: u32,
+            pipe_mode: u32,
+            max_instances: u32,
+            out_size: u32,
+            in_size: u32,
+            timeout: u32,
+            sa: *mut c_void,
+        ) -> *mut c_void;
         fn ConnectNamedPipe(h: *mut c_void, overlapped: *mut c_void) -> i32;
         fn DisconnectNamedPipe(h: *mut c_void) -> i32;
-        fn CreateFileW(name: *const u16, access: u32, share: u32, sa: *mut c_void,
-            disposition: u32, flags: u32, template: *mut c_void) -> *mut c_void;
+        fn CreateFileW(
+            name: *const u16,
+            access: u32,
+            share: u32,
+            sa: *mut c_void,
+            disposition: u32,
+            flags: u32,
+            template: *mut c_void,
+        ) -> *mut c_void;
         fn WaitNamedPipeW(name: *const u16, timeout: u32) -> i32;
-        fn ReadFile(h: *mut c_void, buf: *mut u8, n: u32, read: *mut u32, overlapped: *mut c_void) -> i32;
-        fn WriteFile(h: *mut c_void, buf: *const u8, n: u32, written: *mut u32, overlapped: *mut c_void) -> i32;
+        fn ReadFile(
+            h: *mut c_void,
+            buf: *mut u8,
+            n: u32,
+            read: *mut u32,
+            overlapped: *mut c_void,
+        ) -> i32;
+        fn WriteFile(
+            h: *mut c_void,
+            buf: *const u8,
+            n: u32,
+            written: *mut u32,
+            overlapped: *mut c_void,
+        ) -> i32;
         fn CloseHandle(h: *mut c_void) -> i32;
         fn GetLastError() -> u32;
     }
@@ -88,7 +115,9 @@ mod imp {
             }
             // `INSTALL <path>` from `orcadeck install`: stage the package here, in the process that
             // owns the web server, and let `serve_edit` start the editor as if it had asked for it.
-            let Some(path) = super::parse_install(&line) else { return Some(line) };
+            let Some(path) = super::parse_install(&line) else {
+                return Some(line);
+            };
             match orcadeck_web::stage_package(&path) {
                 Ok(token) => {
                     self.pending = Some("EDIT 0".into());
@@ -104,7 +133,15 @@ mod imp {
             let mut buf = [0u8; 64];
             loop {
                 let mut n = 0u32;
-                let ok = unsafe { ReadFile(self.h.raw(), buf.as_mut_ptr(), buf.len() as u32, &mut n, std::ptr::null_mut()) };
+                let ok = unsafe {
+                    ReadFile(
+                        self.h.raw(),
+                        buf.as_mut_ptr(),
+                        buf.len() as u32,
+                        &mut n,
+                        std::ptr::null_mut(),
+                    )
+                };
                 if ok == 0 || n == 0 {
                     return None;
                 }
@@ -132,7 +169,13 @@ mod imp {
             while off < bytes.len() {
                 let mut n = 0u32;
                 let ok = unsafe {
-                    WriteFile(self.h.raw(), bytes[off..].as_ptr(), (bytes.len() - off) as u32, &mut n, std::ptr::null_mut())
+                    WriteFile(
+                        self.h.raw(),
+                        bytes[off..].as_ptr(),
+                        (bytes.len() - off) as u32,
+                        &mut n,
+                        std::ptr::null_mut(),
+                    )
                 };
                 if ok == 0 || n == 0 {
                     return;
@@ -147,7 +190,15 @@ mod imp {
             let mut buf = [0u8; 64];
             loop {
                 let mut n = 0u32;
-                let ok = unsafe { ReadFile(self.h.raw(), buf.as_mut_ptr(), buf.len() as u32, &mut n, std::ptr::null_mut()) };
+                let ok = unsafe {
+                    ReadFile(
+                        self.h.raw(),
+                        buf.as_mut_ptr(),
+                        buf.len() as u32,
+                        &mut n,
+                        std::ptr::null_mut(),
+                    )
+                };
                 if ok == 0 || n == 0 {
                     return;
                 }
@@ -204,7 +255,13 @@ mod imp {
                     _ => return false,
                 }
             }
-            handler(&mut Conn { h: self.h, owner: false, server: true, pending: None, staged: None });
+            handler(&mut Conn {
+                h: self.h,
+                owner: false,
+                server: true,
+                pending: None,
+                staged: None,
+            });
             unsafe { DisconnectNamedPipe(h) };
             true
         }
@@ -260,13 +317,22 @@ mod imp {
                 };
             }
         }
-        let mut conn = Conn { h, owner: true, server: false, pending: None, staged: None };
+        let mut conn = Conn {
+            h,
+            owner: true,
+            server: false,
+            pending: None,
+            staged: None,
+        };
         conn.write_line(request);
         let reply = conn.read_line();
         match reply {
             Some(line) => match line.strip_prefix("OK ") {
                 // The URL is opened in the browser: never trust the pipe for anything but loopback.
-                Some(url) if url.starts_with("http://127.0.0.1:") => Some(Ok(Session { url: url.to_string(), _conn: conn })),
+                Some(url) if url.starts_with("http://127.0.0.1:") => Some(Ok(Session {
+                    url: url.to_string(),
+                    _conn: conn,
+                })),
                 Some(url) => Some(Err(format!("respuesta inesperada del daemon: {url:?}"))),
                 None => Some(Err(line.strip_prefix("ERR ").unwrap_or(&line).to_string())),
             },
@@ -292,7 +358,11 @@ mod imp {
     /// ever handles one short line at a time.
     pub fn spawn(name: &str, handler: impl Fn(&mut Conn) + Send + 'static) {
         let name = name.to_string();
-        if let Err(e) = thread::Builder::new().name("ctl".into()).stack_size(128 * 1024).spawn(move || serve(name, handler)) {
+        if let Err(e) = thread::Builder::new()
+            .name("ctl".into())
+            .stack_size(128 * 1024)
+            .spawn(move || serve(name, handler))
+        {
             eprintln!("ctl: {e}");
         }
     }
@@ -325,9 +395,9 @@ mod imp {
     pub fn spawn(_name: &str, _handler: impl Fn(&mut Conn) + Send + 'static) {}
 }
 
-pub use imp::{spawn, Conn, Session};
 #[cfg(all(test, windows))]
 pub(crate) use imp::Listener;
+pub use imp::{spawn, Conn, Session};
 
 /// Pipe the daemon listens on; `run` owns it, `edit` connects.
 pub const NAME: &str = r"\\.\pipe\orcadeck-ctl";
@@ -340,7 +410,10 @@ pub(crate) fn request_at(name: &str, port: u16) -> Option<Result<Session, String
 
 /// Parses the install request. The rest of the line is the path, spaces included.
 pub fn parse_install(line: &str) -> Option<String> {
-    line.strip_prefix("INSTALL ").map(str::trim).filter(|p| !p.is_empty()).map(String::from)
+    line.strip_prefix("INSTALL ")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(String::from)
 }
 
 /// Attaches to a live `run` and asks it for the editor with `path` staged for installation.
@@ -399,7 +472,9 @@ mod tests {
             seen
         });
 
-        let session = imp::request(&name, 8123).expect("daemon present").expect("url");
+        let session = imp::request(&name, 8123)
+            .expect("daemon present")
+            .expect("url");
         assert_eq!(session.url(), "http://127.0.0.1:9/?token=t");
         drop(session); // what Ctrl+C does: the daemon sees EOF and drops its server
 
@@ -408,8 +483,14 @@ mod tests {
 
     #[test]
     fn the_install_protocol_keeps_the_path_after_the_verb() {
-        assert_eq!(parse_install(r"INSTALL C:\Users\me\a.streamDeckPlugin").as_deref(), Some(r"C:\Users\me\a.streamDeckPlugin"));
-        assert_eq!(parse_install(r"INSTALL C:\mis plugins\b.zip").as_deref(), Some(r"C:\mis plugins\b.zip"));
+        assert_eq!(
+            parse_install(r"INSTALL C:\Users\me\a.streamDeckPlugin").as_deref(),
+            Some(r"C:\Users\me\a.streamDeckPlugin")
+        );
+        assert_eq!(
+            parse_install(r"INSTALL C:\mis plugins\b.zip").as_deref(),
+            Some(r"C:\mis plugins\b.zip")
+        );
         assert_eq!(parse_install("INSTALL"), None);
         assert_eq!(parse_install("INSTALL   "), None);
         assert_eq!(parse_install("EDIT 0"), None);
@@ -419,7 +500,10 @@ mod tests {
     fn an_install_request_stages_the_file_and_puts_a_token_in_the_url() {
         let name = test_pipe("install");
         let listener = imp::Listener::new(&name).expect("pipe instance");
-        let pkg = std::env::temp_dir().join(format!("orcadeck-ctl-test-{}.streamDeckPlugin", std::process::id()));
+        let pkg = std::env::temp_dir().join(format!(
+            "orcadeck-ctl-test-{}.streamDeckPlugin",
+            std::process::id()
+        ));
         std::fs::write(&pkg, b"package body").unwrap();
         let path = pkg.to_string_lossy().to_string();
         let server = std::thread::spawn(move || {
@@ -433,21 +517,32 @@ mod tests {
         });
 
         let request = format!("INSTALL {path}");
-        let session = imp::request_line(&name, &request).expect("daemon present").expect("url");
+        let session = imp::request_line(&name, &request)
+            .expect("daemon present")
+            .expect("url");
         let url = session.url();
-        let token = url.strip_prefix("http://127.0.0.1:9/?token=t&install=").expect("staged token in the URL");
+        let token = url
+            .strip_prefix("http://127.0.0.1:9/?token=t&install=")
+            .expect("staged token in the URL");
         assert_eq!(token.len(), 32);
         assert!(token.bytes().all(|b| b.is_ascii_hexdigit()));
         drop(session);
 
-        assert_eq!(server.join().unwrap(), "EDIT 0", "serve_edit sees the editor request it knows");
+        assert_eq!(
+            server.join().unwrap(),
+            "EDIT 0",
+            "serve_edit sees the editor request it knows"
+        );
         let _ = std::fs::remove_file(&pkg);
     }
 
     #[test]
     fn no_daemon_means_standalone() {
         let name = test_pipe("absent");
-        assert!(imp::request(&name, 0).is_none(), "no pipe: edit falls back to its own server");
+        assert!(
+            imp::request(&name, 0).is_none(),
+            "no pipe: edit falls back to its own server"
+        );
     }
 
     #[test]
@@ -464,7 +559,9 @@ mod tests {
             }));
         });
 
-        let first = imp::request(&name, 0).expect("daemon present").expect("url");
+        let first = imp::request(&name, 0)
+            .expect("daemon present")
+            .expect("url");
         let second = imp::request(&name, 0).expect("daemon present");
         assert!(second.is_err(), "two editors must not write the same files");
 

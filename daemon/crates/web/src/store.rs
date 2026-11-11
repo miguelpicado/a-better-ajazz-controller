@@ -1,6 +1,6 @@
 //! Storage behind the editor API. `FsStore` works on plain folders, so tests point it at a temp dir and the
 //! daemon points it at its own data root. Stream Dock's files (`legacy_config`, built-in plugins) are only read.
-use orcadeck_plugman::{install_package, inspect_package, Confidence, InstallOptions};
+use orcadeck_plugman::{inspect_package, install_package, Confidence, InstallOptions};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::{
@@ -18,13 +18,20 @@ pub struct Error {
 
 impl Error {
     pub fn new(status: u16, msg: impl Into<String>) -> Self {
-        Error { status, msg: msg.into() }
+        Error {
+            status,
+            msg: msg.into(),
+        }
     }
 }
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
-        let status = if e.kind() == io::ErrorKind::NotFound { 404 } else { 500 };
+        let status = if e.kind() == io::ErrorKind::NotFound {
+            404
+        } else {
+            500
+        };
         Error::new(status, e.to_string())
     }
 }
@@ -72,7 +79,12 @@ pub trait Store: Send + Sync {
     fn plugins(&self) -> Result<Vec<Plugin>>;
     /// Image bytes + MIME. `scene` resolves bare names in `<scene>/Images/`; `plugin` resolves paths
     /// relative to that plugin's folder, probing extensions like Stream Dock does.
-    fn image(&self, scene: Option<&str>, plugin: Option<&str>, img: &str) -> Option<(Vec<u8>, &'static str)>;
+    fn image(
+        &self,
+        scene: Option<&str>,
+        plugin: Option<&str>,
+        img: &str,
+    ) -> Option<(Vec<u8>, &'static str)>;
     fn device(&self) -> Result<Value>;
     fn set_device(&self, patch: &Value) -> Result<Value>;
     /// What a package in the inbox folder contains. Read-only: nothing is written.
@@ -97,8 +109,12 @@ pub trait Store: Send + Sync {
 
 /// Scene and plugin ids are used as folder names: allow only `[0-9A-Za-z._-]`, no `..`.
 pub fn safe_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 128 && !id.contains("..")
-        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    !id.is_empty()
+        && id.len() <= 128
+        && !id.contains("..")
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
 }
 
 pub fn parse_json(bytes: &[u8]) -> Option<Value> {
@@ -113,7 +129,11 @@ fn sorted(v: &Value) -> Value {
         Value::Object(m) => {
             let mut keys: Vec<&String> = m.keys().collect();
             keys.sort();
-            Value::Object(keys.into_iter().map(|k| (k.clone(), sorted(&m[k]))).collect())
+            Value::Object(
+                keys.into_iter()
+                    .map(|k| (k.clone(), sorted(&m[k])))
+                    .collect(),
+            )
         }
         Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
         _ => v.clone(),
@@ -123,8 +143,13 @@ fn sorted(v: &Value) -> Value {
 /// Stream Dock / Qt layout: 4-space indent, keys sorted.
 pub fn to_pretty(v: &Value) -> Vec<u8> {
     let mut buf = Vec::new();
-    let mut ser = serde_json::Serializer::with_formatter(&mut buf, serde_json::ser::PrettyFormatter::with_indent(b"    "));
-    sorted(v).serialize(&mut ser).expect("Value always serializes");
+    let mut ser = serde_json::Serializer::with_formatter(
+        &mut buf,
+        serde_json::ser::PrettyFormatter::with_indent(b"    "),
+    );
+    sorted(v)
+        .serialize(&mut ser)
+        .expect("Value always serializes");
     buf
 }
 
@@ -170,7 +195,10 @@ struct Legacy {
 
 impl Legacy {
     fn get(&self, section: &str, key: &str) -> Option<&str> {
-        self.ini.iter().find(|(s, k, _)| s == section && k == key).map(|(_, _, v)| v.as_str())
+        self.ini
+            .iter()
+            .find(|(s, k, _)| s == section && k == key)
+            .map(|(_, _, v)| v.as_str())
     }
 }
 
@@ -181,7 +209,11 @@ fn parse_ini(txt: &str) -> Vec<(String, String, String)> {
         if let Some(s) = l.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
             sec = s.to_string();
         } else if let Some((k, v)) = l.split_once('=') {
-            out.push((sec.clone(), k.trim().to_string(), v.trim().trim_matches('"').to_string()));
+            out.push((
+                sec.clone(),
+                k.trim().to_string(),
+                v.trim().trim_matches('"').to_string(),
+            ));
         }
     }
     out
@@ -190,7 +222,12 @@ fn parse_ini(txt: &str) -> Vec<(String, String, String)> {
 const IMG_EXT: [&str; 7] = ["", ".png", "@2x.png", ".svg", ".gif", ".jpg", ".jpeg"];
 
 fn mime(p: &Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+    match p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -203,17 +240,30 @@ fn mime(p: &Path) -> &'static str {
 /// First existing file of `base/rel` + an extension from `IMG_EXT`, staying inside `base`.
 fn probe(base: &Path, rel: &str) -> Option<PathBuf> {
     let rel = rel.replace('\\', "/");
-    if rel.is_empty() || rel.starts_with('/') || rel.contains(':') || rel.split('/').any(|s| s == "..") {
+    if rel.is_empty()
+        || rel.starts_with('/')
+        || rel.contains(':')
+        || rel.split('/').any(|s| s == "..")
+    {
         return None;
     }
     let root = base.canonicalize().ok()?;
-    IMG_EXT.iter().map(|e| base.join(format!("{rel}{e}"))).find(|p| p.is_file())
-        .and_then(|p| p.canonicalize().ok()).filter(|p| p.starts_with(&root))
+    IMG_EXT
+        .iter()
+        .map(|e| base.join(format!("{rel}{e}")))
+        .find(|p| p.is_file())
+        .and_then(|p| p.canonicalize().ok())
+        .filter(|p| p.starts_with(&root))
 }
 
 /// Applies `en.json` (Elgato locale layout: top-level `Name`/`Description`/`Category`, per-action objects).
 fn localize(m: &mut Value, dir: &Path) {
-    let Some(Value::Object(loc)) = fs::read(dir.join("en.json")).ok().and_then(|b| parse_json(&b)) else { return };
+    let Some(Value::Object(loc)) = fs::read(dir.join("en.json"))
+        .ok()
+        .and_then(|b| parse_json(&b))
+    else {
+        return;
+    };
     for k in ["Name", "Description", "Category"] {
         if let Some(v @ Value::String(_)) = loc.get(k) {
             m[k] = v.clone();
@@ -221,7 +271,14 @@ fn localize(m: &mut Value, dir: &Path) {
     }
     if let Some(Value::Array(actions)) = m.get_mut("Actions") {
         for a in actions {
-            let Some(l) = a.get("UUID").and_then(Value::as_str).and_then(|u| loc.get(u)).cloned() else { continue };
+            let Some(l) = a
+                .get("UUID")
+                .and_then(Value::as_str)
+                .and_then(|u| loc.get(u))
+                .cloned()
+            else {
+                continue;
+            };
             for k in ["Name", "Tooltip"] {
                 if let Some(v @ Value::String(_)) = l.get(k) {
                     a[k] = v.clone();
@@ -233,7 +290,10 @@ fn localize(m: &mut Value, dir: &Path) {
 
 impl FsStore {
     fn state(&self) -> Map<String, Value> {
-        match fs::read(self.data.join("state.json")).ok().and_then(|b| parse_json(&b)) {
+        match fs::read(self.data.join("state.json"))
+            .ok()
+            .and_then(|b| parse_json(&b))
+        {
             Some(Value::Object(m)) => m,
             _ => Map::new(),
         }
@@ -241,31 +301,56 @@ impl FsStore {
 
     fn save_state(&self, m: Map<String, Value>) -> Result<()> {
         fs::create_dir_all(&self.data)?;
-        Ok(atomic_write(&self.data.join("state.json"), &to_pretty(&Value::Object(m)), false)?)
+        Ok(atomic_write(
+            &self.data.join("state.json"),
+            &to_pretty(&Value::Object(m)),
+            false,
+        )?)
     }
 
     fn legacy(&self) -> Option<Legacy> {
         let dir = self.legacy_config.as_ref()?;
-        let ini = parse_ini(&String::from_utf8_lossy(&fs::read(dir.join("StreamDockConfig.ini")).ok()?));
-        let mut l = Legacy { model: "AKP153E".into(), serial: String::new(), ini };
+        let ini = parse_ini(&String::from_utf8_lossy(
+            &fs::read(dir.join("StreamDockConfig.ini")).ok()?,
+        ));
+        let mut l = Legacy {
+            model: "AKP153E".into(),
+            serial: String::new(),
+            ini,
+        };
         if let Some(m) = l.get("StreamDockCurrentDevice", "Device") {
             l.model = m.to_string();
         }
-        l.serial = l.get("StreamDockCurrentDevice", &format!("{}\\SerialNumber", l.model)).unwrap_or("").to_string();
+        l.serial = l
+            .get(
+                "StreamDockCurrentDevice",
+                &format!("{}\\SerialNumber", l.model),
+            )
+            .unwrap_or("")
+            .to_string();
         Some(l)
     }
 
     fn legacy_order(&self) -> Vec<String> {
-        let (Some(dir), Some(l)) = (&self.legacy_config, self.legacy()) else { return vec![] };
-        fs::read(dir.join("DataCache.db")).ok()
+        let (Some(dir), Some(l)) = (&self.legacy_config, self.legacy()) else {
+            return vec![];
+        };
+        fs::read(dir.join("DataCache.db"))
+            .ok()
             .and_then(|db| crate::sqlite::text_column(&db, &l.model, 0))
-            .unwrap_or_default().into_iter()
-            .map(|p| p.trim_end_matches(".sdProfile").to_string()).collect()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| p.trim_end_matches(".sdProfile").to_string())
+            .collect()
     }
 
     fn legacy_current(&self) -> Option<String> {
         let l = self.legacy()?;
-        let v = l.get(&format!("{}{}DeviceConfig", l.model, l.serial), "sdProfileName")
+        let v = l
+            .get(
+                &format!("{}{}DeviceConfig", l.model, l.serial),
+                "sdProfileName",
+            )
             .or_else(|| l.get(&format!("{}DeviceConfig", l.model), "sdProfileName"))?;
         Some(v.trim_end_matches(".sdProfile").to_string())
     }
@@ -274,14 +359,20 @@ impl FsStore {
         if !safe_id(id) {
             return Err(Error::new(400, "bad scene id"));
         }
-        Ok(self.profiles.join(format!("{id}.sdProfile")).join("manifest.json"))
+        Ok(self
+            .profiles
+            .join(format!("{id}.sdProfile"))
+            .join("manifest.json"))
     }
 
     /// Plugin UUIDs installed through this editor, newest last. `state.json` is our own file; if it is lost,
     /// previously installed plugins simply become non-removable (the safe direction).
     fn installed_ids(&self) -> Vec<String> {
         match self.state().get("installed") {
-            Some(Value::Array(a)) => a.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -306,8 +397,12 @@ impl FsStore {
     /// Canonical package path, required to stay inside the Downloads folder. `canonicalize` resolves `..`
     /// and symlinks, so anything that escapes the folder is refused before plugman sees it.
     fn package_in_downloads(&self, raw: &str) -> Result<PathBuf> {
-        let path = Path::new(raw).canonicalize().map_err(|_| Error::new(404, format!("no existe: {raw}")))?;
-        let root = self.downloads_dir()?.canonicalize()
+        let path = Path::new(raw)
+            .canonicalize()
+            .map_err(|_| Error::new(404, format!("no existe: {raw}")))?;
+        let root = self
+            .downloads_dir()?
+            .canonicalize()
             .map_err(|_| Error::new(404, "no se encontró la carpeta de Descargas"))?;
         if !path.starts_with(&root) {
             return Err(Error::new(400, "el paquete debe estar dentro de Descargas"));
@@ -322,9 +417,20 @@ impl FsStore {
     fn inspect_at(&self, pkg: &Path) -> Result<Value> {
         let rec = inspect_package(pkg).map_err(package_error)?;
         if !safe_id(&rec.uuid) {
-            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
+            return Err(Error::new(
+                400,
+                "el paquete no tiene un UUID de plugin válido",
+            ));
         }
-        let text = |k: &str| rec.manifest.as_ref().and_then(|m| m.get(k)).and_then(Value::as_str).unwrap_or("").trim().to_string();
+        let text = |k: &str| {
+            rec.manifest
+                .as_ref()
+                .and_then(|m| m.get(k))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
         let installed = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).is_dir();
         Ok(json!({
             "path": pkg.to_string_lossy(),
@@ -343,11 +449,17 @@ impl FsStore {
         // Read-only pass first: validate the derived UUID before writing anything.
         let rec = inspect_package(pkg).map_err(package_error)?;
         if !safe_id(&rec.uuid) {
-            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
+            return Err(Error::new(
+                400,
+                "el paquete no tiene un UUID de plugin válido",
+            ));
         }
         let replaced = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).exists();
         if replaced && !force {
-            return Err(Error::new(409, format!("{} ya está instalado; confirma para reemplazarlo", rec.uuid)));
+            return Err(Error::new(
+                409,
+                format!("{} ya está instalado; confirma para reemplazarlo", rec.uuid),
+            ));
         }
         let opts = InstallOptions {
             plugins_root: self.plugins.clone(),
@@ -368,23 +480,41 @@ impl FsStore {
     }
 
     fn load_plugin(&self, dir: PathBuf, mut builtin: bool) -> Option<Plugin> {
-        let uuid = dir.file_name()?.to_str()?.strip_suffix(".sdPlugin")?.to_string();
+        let uuid = dir
+            .file_name()?
+            .to_str()?
+            .strip_suffix(".sdPlugin")?
+            .to_string();
         if uuid == "com.miguelpicado.orcadock" {
             builtin = true;
         }
         let raw = fs::read(dir.join("manifest.json")).ok()?;
         let encrypted = raw.starts_with(b"ELGATO");
-        let overlay = encrypted.then(|| fs::read(self.data.join("manifests").join(format!("{uuid}.json"))).ok()).flatten();
-        let (status, mut manifest) = match (encrypted, overlay.as_deref().or((!encrypted).then_some(&raw[..]))) {
-            (_, Some(b)) => parse_json(b).filter(Value::is_object).map_or(("invalid", Value::Null), |m| ("ok", m)),
+        let overlay = encrypted
+            .then(|| fs::read(self.data.join("manifests").join(format!("{uuid}.json"))).ok())
+            .flatten();
+        let (status, mut manifest) = match (
+            encrypted,
+            overlay.as_deref().or((!encrypted).then_some(&raw[..])),
+        ) {
+            (_, Some(b)) => parse_json(b)
+                .filter(Value::is_object)
+                .map_or(("invalid", Value::Null), |m| ("ok", m)),
             (_, None) => ("needs-manifest", Value::Null),
         };
         if manifest.is_object() {
             localize(&mut manifest, &dir);
         }
         Some(Plugin {
-            uuid, dir, status, encrypted, overlay: overlay.is_some(), builtin,
-            origin: if builtin { "builtin" } else { "streamdock" }, removable: false, manifest,
+            uuid,
+            dir,
+            status,
+            encrypted,
+            overlay: overlay.is_some(),
+            builtin,
+            origin: if builtin { "builtin" } else { "streamdock" },
+            removable: false,
+            manifest,
         })
     }
 }
@@ -393,27 +523,59 @@ impl Store for FsStore {
     fn scenes(&self) -> Result<Vec<SceneInfo>> {
         let st = self.state();
         let order: Vec<String> = match st.get("order") {
-            Some(Value::Array(a)) => a.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect(),
             _ => self.legacy_order(),
         };
         let mut out = vec![];
         for e in fs::read_dir(&self.profiles)?.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            let Some(id) = name.strip_suffix(".sdProfile") else { continue };
-            let Some(m) = fs::read(e.path().join("manifest.json")).ok().and_then(|b| parse_json(&b)) else { continue };
+            let Some(id) = name.strip_suffix(".sdProfile") else {
+                continue;
+            };
+            let Some(m) = fs::read(e.path().join("manifest.json"))
+                .ok()
+                .and_then(|b| parse_json(&b))
+            else {
+                continue;
+            };
             out.push(SceneInfo {
                 id: id.to_string(),
-                name: m.get("Name").and_then(Value::as_str).unwrap_or("").trim().to_string(),
-                device: m.get("DeviceUUID").and_then(Value::as_str).unwrap_or("").to_string(),
-                keys: m.get("Actions").and_then(Value::as_object).map_or(0, |a| a.len()),
+                name: m
+                    .get("Name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                device: m
+                    .get("DeviceUUID")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                keys: m
+                    .get("Actions")
+                    .and_then(Value::as_object)
+                    .map_or(0, |a| a.len()),
                 listed: order.iter().any(|o| o == id),
                 current: false,
             });
         }
         let pos = |id: &str| order.iter().position(|o| o == id).unwrap_or(usize::MAX);
-        out.sort_by(|a, b| pos(&a.id).cmp(&pos(&b.id)).then_with(|| a.name.cmp(&b.name)));
-        let current = st.get("current").and_then(Value::as_str).map(String::from).or_else(|| self.legacy_current());
-        let idx = current.and_then(|c| out.iter().position(|s| s.id == c)).or_else(|| out.iter().position(|s| s.listed));
+        out.sort_by(|a, b| {
+            pos(&a.id)
+                .cmp(&pos(&b.id))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        let current = st
+            .get("current")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .or_else(|| self.legacy_current());
+        let idx = current
+            .and_then(|c| out.iter().position(|s| s.id == c))
+            .or_else(|| out.iter().position(|s| s.listed));
         if let Some(i) = idx {
             out[i].current = true;
         }
@@ -447,10 +609,14 @@ impl Store for FsStore {
     fn plugins(&self) -> Result<Vec<Plugin>> {
         let installed = self.installed_ids();
         let mut out = vec![];
-        let dirs = std::iter::once((&self.plugins, false)).chain(self.builtin_plugins.iter().map(|d| (d, true)));
+        let dirs = std::iter::once((&self.plugins, false))
+            .chain(self.builtin_plugins.iter().map(|d| (d, true)));
         for (dir, builtin) in dirs {
             let Ok(rd) = fs::read_dir(dir) else { continue };
-            out.extend(rd.flatten().filter_map(|e| self.load_plugin(e.path(), builtin)));
+            out.extend(
+                rd.flatten()
+                    .filter_map(|e| self.load_plugin(e.path(), builtin)),
+            );
         }
         for p in &mut out {
             if !p.builtin && installed.iter().any(|i| i == &p.uuid) {
@@ -462,14 +628,25 @@ impl Store for FsStore {
         Ok(out)
     }
 
-    fn image(&self, scene: Option<&str>, plugin: Option<&str>, img: &str) -> Option<(Vec<u8>, &'static str)> {
+    fn image(
+        &self,
+        scene: Option<&str>,
+        plugin: Option<&str>,
+        img: &str,
+    ) -> Option<(Vec<u8>, &'static str)> {
         let bare = !img.contains(['/', '\\']);
-        let in_scene = scene.filter(|s| bare && safe_id(s))
-            .and_then(|s| probe(&self.profiles.join(format!("{s}.sdProfile")).join("Images"), img));
+        let in_scene = scene.filter(|s| bare && safe_id(s)).and_then(|s| {
+            probe(
+                &self.profiles.join(format!("{s}.sdProfile")).join("Images"),
+                img,
+            )
+        });
         let p = in_scene.or_else(|| {
             let uuid = plugin.filter(|p| safe_id(p))?;
-            let base = std::iter::once(&self.plugins).chain(&self.builtin_plugins)
-                .map(|d| d.join(format!("{uuid}.sdPlugin"))).find(|d| d.is_dir())?;
+            let base = std::iter::once(&self.plugins)
+                .chain(&self.builtin_plugins)
+                .map(|d| d.join(format!("{uuid}.sdPlugin")))
+                .find(|d| d.is_dir())?;
             probe(&base, img)
         })?;
         Some((fs::read(&p).ok()?, mime(&p)))
@@ -478,20 +655,32 @@ impl Store for FsStore {
     fn device(&self) -> Result<Value> {
         let st = self.state();
         let l = self.legacy();
-        let (model, serial) = l.as_ref().map_or(("AKP153E".into(), String::new()), |l| (l.model.clone(), l.serial.clone()));
+        let (model, serial) = l.as_ref().map_or(("AKP153E".into(), String::new()), |l| {
+            (l.model.clone(), l.serial.clone())
+        });
         let legacy_bright = l.as_ref().and_then(|l| {
-            l.get("DeviceBrightness", &format!("{model}{serial}")).or_else(|| l.get("DeviceBrightness", &model))
+            l.get("DeviceBrightness", &format!("{model}{serial}"))
+                .or_else(|| l.get("DeviceBrightness", &model))
                 .and_then(|v| v.parse::<u64>().ok())
         });
-        let brightness = st.get("brightness").and_then(Value::as_u64).or(legacy_bright).unwrap_or(100);
+        let brightness = st
+            .get("brightness")
+            .and_then(Value::as_u64)
+            .or(legacy_bright)
+            .unwrap_or(100);
         // ponytail: no HID here; the daemon's own Store reports the live device.
-        Ok(json!({ "connected": false, "model": model, "serial": serial, "brightness": brightness, "stub": true }))
+        Ok(
+            json!({ "connected": false, "model": model, "serial": serial, "brightness": brightness, "stub": true }),
+        )
     }
 
     fn set_device(&self, patch: &Value) -> Result<Value> {
         let mut st = self.state();
         if let Some(b) = patch.get("brightness") {
-            let b = b.as_u64().filter(|b| *b <= 100).ok_or_else(|| Error::new(400, "brightness must be 0..100"))?;
+            let b = b
+                .as_u64()
+                .filter(|b| *b <= 100)
+                .ok_or_else(|| Error::new(400, "brightness must be 0..100"))?;
             st.insert("brightness".into(), json!(b));
             self.save_state(st)?;
         }
@@ -536,17 +725,33 @@ impl Store for FsStore {
         }
         let name = format!("{uuid}.sdPlugin");
         if self.builtin_plugins.iter().any(|d| d.join(&name).is_dir()) {
-            return Err(Error::new(403, "los plugins integrados no se pueden quitar"));
+            return Err(Error::new(
+                403,
+                "los plugins integrados no se pueden quitar",
+            ));
         }
         let mut ids = self.installed_ids();
         if !ids.iter().any(|i| i == uuid) {
-            return Err(Error::new(403, "solo se pueden quitar plugins instalados por OrcaDeck"));
+            return Err(Error::new(
+                403,
+                "solo se pueden quitar plugins instalados por OrcaDeck",
+            ));
         }
-        let root = self.plugins.canonicalize().map_err(|_| Error::new(404, "no existe la carpeta de plugins"))?;
-        let target = self.plugins.join(&name).canonicalize().map_err(|_| Error::new(404, "el plugin ya no está instalado"))?;
+        let root = self
+            .plugins
+            .canonicalize()
+            .map_err(|_| Error::new(404, "no existe la carpeta de plugins"))?;
+        let target = self
+            .plugins
+            .join(&name)
+            .canonicalize()
+            .map_err(|_| Error::new(404, "el plugin ya no está instalado"))?;
         // Direct child of our plugins folder, after resolving links: nothing else is ever deleted.
         if target.parent() != Some(root.as_path()) {
-            return Err(Error::new(400, "el plugin no está en la carpeta de plugins"));
+            return Err(Error::new(
+                400,
+                "el plugin no está en la carpeta de plugins",
+            ));
         }
         fs::remove_dir_all(&target)?;
         let overlay = self.data.join("manifests").join(format!("{uuid}.json"));
@@ -562,8 +767,11 @@ impl Store for FsStore {
         const RECENT: u64 = 30 * 86_400;
         const MAX: usize = 20;
         let dir = self.downloads_dir()?;
-        let rd = fs::read_dir(&dir).map_err(|_| Error::new(404, format!("no se encontró {}", dir.display())))?;
-        let cutoff = SystemTime::now().checked_sub(Duration::from_secs(RECENT)).unwrap_or(UNIX_EPOCH);
+        let rd = fs::read_dir(&dir)
+            .map_err(|_| Error::new(404, format!("no se encontró {}", dir.display())))?;
+        let cutoff = SystemTime::now()
+            .checked_sub(Duration::from_secs(RECENT))
+            .unwrap_or(UNIX_EPOCH);
         let mut items = Vec::new();
         for e in rd.flatten() {
             let path = e.path();
@@ -575,19 +783,31 @@ impl Store for FsStore {
                 if !lower.ends_with(".sdplugin") || !path.join("manifest.json").is_file() {
                     continue;
                 }
-            } else if !meta.is_file() || !["streamdeckplugin", "zip"].iter().any(|x| lower.ends_with(&format!(".{x}"))) {
+            } else if !meta.is_file()
+                || !["streamdeckplugin", "zip"]
+                    .iter()
+                    .any(|x| lower.ends_with(&format!(".{x}")))
+            {
                 continue;
             }
-            let Ok(modified) = meta.modified() else { continue };
+            let Ok(modified) = meta.modified() else {
+                continue;
+            };
             if modified < cutoff {
                 continue;
             }
-            let ms = modified.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
-            items.push((ms, json!({
-                "name": name, "path": path.to_string_lossy(),
-                "kind": if meta.is_dir() { "folder" } else { "archive" },
-                "size": meta.len(), "modified": ms,
-            })));
+            let ms = modified
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            items.push((
+                ms,
+                json!({
+                    "name": name, "path": path.to_string_lossy(),
+                    "kind": if meta.is_dir() { "folder" } else { "archive" },
+                    "size": meta.len(), "modified": ms,
+                }),
+            ));
         }
         items.sort_by(|a, b| b.0.cmp(&a.0));
         items.truncate(MAX);
@@ -602,8 +822,10 @@ impl Store for FsStore {
             return None;
         }
         let name = format!("{uuid}.sdPlugin");
-        std::iter::once(&self.plugins).chain(&self.builtin_plugins)
-            .map(|root| root.join(&name)).find(|dir| dir.is_dir())
+        std::iter::once(&self.plugins)
+            .chain(&self.builtin_plugins)
+            .map(|root| root.join(&name))
+            .find(|dir| dir.is_dir())
     }
 
     fn inspector(&self) -> Option<&dyn crate::InspectorBridge> {

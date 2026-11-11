@@ -16,7 +16,10 @@ pub struct Request {
 
 impl Request {
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+        self.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
     }
 
     pub fn query_param(&self, name: &str) -> Option<String> {
@@ -43,7 +46,12 @@ pub struct Response {
 
 impl Response {
     pub fn new(status: u16, ctype: &'static str, body: impl Into<Vec<u8>>) -> Self {
-        Response { status, ctype, body: body.into(), headers: vec![] }
+        Response {
+            status,
+            ctype,
+            body: body.into(),
+            headers: vec![],
+        }
     }
     pub fn json(status: u16, v: &serde_json::Value) -> Self {
         Self::new(status, "application/json", v.to_string())
@@ -88,11 +96,20 @@ pub fn read_request(stream: impl Read) -> Result<Request, u16> {
         let (k, v) = l.split_once(':').ok_or(400u16)?;
         headers.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
     }
-    let mut req = Request { method, path, query, headers, body: vec![] };
+    let mut req = Request {
+        method,
+        path,
+        query,
+        headers,
+        body: vec![],
+    };
     if req.header("transfer-encoding").is_some() {
         return Err(411);
     }
-    let len: usize = req.header("content-length").map_or(Ok(0), |v| v.parse()).map_err(|_| 400u16)?;
+    let len: usize = req
+        .header("content-length")
+        .map_or(Ok(0), |v| v.parse())
+        .map_err(|_| 400u16)?;
     if len > MAX_BODY {
         return Err(413);
     }
@@ -103,10 +120,21 @@ pub fn read_request(stream: impl Read) -> Result<Request, u16> {
 
 pub fn write_response(mut w: impl Write, resp: &Response) -> io::Result<()> {
     let reason = match resp.status {
-        200 => "OK", 201 => "Created", 204 => "No Content", 303 => "See Other", 400 => "Bad Request",
-        401 => "Unauthorized", 403 => "Forbidden", 404 => "Not Found", 405 => "Method Not Allowed",
-        409 => "Conflict", 411 => "Length Required", 413 => "Payload Too Large", 415 => "Unsupported Media Type",
-        431 => "Request Header Fields Too Large", _ => "Error",
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        303 => "See Other",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        411 => "Length Required",
+        413 => "Payload Too Large",
+        415 => "Unsupported Media Type",
+        431 => "Request Header Fields Too Large",
+        _ => "Error",
     };
     let mut h = format!(
         "HTTP/1.1 {} {reason}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\
@@ -114,7 +142,11 @@ pub fn write_response(mut w: impl Write, resp: &Response) -> io::Result<()> {
         resp.status, resp.ctype, resp.body.len()
     );
     // Routes that must be frameable (the plugin inspector) override this; everything else keeps DENY.
-    if !resp.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("x-frame-options")) {
+    if !resp
+        .headers
+        .iter()
+        .any(|(k, _)| k.eq_ignore_ascii_case("x-frame-options"))
+    {
         h.push_str("X-Frame-Options: DENY\r\n");
     }
     for (k, v) in &resp.headers {
@@ -133,7 +165,8 @@ pub fn pct_decode(s: &str) -> String {
     while i < b.len() {
         match b[i] {
             b'%' if i + 2 < b.len() => {
-                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
+                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16)
+                {
                     Ok(v) => {
                         out.push(v);
                         i += 3;
@@ -163,7 +196,10 @@ mod tests {
         assert_eq!(r.cookie("t"), Some("abc"));
         assert_eq!(r.body, b"{}");
         assert_eq!(read_request(&b"GARBAGE\r\n\r\n"[..]).err(), Some(400));
-        assert_eq!(read_request(&b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"[..]).err(), Some(411));
+        assert_eq!(
+            read_request(&b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"[..]).err(),
+            Some(411)
+        );
         assert_eq!(pct_decode("a%2Cb%"), "a,b%");
         assert_eq!(pct_decode("%4"), "%4");
     }
@@ -176,7 +212,11 @@ mod tests {
         assert!(plain.contains("X-Frame-Options: DENY\r\n"));
 
         let mut framed = vec![];
-        write_response(&mut framed, &Response::new(200, "text/plain", "x").with("X-Frame-Options", "SAMEORIGIN")).unwrap();
+        write_response(
+            &mut framed,
+            &Response::new(200, "text/plain", "x").with("X-Frame-Options", "SAMEORIGIN"),
+        )
+        .unwrap();
         let framed = String::from_utf8(framed).unwrap();
         assert!(framed.contains("X-Frame-Options: SAMEORIGIN\r\n"));
         assert!(!framed.contains("DENY"));

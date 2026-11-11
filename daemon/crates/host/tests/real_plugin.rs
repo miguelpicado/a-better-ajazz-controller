@@ -26,11 +26,16 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 
 #[test]
 fn orcadock_plugin_paints_and_reacts() {
-    let src = std::env::var_os("ORCADOCK_PLUGIN").map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(r"C:\Users\migue\Github\orca-dock\com.miguelpicado.orcadock.sdPlugin")
-    });
+    let src = std::env::var_os("ORCADOCK_PLUGIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(r"C:\Users\migue\Github\orca-dock\com.miguelpicado.orcadock.sdPlugin")
+        });
     if !src.is_dir() || !src.join("manifest.json").is_file() {
-        eprintln!("skipped: plugin not found at {} (set ORCADOCK_PLUGIN)", src.display());
+        eprintln!(
+            "skipped: plugin not found at {} (set ORCADOCK_PLUGIN)",
+            src.display()
+        );
         return;
     }
     if Command::new("node").arg("--version").output().is_err() {
@@ -50,7 +55,13 @@ fn orcadock_plugin_paints_and_reacts() {
     let tx = std::sync::Mutex::new(tx);
     let cfg = Config {
         port: 0,
-        devices: vec![Device { id: "DEV".into(), name: "AKP153E".into(), columns: 6, rows: 3, kind: 0 }],
+        devices: vec![Device {
+            id: "DEV".into(),
+            name: "AKP153E".into(),
+            columns: 6,
+            rows: 3,
+            kind: 0,
+        }],
         ..Config::default()
     };
     let host = Host::start(cfg, move |o: Output| {
@@ -63,7 +74,13 @@ fn orcadock_plugin_paints_and_reacts() {
     let mut clock = Instance::new(&plugin.id, "com.miguelpicado.orcadock.clock", "DEV", 5, 0);
     clock.controller = "Information".into();
     let clock = host.appear(clock);
-    let quota = host.appear(Instance::new(&plugin.id, "com.miguelpicado.orcadock.quota", "DEV", 0, 0));
+    let quota = host.appear(Instance::new(
+        &plugin.id,
+        "com.miguelpicado.orcadock.quota",
+        "DEV",
+        0,
+        0,
+    ));
     host.launch(plugin).unwrap();
 
     let wait = |want: &dyn Fn(&Output) -> bool| {
@@ -79,9 +96,15 @@ fn orcadock_plugin_paints_and_reacts() {
     };
 
     let img = wait(&|o| matches!(o, Output::Image { key, .. } if key.context == clock));
-    let Output::Image { key, image, .. } = img else { unreachable!() };
+    let Output::Image { key, image, .. } = img else {
+        unreachable!()
+    };
     assert_eq!((key.column, key.row), (5, 0));
-    assert!(image.starts_with("data:image/svg+xml"), "{}", &image[..image.len().min(40)]);
+    assert!(
+        image.starts_with("data:image/svg+xml"),
+        "{}",
+        &image[..image.len().min(40)]
+    );
 
     // The quota key answers a press with showOk (and writes .wake into the temp QUOTA_DIR).
     // willAppear for it went out with the clock's, before the clock image came back.

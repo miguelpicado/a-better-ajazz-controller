@@ -70,7 +70,9 @@ where
     // If com.miguelpicado.orcadock.sdPlugin is not in plugins dir, look in working dir / repo root
     if !dir_exists(&plugins.join("com.miguelpicado.orcadock.sdPlugin")) {
         for cand in [PathBuf::from("."), PathBuf::from("..")] {
-            if dir_exists(&cand.join("com.miguelpicado.orcadock.sdPlugin")) && !builtin_plugins.contains(&cand) {
+            if dir_exists(&cand.join("com.miguelpicado.orcadock.sdPlugin"))
+                && !builtin_plugins.contains(&cand)
+            {
                 builtin_plugins.push(cand);
                 break;
             }
@@ -211,11 +213,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // wait here. Its web server exists only while this connection is open (Ctrl+C closes the pipe).
     match ctl::request_edit(port) {
         Some(Ok(session)) => {
-            println!("OrcaDeck editor (dentro de orcadeck run): {}", session.url());
+            println!(
+                "OrcaDeck editor (dentro de orcadeck run): {}",
+                session.url()
+            );
             println!("Presiona Ctrl+C para detener el servidor.");
             if !no_open {
                 if let Err(e) = open_browser(session.url()) {
-                    eprintln!("aviso: no se pudo abrir el navegador ({e}); abre {} a mano", session.url());
+                    eprintln!(
+                        "aviso: no se pudo abrir el navegador ({e}); abre {} a mano",
+                        session.url()
+                    );
                 }
             }
             wait_for_ctrl_c();
@@ -262,7 +270,10 @@ pub fn run_install(raw: &str) -> Result<(), String> {
         println!("{}", session.url());
         println!("Presiona Ctrl+C para cerrar el editor.");
         if let Err(e) = open_browser(session.url()) {
-            eprintln!("aviso: no se pudo abrir el navegador ({e}); abre {} a mano", session.url());
+            eprintln!(
+                "aviso: no se pudo abrir el navegador ({e}); abre {} a mano",
+                session.url()
+            );
         }
         wait_for_ctrl_c();
         println!("\nDeteniendo el editor...");
@@ -270,7 +281,8 @@ pub fn run_install(raw: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    let token = orcadeck_web::stage_package(&path).map_err(|e| format!("no se pudo preparar el paquete: {e}"))?;
+    let token = orcadeck_web::stage_package(&path)
+        .map_err(|e| format!("no se pudo preparar el paquete: {e}"))?;
     let server = Server::start(Arc::new(editor_store(resolve_paths())), 0)
         .map_err(|e| format!("no se pudo iniciar el servidor web: {e}"))?;
     let url = format!("{}&install={token}", server.url());
@@ -296,7 +308,8 @@ mod tests {
             "APPDATA" => Some(r"C:\Users\test\AppData\Roaming".into()),
             _ => None,
         };
-        let exists = |p: &Path| p == Path::new(r"C:\Users\test\AppData\Roaming\HotSpot\StreamDock\config");
+        let exists =
+            |p: &Path| p == Path::new(r"C:\Users\test\AppData\Roaming\HotSpot\StreamDock\config");
 
         let paths = resolve_paths_with(env_map, exists);
         assert_eq!(
@@ -313,7 +326,9 @@ mod tests {
         );
         assert_eq!(
             paths.legacy_config,
-            Some(PathBuf::from(r"C:\Users\test\AppData\Roaming\HotSpot\StreamDock\config"))
+            Some(PathBuf::from(
+                r"C:\Users\test\AppData\Roaming\HotSpot\StreamDock\config"
+            ))
         );
     }
 

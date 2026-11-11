@@ -56,14 +56,37 @@ fn write_runtime(path: &Path, pipe: &str, token: &str) {
 /// Creates one blocking byte-mode pipe instance and waits for the client (`PipeOrca`) to open it.
 fn accept(name: &str) -> File {
     let path = format!(r"\\.\pipe\{name}");
-    let wide: Vec<u16> = OsStr::new(&path).encode_wide().chain(std::iter::once(0)).collect();
+    let wide: Vec<u16> = OsStr::new(&path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     // PIPE_ACCESS_DUPLEX=3, PIPE_TYPE_BYTE=0, PIPE_READMODE_BYTE=0, PIPE_WAIT=0
-    let h = unsafe { CreateNamedPipeW(wide.as_ptr(), 3, 0, 1, 64 * 1024, 64 * 1024, 0, std::ptr::null_mut()) };
-    assert_ne!(h as isize, -1, "CreateNamedPipeW({path}): {}", std::io::Error::last_os_error());
+    let h = unsafe {
+        CreateNamedPipeW(
+            wide.as_ptr(),
+            3,
+            0,
+            1,
+            64 * 1024,
+            64 * 1024,
+            0,
+            std::ptr::null_mut(),
+        )
+    };
+    assert_ne!(
+        h as isize,
+        -1,
+        "CreateNamedPipeW({path}): {}",
+        std::io::Error::last_os_error()
+    );
     if unsafe { ConnectNamedPipe(h, std::ptr::null_mut()) } == 0 {
         let e = std::io::Error::last_os_error();
         // A client may connect between CreateNamedPipe and ConnectNamedPipe; that is not a failure.
-        assert_eq!(e.raw_os_error(), Some(ERROR_PIPE_CONNECTED), "ConnectNamedPipe: {e}");
+        assert_eq!(
+            e.raw_os_error(),
+            Some(ERROR_PIPE_CONNECTED),
+            "ConnectNamedPipe: {e}"
+        );
     }
     unsafe { File::from_raw_handle(h) }
 }
@@ -84,18 +107,26 @@ fn pipe_closed_mid_call_returns_err_without_panic() {
     let server = thread::spawn(move || {
         let mut pipe = accept(&name);
         let line = read_request(&mut pipe);
-        assert!(line.contains(r#""method":"status""#), "unexpected request: {line}");
+        assert!(
+            line.contains(r#""method":"status""#),
+            "unexpected request: {line}"
+        );
         // Drop without a response: the client sees EOF, not a hang.
     });
 
     let orca = PipeOrca::new(runtime);
     let t0 = Instant::now();
-    let err = orca.call("status", json!({})).expect_err("a pipe closed mid-call must be an error");
+    let err = orca
+        .call("status", json!({}))
+        .expect_err("a pipe closed mid-call must be an error");
     let elapsed = t0.elapsed();
     server.join().unwrap();
 
     assert!(elapsed < Duration::from_secs(5), "call took {elapsed:?}");
-    assert!(err.starts_with("status"), "error should name the method: {err}");
+    assert!(
+        err.starts_with("status"),
+        "error should name the method: {err}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -107,15 +138,27 @@ fn missing_pipe_and_runtime_file_return_err_promptly() {
 
     let orca = PipeOrca::new(runtime.clone());
     let t0 = Instant::now();
-    assert!(orca.call("status", json!({})).is_err(), "a pipe that never appears must be an error");
-    assert!(t0.elapsed() < Duration::from_secs(2), "open failure must not wait for TIMEOUT");
+    assert!(
+        orca.call("status", json!({})).is_err(),
+        "a pipe that never appears must be an error"
+    );
+    assert!(
+        t0.elapsed() < Duration::from_secs(2),
+        "open failure must not wait for TIMEOUT"
+    );
 
     // Orca gone and its runtime file removed: the cached endpoint must be dropped and reported.
     fs::remove_file(&runtime).unwrap();
     let t0 = Instant::now();
     let err = orca.call("status", json!({})).unwrap_err();
-    assert!(t0.elapsed() < Duration::from_secs(2), "missing runtime file must not wait for TIMEOUT");
-    assert!(err.contains("orca-runtime.json"), "error should name the runtime file: {err}");
+    assert!(
+        t0.elapsed() < Duration::from_secs(2),
+        "missing runtime file must not wait for TIMEOUT"
+    );
+    assert!(
+        err.contains("orca-runtime.json"),
+        "error should name the runtime file: {err}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -134,7 +177,8 @@ fn reacquires_pipe_and_token_after_orca_restart() {
         let line = read_request(&mut pipe);
         seen_tx.send(line).unwrap();
         go_rx.recv_timeout(Duration::from_secs(2)).unwrap();
-        pipe.write_all(br#"{"ok":false,"error":{"code":"restart","message":"bye"}}"#).unwrap();
+        pipe.write_all(br#"{"ok":false,"error":{"code":"restart","message":"bye"}}"#)
+            .unwrap();
         pipe.write_all(b"\n").unwrap();
     });
 
@@ -144,7 +188,8 @@ fn reacquires_pipe_and_token_after_orca_restart() {
         let mut pipe = accept(&pipe_b_thread);
         let line = read_request(&mut pipe);
         pipe.write_all(b"{\"_keepalive\":true}\n").unwrap();
-        pipe.write_all(br#"{"ok":true,"result":{"version":"9"}}"#).unwrap();
+        pipe.write_all(br#"{"ok":true,"result":{"version":"9"}}"#)
+            .unwrap();
         pipe.write_all(b"\n").unwrap();
         line
     });
@@ -155,7 +200,9 @@ fn reacquires_pipe_and_token_after_orca_restart() {
         thread::spawn(move || orca.call("status", json!({ "q": 1 })))
     };
 
-    let first = seen_rx.recv_timeout(Duration::from_secs(2)).expect("first pipe never got the request");
+    let first = seen_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("first pipe never got the request");
     write_runtime(&runtime, &pipe_b, "token-b");
     go_tx.send(()).unwrap();
 
@@ -167,7 +214,10 @@ fn reacquires_pipe_and_token_after_orca_restart() {
     assert_eq!(first["authToken"], "token-a");
     assert_eq!(first["method"], "status");
     let second: Value = serde_json::from_str(second.trim()).unwrap();
-    assert_eq!(second["authToken"], "token-b", "the retry must re-read the runtime file");
+    assert_eq!(
+        second["authToken"], "token-b",
+        "the retry must re-read the runtime file"
+    );
     assert_eq!(second["method"], "status");
     assert_eq!(second["params"]["q"], 1);
     assert_eq!(result.unwrap(), json!({ "version": "9" }));

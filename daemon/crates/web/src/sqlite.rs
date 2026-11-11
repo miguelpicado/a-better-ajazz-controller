@@ -47,7 +47,12 @@ fn record(p: &[u8]) -> Option<Vec<Val>> {
         };
         let raw = p.get(off..off + size)?;
         out.push(match t {
-            1..=6 => Val::Int(raw.iter().fold(if raw[0] & 0x80 != 0 { -1i64 } else { 0 }, |a, &c| (a << 8) | c as i64)),
+            1..=6 => Val::Int(
+                raw.iter()
+                    .fold(if raw[0] & 0x80 != 0 { -1i64 } else { 0 }, |a, &c| {
+                        (a << 8) | c as i64
+                    }),
+            ),
             8 => Val::Int(0),
             9 => Val::Int(1),
             t if t >= 13 && t % 2 == 1 => Val::Text(String::from_utf8_lossy(raw).into_owned()),
@@ -108,16 +113,26 @@ pub fn text_column(db: &[u8], table: &str, col: usize) -> Option<Vec<String>> {
     };
     let mut master = vec![];
     walk(db, psize, 1, 0, &mut master)?;
-    let root = master.iter().find_map(|r| match (r.first(), r.get(1), r.get(3)) {
-        (Some(Val::Text(t)), Some(Val::Text(n)), Some(Val::Int(p))) if t == "table" && n == table => Some(*p as usize),
-        _ => None,
-    })?;
+    let root = master
+        .iter()
+        .find_map(|r| match (r.first(), r.get(1), r.get(3)) {
+            (Some(Val::Text(t)), Some(Val::Text(n)), Some(Val::Int(p)))
+                if t == "table" && n == table =>
+            {
+                Some(*p as usize)
+            }
+            _ => None,
+        })?;
     let mut rows = vec![];
     walk(db, psize, root, 0, &mut rows)?;
-    Some(rows.into_iter().filter_map(|r| match r.into_iter().nth(col) {
-        Some(Val::Text(s)) => Some(s),
-        _ => None,
-    }).collect())
+    Some(
+        rows.into_iter()
+            .filter_map(|r| match r.into_iter().nth(col) {
+                Some(Val::Text(s)) => Some(s),
+                _ => None,
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -129,12 +144,18 @@ mod tests {
         let db = include_bytes!("../tests/fixtures/DataCache.db");
         assert_eq!(
             super::text_column(db, "AKP153E", 0).unwrap(),
-            ["3I0U64IN-IT4R-RUB6-EZ4Z-VXS311JFXI05.sdProfile", "R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile",
-             "H33G4VTZ-25Z8-PYN7-R34M-ST39SX8TRT2Q.sdProfile"]
+            [
+                "3I0U64IN-IT4R-RUB6-EZ4Z-VXS311JFXI05.sdProfile",
+                "R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile",
+                "H33G4VTZ-25Z8-PYN7-R34M-ST39SX8TRT2Q.sdProfile"
+            ]
         );
         assert_eq!(super::text_column(db, "UnknownDevice", 0).unwrap().len(), 0);
         let big = super::text_column(db, "Big", 0).unwrap();
-        assert_eq!((big.len(), big[0].as_str(), big[599].as_str()), (600, "row0", "row599"));
+        assert_eq!(
+            (big.len(), big[0].as_str(), big[599].as_str()),
+            (600, "row0", "row599")
+        );
         assert!(super::text_column(db, "Nope", 0).is_none());
         assert!(super::text_column(b"not a db", "AKP153E", 0).is_none());
     }

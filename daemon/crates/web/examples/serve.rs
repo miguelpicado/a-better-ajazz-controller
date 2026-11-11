@@ -6,7 +6,9 @@ use std::{path::PathBuf, sync::Arc};
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let root = PathBuf::from(args.next().expect("usage: serve <data-root> [--plugins DIR] [--builtin DIR] [--legacy DIR] [--port N]"));
+    let root = PathBuf::from(args.next().expect(
+        "usage: serve <data-root> [--plugins DIR] [--builtin DIR] [--legacy DIR] [--port N]",
+    ));
     let mut store = orcadeck_web::FsStore {
         profiles: root.join("profiles"),
         plugins: root.join("plugins"),

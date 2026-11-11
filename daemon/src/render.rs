@@ -31,7 +31,12 @@ pub fn key_jpeg(img: &DynamicImage, key: u8) -> Vec<u8> {
     loop {
         let mut out = Vec::new();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, q.max(1) as u8)
-            .write_image(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+            .write_image(
+                rgb.as_raw(),
+                rgb.width(),
+                rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            )
             .expect("jpeg encode");
         if out.len() <= MAX_JPEG || q <= 1 {
             return out;
@@ -81,6 +86,10 @@ mod tests {
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut expected, 75)
             .write_image(rotated.as_raw(), px, px, image::ExtendedColorType::Rgb8)
             .unwrap();
-        assert_eq!(key_jpeg(&img, 1), expected, "frame is encoded as-is, with no second resize");
+        assert_eq!(
+            key_jpeg(&img, 1),
+            expected,
+            "frame is encoded as-is, with no second resize"
+        );
     }
 }

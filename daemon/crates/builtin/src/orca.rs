@@ -25,25 +25,36 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 
 impl PipeOrca {
     pub fn new(runtime_file: PathBuf) -> Self {
-        PipeOrca { runtime_file, meta: Mutex::new(None) }
+        PipeOrca {
+            runtime_file,
+            meta: Mutex::new(None),
+        }
     }
 
     /// `%APPDATA%\orca\orca-runtime.json`.
     pub fn from_env() -> Self {
-        Self::new(PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("orca").join("orca-runtime.json"))
+        Self::new(
+            PathBuf::from(std::env::var("APPDATA").unwrap_or_default())
+                .join("orca")
+                .join("orca-runtime.json"),
+        )
     }
 
     fn meta(&self) -> Result<(String, String), String> {
         let mut m = self.meta.lock().unwrap();
         if m.is_none() {
-            let raw = std::fs::read_to_string(&self.runtime_file).map_err(|e| format!("{}: {e}", self.runtime_file.display()))?;
+            let raw = std::fs::read_to_string(&self.runtime_file)
+                .map_err(|e| format!("{}: {e}", self.runtime_file.display()))?;
             let v: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
             let pipe = v["transports"]
                 .as_array()
                 .and_then(|t| t.iter().find(|t| t["kind"] == "named-pipe"))
                 .and_then(|t| t["endpoint"].as_str())
                 .ok_or("no named pipe in orca-runtime.json")?;
-            *m = Some((pipe.to_string(), v["authToken"].as_str().unwrap_or_default().to_string()));
+            *m = Some((
+                pipe.to_string(),
+                v["authToken"].as_str().unwrap_or_default().to_string(),
+            ));
         }
         Ok(m.clone().unwrap())
     }
@@ -51,32 +62,48 @@ impl PipeOrca {
     fn call_once(&self, method: &str, params: &Value) -> Result<Value, String> {
         static ID: AtomicU64 = AtomicU64::new(0);
         let (pipe, token) = self.meta()?;
-        let id = format!("orcadeck-{}-{}", std::process::id(), ID.fetch_add(1, Ordering::Relaxed));
-        let line = json!({ "id": id, "authToken": token, "method": method, "params": params }).to_string() + "\n";
+        let id = format!(
+            "orcadeck-{}-{}",
+            std::process::id(),
+            ID.fetch_add(1, Ordering::Relaxed)
+        );
+        let line = json!({ "id": id, "authToken": token, "method": method, "params": params })
+            .to_string()
+            + "\n";
         let m = method.to_string();
         let (tx, rx) = mpsc::channel();
         // ponytail: std pipes have no read timeout, so the call runs on a throwaway thread and a hung
         // pipe leaks it until Orca closes the pipe; overlapped I/O if that ever shows up.
         std::thread::spawn(move || {
             let r = (|| {
-                let mut f = std::fs::OpenOptions::new().read(true).write(true).open(&pipe).map_err(|e| format!("{m}: {e}"))?;
+                let mut f = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&pipe)
+                    .map_err(|e| format!("{m}: {e}"))?;
                 f.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
                 for l in BufReader::new(f).lines() {
-                    let fr: Value = serde_json::from_str(&l.map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                    let fr: Value = serde_json::from_str(&l.map_err(|e| e.to_string())?)
+                        .map_err(|e| e.to_string())?;
                     if truthy(&fr["_keepalive"]) {
                         continue;
                     }
                     return if fr["ok"] == true {
                         Ok(fr["result"].clone())
                     } else {
-                        Err(format!("{m}: {} {}", fr["error"]["code"], fr["error"]["message"].as_str().unwrap_or("")))
+                        Err(format!(
+                            "{m}: {} {}",
+                            fr["error"]["code"],
+                            fr["error"]["message"].as_str().unwrap_or("")
+                        ))
                     };
                 }
                 Err(format!("{m}: pipe closed"))
             })();
             let _ = tx.send(r);
         });
-        rx.recv_timeout(TIMEOUT).map_err(|_| format!("{method} timeout"))?
+        rx.recv_timeout(TIMEOUT)
+            .map_err(|_| format!("{method} timeout"))?
     }
 }
 
@@ -143,7 +170,12 @@ mod win {
     #[link(name = "kernel32")]
     extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
-        fn QueryFullProcessImageNameW(p: *mut c_void, flags: u32, buf: *mut u16, len: *mut u32) -> i32;
+        fn QueryFullProcessImageNameW(
+            p: *mut c_void,
+            flags: u32,
+            buf: *mut u16,
+            len: *mut u32,
+        ) -> i32;
         fn CloseHandle(p: *mut c_void) -> i32;
         fn GetLocalTime(t: *mut SystemTime);
     }
@@ -170,7 +202,9 @@ mod win {
             let mut len = buf.len() as u32;
             let ok = QueryFullProcessImageNameW(p, 0, buf.as_mut_ptr(), &mut len) != 0;
             CloseHandle(p);
-            ok && String::from_utf16_lossy(&buf[..len as usize]).to_lowercase().ends_with("\\orca.exe")
+            ok && String::from_utf16_lossy(&buf[..len as usize])
+                .to_lowercase()
+                .ends_with("\\orca.exe")
         }
     }
 
@@ -179,7 +213,11 @@ mod win {
         unsafe {
             let mut pid = 0;
             GetWindowThreadProcessId(h, &mut pid);
-            if IsWindowVisible(h) != 0 && GetWindowTextLengthW(h) > 0 && GetWindow(h, 4) == 0 && is_orca(pid) {
+            if IsWindowVisible(h) != 0
+                && GetWindowTextLengthW(h) > 0
+                && GetWindow(h, 4) == 0
+                && is_orca(pid)
+            {
                 *(out as *mut Hwnd) = h;
                 return 0;
             }

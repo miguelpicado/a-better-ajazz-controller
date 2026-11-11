@@ -52,11 +52,19 @@ pub fn register_ops(exe: &str, state: &[ExtState]) -> Vec<Op> {
             // Only the first register remembers the previous default; re-registering must not
             // replace it with our own ProgID.
             if let Some(prev) = s.current.as_deref().filter(|p| *p != PROGID) {
-                ops.push(Op::SetValue(PROGID.into(), previous_name(s.ext), prev.to_string()));
+                ops.push(Op::SetValue(
+                    PROGID.into(),
+                    previous_name(s.ext),
+                    prev.to_string(),
+                ));
             }
         }
         ops.push(Op::SetDefault(key.clone(), PROGID.into()));
-        ops.push(Op::SetValue(format!("{key}\\OpenWithProgids"), PROGID.into(), String::new()));
+        ops.push(Op::SetValue(
+            format!("{key}\\OpenWithProgids"),
+            PROGID.into(),
+            String::new(),
+        ));
     }
     ops
 }
@@ -73,7 +81,10 @@ pub fn unregister_ops(state: &[ExtState]) -> Vec<Op> {
             // Never had a default: remove ours without deleting anything the key may hold.
             None => ops.push(Op::DeleteDefault(key)),
         }
-        ops.push(Op::DeleteValue(format!(".{}\\OpenWithProgids", s.ext), PROGID.into()));
+        ops.push(Op::DeleteValue(
+            format!(".{}\\OpenWithProgids", s.ext),
+            PROGID.into(),
+        ));
     }
     ops.push(Op::DeleteKey(PROGID.into()));
     ops
@@ -86,7 +97,11 @@ pub fn register() -> Result<(), String> {
         .into_owned();
     let state: Vec<ExtState> = EXTENSIONS
         .iter()
-        .map(|ext| ExtState { ext, current: win::get(&format!(".{ext}"), None), stored: win::get(PROGID, Some(&previous_name(ext))) })
+        .map(|ext| ExtState {
+            ext,
+            current: win::get(&format!(".{ext}"), None),
+            stored: win::get(PROGID, Some(&previous_name(ext))),
+        })
         .collect();
     apply(&register_ops(&exe, &state))?;
     println!("OrcaDeck: .streamDeckPlugin y .sdPlugin abren el editor para instalar el plugin.");
@@ -98,7 +113,11 @@ pub fn register() -> Result<(), String> {
 pub fn unregister() -> Result<(), String> {
     let state: Vec<ExtState> = EXTENSIONS
         .iter()
-        .map(|ext| ExtState { ext, current: None, stored: win::get(PROGID, Some(&previous_name(ext))) })
+        .map(|ext| ExtState {
+            ext,
+            current: None,
+            stored: win::get(PROGID, Some(&previous_name(ext))),
+        })
         .collect();
     apply(&unregister_ops(&state))?;
     for s in &state {
@@ -131,11 +150,18 @@ fn apply(ops: &[Op]) -> Result<(), String> {
 }
 
 fn reg(args: &[&str]) -> Result<(), String> {
-    let out = Command::new("reg.exe").args(args).output().map_err(|e| format!("no se pudo ejecutar reg.exe: {e}"))?;
+    let out = Command::new("reg.exe")
+        .args(args)
+        .output()
+        .map_err(|e| format!("no se pudo ejecutar reg.exe: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {
-        Err(format!("reg.exe falló ({}): {}", out.status, String::from_utf8_lossy(&out.stderr).trim()))
+        Err(format!(
+            "reg.exe falló ({}): {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
     }
 }
 
@@ -184,7 +210,10 @@ mod win {
             return None;
         }
         let n = (len as usize / 2).min(buf.len());
-        String::from_utf16(&buf[..n]).ok().map(|s| s.trim_end_matches('\0').to_string()).filter(|s| !s.is_empty())
+        String::from_utf16(&buf[..n])
+            .ok()
+            .map(|s| s.trim_end_matches('\0').to_string())
+            .filter(|s| !s.is_empty())
     }
 }
 
@@ -200,35 +229,62 @@ mod tests {
     use super::*;
 
     fn state(ext: &'static str, current: Option<&str>, stored: Option<&str>) -> ExtState {
-        ExtState { ext, current: current.map(String::from), stored: stored.map(String::from) }
+        ExtState {
+            ext,
+            current: current.map(String::from),
+            stored: stored.map(String::from),
+        }
     }
 
     #[test]
     fn the_open_command_quotes_the_exe_and_the_file() {
-        assert_eq!(command(r"C:\Tools\Orca Deck\orcadeck.exe"), r#""C:\Tools\Orca Deck\orcadeck.exe" install "%1""#);
+        assert_eq!(
+            command(r"C:\Tools\Orca Deck\orcadeck.exe"),
+            r#""C:\Tools\Orca Deck\orcadeck.exe" install "%1""#
+        );
     }
 
     #[test]
     fn register_remembers_the_previous_default_once_per_extension() {
-        let st = [state("streamDeckPlugin", Some("StreamDock.Plugin"), None), state("sdPlugin", None, None)];
+        let st = [
+            state("streamDeckPlugin", Some("StreamDock.Plugin"), None),
+            state("sdPlugin", None, None),
+        ];
         let ops = register_ops(r"C:\orca\orcadeck.exe", &st);
 
-        assert!(ops.contains(&Op::SetValue(PROGID.into(), "PreviousDefault.streamDeckPlugin".into(), "StreamDock.Plugin".into())));
-        assert!(!ops.iter().any(|o| matches!(o, Op::SetValue(_, n, _) if n == "PreviousDefault.sdPlugin")));
+        assert!(ops.contains(&Op::SetValue(
+            PROGID.into(),
+            "PreviousDefault.streamDeckPlugin".into(),
+            "StreamDock.Plugin".into()
+        )));
+        assert!(!ops
+            .iter()
+            .any(|o| matches!(o, Op::SetValue(_, n, _) if n == "PreviousDefault.sdPlugin")));
         for ext in EXTENSIONS {
             assert!(ops.contains(&Op::SetDefault(format!(".{ext}"), PROGID.into())));
-            assert!(ops.contains(&Op::SetValue(format!(".{ext}\\OpenWithProgids"), PROGID.into(), String::new())));
+            assert!(ops.contains(&Op::SetValue(
+                format!(".{ext}\\OpenWithProgids"),
+                PROGID.into(),
+                String::new()
+            )));
         }
         assert!(ops.contains(&Op::SetDefault(
             format!(r"{PROGID}\shell\open\command"),
             r#""C:\orca\orcadeck.exe" install "%1""#.into()
         )));
-        assert!(ops.contains(&Op::SetDefault(format!(r"{PROGID}\DefaultIcon"), r#""C:\orca\orcadeck.exe",0"#.into())));
+        assert!(ops.contains(&Op::SetDefault(
+            format!(r"{PROGID}\DefaultIcon"),
+            r#""C:\orca\orcadeck.exe",0"#.into()
+        )));
     }
 
     #[test]
     fn a_second_register_never_overwrites_the_stored_default() {
-        let st = [state("streamDeckPlugin", Some(PROGID), Some("StreamDock.Plugin"))];
+        let st = [state(
+            "streamDeckPlugin",
+            Some(PROGID),
+            Some("StreamDock.Plugin"),
+        )];
         let ops = register_ops(r"C:\orca\orcadeck.exe", &st);
         assert!(!ops.iter().any(|o| matches!(o, Op::SetValue(k, n, _) if k == PROGID && n.starts_with("PreviousDefault"))));
         assert!(ops.contains(&Op::SetDefault(".streamDeckPlugin".into(), PROGID.into())));
@@ -236,15 +292,29 @@ mod tests {
 
     #[test]
     fn unregister_restores_what_was_there_before_and_removes_the_progid() {
-        let st = [state("streamDeckPlugin", None, Some("StreamDock.Plugin")), state("sdPlugin", None, None)];
+        let st = [
+            state("streamDeckPlugin", None, Some("StreamDock.Plugin")),
+            state("sdPlugin", None, None),
+        ];
         let ops = unregister_ops(&st);
 
-        assert!(ops.contains(&Op::SetDefault(".streamDeckPlugin".into(), "StreamDock.Plugin".into())));
-        assert!(ops.contains(&Op::DeleteValue(PROGID.into(), "PreviousDefault.streamDeckPlugin".into())));
-        assert!(ops.contains(&Op::DeleteValue(r".streamDeckPlugin\OpenWithProgids".into(), PROGID.into())));
+        assert!(ops.contains(&Op::SetDefault(
+            ".streamDeckPlugin".into(),
+            "StreamDock.Plugin".into()
+        )));
+        assert!(ops.contains(&Op::DeleteValue(
+            PROGID.into(),
+            "PreviousDefault.streamDeckPlugin".into()
+        )));
+        assert!(ops.contains(&Op::DeleteValue(
+            r".streamDeckPlugin\OpenWithProgids".into(),
+            PROGID.into()
+        )));
         // No previous default: only our default goes away, the key is left alone.
         assert!(ops.contains(&Op::DeleteDefault(".sdPlugin".into())));
-        assert!(!ops.iter().any(|o| matches!(o, Op::DeleteKey(k) if k.starts_with('.'))));
+        assert!(!ops
+            .iter()
+            .any(|o| matches!(o, Op::DeleteKey(k) if k.starts_with('.'))));
         assert_eq!(ops.last(), Some(&Op::DeleteKey(PROGID.into())));
     }
 }

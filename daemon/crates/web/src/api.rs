@@ -33,7 +33,11 @@ impl Ctx {
     fn token_ok(&self, given: Option<&str>) -> bool {
         // Constant-time compare.
         given.is_some_and(|g| {
-            g.len() == self.token.len() && g.bytes().zip(self.token.bytes()).fold(0u8, |a, (x, y)| a | (x ^ y)) == 0
+            g.len() == self.token.len()
+                && g.bytes()
+                    .zip(self.token.bytes())
+                    .fold(0u8, |a, (x, y)| a | (x ^ y))
+                    == 0
         })
     }
 }
@@ -65,7 +69,9 @@ pub fn handle(ctx: &Ctx, req: Request) -> Response {
     if let Some(r) = gate(ctx, &req) {
         return r;
     }
-    let page = |ctype: &'static str, body: &str| Response::new(200, ctype, body).with("Content-Security-Policy", PAGE_CSP);
+    let page = |ctype: &'static str, body: &str| {
+        Response::new(200, ctype, body).with("Content-Security-Policy", PAGE_CSP)
+    };
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/") => {
             if let Some(t) = req.query_param("token") {
@@ -76,10 +82,16 @@ pub fn handle(ctx: &Ctx, req: Request) -> Response {
                         Some(i) => format!("/?install={}", url_segment(&i)),
                         None => "/".to_string(),
                     };
-                    return Response::new(303, "text/plain", "").with("Location", location).with(
-                        "Set-Cookie",
-                        format!("{}={}; Path=/; HttpOnly; SameSite=Strict", ctx.cookie_name(), ctx.token),
-                    );
+                    return Response::new(303, "text/plain", "")
+                        .with("Location", location)
+                        .with(
+                            "Set-Cookie",
+                            format!(
+                                "{}={}; Path=/; HttpOnly; SameSite=Strict",
+                                ctx.cookie_name(),
+                                ctx.token
+                            ),
+                        );
                 }
             }
             page("text/html; charset=utf-8", INDEX)
@@ -88,12 +100,16 @@ pub fn handle(ctx: &Ctx, req: Request) -> Response {
         ("GET", "/app.css") => page("text/css; charset=utf-8", APP_CSS),
         ("GET", "/icon.svg") => page("image/svg+xml", ICON),
         (_, p) if p.starts_with("/api/") => {
-            let given = req.header("x-orcadeck-token").or_else(|| req.cookie(&ctx.cookie_name()));
+            let given = req
+                .header("x-orcadeck-token")
+                .or_else(|| req.cookie(&ctx.cookie_name()));
             if !ctx.token_ok(given) {
                 return Response::error(401, "missing or bad session token");
             }
             if matches!(req.method.as_str(), "POST" | "PUT")
-                && !req.header("content-type").is_some_and(|c| c.starts_with("application/json"))
+                && !req
+                    .header("content-type")
+                    .is_some_and(|c| c.starts_with("application/json"))
             {
                 return Response::error(415, "Content-Type must be application/json");
             }
@@ -111,7 +127,9 @@ fn body(req: &Request) -> Result<Value> {
 }
 
 fn str_field<'a>(b: &'a Value, k: &str) -> Result<&'a str> {
-    b.get(k).and_then(Value::as_str).filter(|s| !s.is_empty())
+    b.get(k)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| Error::new(400, format!("expected {{{k}}}")))
 }
 
@@ -120,7 +138,10 @@ fn ok(v: Value) -> Result<Response> {
 }
 
 fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
-    let segs: Vec<String> = req.path["/api/".len()..].split('/').map(pct_decode).collect();
+    let segs: Vec<String> = req.path["/api/".len()..]
+        .split('/')
+        .map(pct_decode)
+        .collect();
     let s: Vec<&str> = segs.iter().map(String::as_str).collect();
     let store = &*ctx.store;
     let m = req.method.as_str();
@@ -241,8 +262,14 @@ fn cell_key(doc: &Value, k: &str) -> Result<String> {
 }
 
 fn validate_action(a: &Value, at: &str) -> std::result::Result<(), String> {
-    let o = a.as_object().ok_or(format!("{at}: action must be an object"))?;
-    if !o.get("UUID").and_then(Value::as_str).is_some_and(|u| !u.is_empty()) {
+    let o = a
+        .as_object()
+        .ok_or(format!("{at}: action must be an object"))?;
+    if !o
+        .get("UUID")
+        .and_then(Value::as_str)
+        .is_some_and(|u| !u.is_empty())
+    {
         return Err(format!("{at}: UUID must be a non-empty string"));
     }
     for k in ["Name", "ActionID", "Controller"] {
@@ -267,7 +294,10 @@ fn validate_action(a: &Value, at: &str) -> std::result::Result<(), String> {
     }
     match o.get("Actions") {
         None => Ok(()),
-        Some(Value::Array(nested)) => nested.iter().enumerate().try_for_each(|(i, n)| validate_action(n, &format!("{at}/{i}"))),
+        Some(Value::Array(nested)) => nested
+            .iter()
+            .enumerate()
+            .try_for_each(|(i, n)| validate_action(n, &format!("{at}/{i}"))),
         _ => Err(format!("{at}: Actions must be an array")),
     }
 }
@@ -278,8 +308,12 @@ pub fn validate_scene(doc: &Value) -> std::result::Result<(), String> {
     if o.get("Name").is_some_and(|v| !v.is_string()) {
         return Err("Name must be a string".into());
     }
-    let Some(acts) = o.get("Actions") else { return Ok(()) };
-    let acts = acts.as_object().ok_or("Actions must be an object keyed \"col,row\"")?;
+    let Some(acts) = o.get("Actions") else {
+        return Ok(());
+    };
+    let acts = acts
+        .as_object()
+        .ok_or("Actions must be an object keyed \"col,row\"")?;
     let (maxc, maxr) = bounds(doc);
     for (k, a) in acts {
         match parse_key(k) {
@@ -292,15 +326,22 @@ pub fn validate_scene(doc: &Value) -> std::result::Result<(), String> {
 
 fn find_action<'a>(plugins: &'a [Plugin], uuid: &str) -> Option<(&'a Plugin, &'a Value)> {
     plugins.iter().find_map(|p| {
-        p.manifest.get("Actions")?.as_array()?.iter()
-            .find(|a| a.get("UUID").and_then(Value::as_str) == Some(uuid)).map(|a| (p, a))
+        p.manifest
+            .get("Actions")?
+            .as_array()?
+            .iter()
+            .find(|a| a.get("UUID").and_then(Value::as_str) == Some(uuid))
+            .map(|a| (p, a))
     })
 }
 
 /// Plugin that owns an action UUID: declared in its manifest, else the longest `<plugin>.` prefix.
 fn owner<'a>(plugins: &'a [Plugin], uuid: &str) -> Option<&'a Plugin> {
     find_action(plugins, uuid).map(|(p, _)| p).or_else(|| {
-        plugins.iter().filter(|p| uuid == p.uuid || uuid.starts_with(&format!("{}.", p.uuid))).max_by_key(|p| p.uuid.len())
+        plugins
+            .iter()
+            .filter(|p| uuid == p.uuid || uuid.starts_with(&format!("{}.", p.uuid)))
+            .max_by_key(|p| p.uuid.len())
     })
 }
 
@@ -314,7 +355,9 @@ fn build_action(store: &dyn Store, b: Value) -> Result<Value> {
     }
     let uuid = b["UUID"].as_str().unwrap_or_default().to_string();
     let plugins = store.plugins()?;
-    let def = find_action(&plugins, &uuid).map(|(_, a)| a.clone()).unwrap_or(Value::Null);
+    let def = find_action(&plugins, &uuid)
+        .map(|(_, a)| a.clone())
+        .unwrap_or(Value::Null);
     let mut a = json!({
         "ActionID": crate::new_id(false),
         "Controller": "",
@@ -331,7 +374,10 @@ fn build_action(store: &dyn Store, b: Value) -> Result<Value> {
 }
 
 fn move_cell(store: &dyn Store, id: &str, key: &str, b: &Value) -> Result<Response> {
-    let to = b.get("to").and_then(Value::as_str).ok_or_else(|| Error::new(400, "expected {to:\"c,r\"}"))?;
+    let to = b
+        .get("to")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Error::new(400, "expected {to:\"c,r\"}"))?;
     let dst_id = b.get("scene").and_then(Value::as_str).unwrap_or(id);
     if !safe_id(dst_id) {
         return Err(Error::new(400, "bad scene id"));
@@ -339,8 +385,15 @@ fn move_cell(store: &dyn Store, id: &str, key: &str, b: &Value) -> Result<Respon
     let copy = b.get("copy").and_then(Value::as_bool).unwrap_or(false);
     let mut src = store.scene(id)?;
     let from = cell_key(&src, key)?;
-    let a = actions(&mut src).get(&from).cloned().ok_or_else(|| Error::new(404, "empty cell"))?;
-    let mut dst = if dst_id == id { None } else { Some(store.scene(dst_id)?) };
+    let a = actions(&mut src)
+        .get(&from)
+        .cloned()
+        .ok_or_else(|| Error::new(404, "empty cell"))?;
+    let mut dst = if dst_id == id {
+        None
+    } else {
+        Some(store.scene(dst_id)?)
+    };
     let to = cell_key(dst.as_ref().unwrap_or(&src), to)?;
     if dst.is_none() && from == to {
         return ok(json!({ "moved": false }));
@@ -373,32 +426,69 @@ fn move_cell(store: &dyn Store, id: &str, key: &str, b: &Value) -> Result<Respon
 /// 501 when the daemon is not running (no bridge), 404 when the action has no PI in its manifest.
 fn inspector(ctx: &Ctx, store: &dyn Store, scene: &str, key: &str) -> Result<Response> {
     let Some(bridge) = store.inspector() else {
-        return Err(Error::new(501, "el daemon no está en marcha: no hay inspector en vivo"));
+        return Err(Error::new(
+            501,
+            "el daemon no está en marcha: no hay inspector en vivo",
+        ));
     };
     let doc = store.scene(scene)?;
     let key = cell_key(&doc, key)?;
-    let action = doc.pointer("/Actions").and_then(|a| a.get(&key)).cloned()
+    let action = doc
+        .pointer("/Actions")
+        .and_then(|a| a.get(&key))
+        .cloned()
         .ok_or_else(|| Error::new(404, "empty cell"))?;
-    let uuid = action.get("UUID").and_then(Value::as_str).unwrap_or_default();
+    let uuid = action
+        .get("UUID")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let plugins = store.plugins()?;
-    let (plugin, declared) = find_action(&plugins, uuid).ok_or_else(|| Error::new(404, "plugin no instalado"))?;
-    let pi = declared.get("PropertyInspectorPath").or_else(|| plugin.manifest.get("PropertyInspectorPath"))
-        .and_then(Value::as_str).map(str::trim).filter(|p| !p.is_empty())
+    let (plugin, declared) =
+        find_action(&plugins, uuid).ok_or_else(|| Error::new(404, "plugin no instalado"))?;
+    let pi = declared
+        .get("PropertyInspectorPath")
+        .or_else(|| plugin.manifest.get("PropertyInspectorPath"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
         .ok_or_else(|| Error::new(404, "esta acción no tiene inspector de propiedades"))?;
     // Validate the manifest path before issuing a token: only files inside the plugin folder are served.
     let rel = pi.replace('\\', "/");
-    let parts: Vec<String> = rel.split('/').filter(|s| !s.is_empty() && *s != ".").map(String::from).collect();
+    let parts: Vec<String> = rel
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != ".")
+        .map(String::from)
+        .collect();
     if crate::pi_static::resolve(&plugin.dir, &parts).is_none() {
-        return Err(Error::new(404, "el inspector del plugin no existe en su carpeta"));
+        return Err(Error::new(
+            404,
+            "el inspector del plugin no existe en su carpeta",
+        ));
     }
     let sess = bridge.open(scene, &key).map_err(|e| Error::new(500, e))?;
     if sess.token.is_empty() || sess.token == ctx.token {
-        return Err(Error::new(500, "el puente del inspector devolvió un token inválido"));
+        return Err(Error::new(
+            500,
+            "el puente del inspector devolvió un token inválido",
+        ));
     }
     let (c, r) = parse_key(&key).unwrap_or((0, 0));
-    let device = doc.get("DeviceUUID").and_then(Value::as_str).unwrap_or("AKP153E");
-    let controller = action.get("Controller").and_then(Value::as_str).filter(|s| !s.is_empty())
-        .map(String::from).unwrap_or_else(|| if c == 5 { "Information".into() } else { "Keypad".into() });
+    let device = doc
+        .get("DeviceUUID")
+        .and_then(Value::as_str)
+        .unwrap_or("AKP153E");
+    let controller = action
+        .get("Controller")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| {
+            if c == 5 {
+                "Information".into()
+            } else {
+                "Keypad".into()
+            }
+        });
     let info = json!({
         "application": { "language": "es", "platform": "windows", "version": env!("CARGO_PKG_VERSION") },
         "plugin": {
@@ -425,7 +515,11 @@ fn inspector(ctx: &Ctx, store: &dyn Store, scene: &str, key: &str) -> Result<Res
     let url = format!(
         "/api/plugins/{}/pi/{}?ws={}",
         plugin.uuid,
-        parts.iter().map(|p| url_segment(p)).collect::<Vec<_>>().join("/"),
+        parts
+            .iter()
+            .map(|p| url_segment(p))
+            .collect::<Vec<_>>()
+            .join("/"),
         sess.port
     );
     ok(json!({
@@ -447,11 +541,19 @@ fn url_segment(s: &str) -> String {
 }
 
 fn create_scene(store: &dyn Store, b: &Value) -> Result<Response> {
-    let name = b.get("name").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty())
+    let name = b
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
         .ok_or_else(|| Error::new(400, "expected {name}"))?;
     let scenes = store.scenes()?;
     // Inherit the device binding from the scene the device shows now.
-    let tpl = scenes.iter().find(|s| s.current).and_then(|s| store.scene(&s.id).ok()).unwrap_or(json!({}));
+    let tpl = scenes
+        .iter()
+        .find(|s| s.current)
+        .and_then(|s| store.scene(&s.id).ok())
+        .unwrap_or(json!({}));
     let id = crate::new_id(true);
     let page = format!("{id}.sdProfile");
     let mut doc = json!({
@@ -465,7 +567,11 @@ fn create_scene(store: &dyn Store, b: &Value) -> Result<Response> {
         }
     }
     store.put_scene(&id, &doc)?;
-    let mut order: Vec<String> = scenes.into_iter().filter(|s| s.listed).map(|s| s.id).collect();
+    let mut order: Vec<String> = scenes
+        .into_iter()
+        .filter(|s| s.listed)
+        .map(|s| s.id)
+        .collect();
     order.push(id.clone());
     store.set_order(&order)?;
     Ok(Response::json(201, &json!({ "id": id, "scene": doc })))
@@ -475,7 +581,12 @@ fn runtime(m: &Value) -> &'static str {
     if m.get("UUID").and_then(Value::as_str) == Some("com.miguelpicado.orcadock") {
         return "builtin";
     }
-    let code = m.get("CodePathWin").or_else(|| m.get("CodePath")).and_then(Value::as_str).unwrap_or("").to_ascii_lowercase();
+    let code = m
+        .get("CodePathWin")
+        .or_else(|| m.get("CodePath"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
     match () {
         _ if m.is_null() => "unknown",
         _ if code.ends_with(".exe") => "exe",
@@ -488,9 +599,22 @@ fn runtime(m: &Value) -> &'static str {
 
 fn plugin_json(p: &Plugin) -> Value {
     let m = &p.manifest;
-    let s = |k: &str| m.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
-    let icon = [s("Icon"), s("CategoryIcon")].into_iter().find(|i| !i.is_empty())
-        .or_else(|| m.pointer("/Actions/0/Icon").and_then(Value::as_str).map(String::from)).unwrap_or_default();
+    let s = |k: &str| {
+        m.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
+    let icon = [s("Icon"), s("CategoryIcon")]
+        .into_iter()
+        .find(|i| !i.is_empty())
+        .or_else(|| {
+            m.pointer("/Actions/0/Icon")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
+        .unwrap_or_default();
     json!({
         "uuid": p.uuid, "name": if s("Name").is_empty() { p.uuid.clone() } else { s("Name") },
         "version": s("Version"), "author": s("Author"), "description": s("Description"),
@@ -536,17 +660,36 @@ fn image(store: &dyn Store, req: &Request) -> Result<Response> {
     let plugins = store.plugins()?;
     let own = owner(&plugins, &uuid);
     if img.is_empty() {
-        let state: usize = req.query_param("state").and_then(|s| s.parse().ok()).unwrap_or(0);
+        let state: usize = req
+            .query_param("state")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
         if let Some((_, a)) = find_action(&plugins, &uuid) {
-            let st = a.get("States").and_then(|s| s.get(state).or_else(|| s.get(0)));
-            img = st.and_then(|s| s.get("Image")).and_then(Value::as_str).filter(|s| !s.is_empty())
-                .or_else(|| a.get("Icon").and_then(Value::as_str)).unwrap_or("").to_string();
+            let st = a
+                .get("States")
+                .and_then(|s| s.get(state).or_else(|| s.get(0)));
+            img = st
+                .and_then(|s| s.get("Image"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .or_else(|| a.get("Icon").and_then(Value::as_str))
+                .unwrap_or("")
+                .to_string();
         } else if let Some(p) = own {
-            img = p.manifest.get("Icon").and_then(Value::as_str).unwrap_or("").to_string();
+            img = p
+                .manifest
+                .get("Icon")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
         }
     }
-    let (bytes, ctype) = store.image(scene.as_deref(), own.map(|p| p.uuid.as_str()), &img)
+    let (bytes, ctype) = store
+        .image(scene.as_deref(), own.map(|p| p.uuid.as_str()), &img)
         .ok_or_else(|| Error::new(404, "image not found"))?;
     // Plugin SVGs are third-party content: never let them run script in this origin.
-    Ok(Response::new(200, ctype, bytes).with("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'"))
+    Ok(Response::new(200, ctype, bytes).with(
+        "Content-Security-Policy",
+        "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+    ))
 }

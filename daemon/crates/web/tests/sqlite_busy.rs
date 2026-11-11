@@ -15,7 +15,10 @@ const REC: &str = "H33G4VTZ-25Z8-PYN7-R34M-ST39SX8TRT2Q";
 const ZZZ: &str = "ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ";
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("orcadeck-sqlite-busy-{name}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!(
+        "orcadeck-sqlite-busy-{name}-{}",
+        std::process::id()
+    ));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -35,11 +38,17 @@ fn fixture(name: &str) -> PathBuf {
     fs::write(
         t.join("legacy/StreamDockConfig.ini"),
         "[StreamDockCurrentDevice]\nDevice=AKP153E\nAKP153E\\SerialNumber=355499441494\n\n\
-         [AKP153E355499441494DeviceConfig]\nsdProfileName=".to_string() + ORCA + ".sdProfile\n",
+         [AKP153E355499441494DeviceConfig]\nsdProfileName="
+            .to_string()
+            + ORCA
+            + ".sdProfile\n",
     )
     .unwrap();
-    fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/DataCache.db"), t.join("legacy/DataCache.db"))
-        .unwrap();
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/DataCache.db"),
+        t.join("legacy/DataCache.db"),
+    )
+    .unwrap();
     t
 }
 
@@ -71,18 +80,32 @@ fn locked_datacache_degrades_without_blocking_and_recovers() {
     {
         use std::os::windows::fs::OpenOptionsExt;
         // No sharing at all, as an exclusive SQLite/Stream Dock handle would be.
-        let lock = fs::OpenOptions::new().read(true).share_mode(0).open(&db).unwrap();
-        assert!(fs::read(&db).is_err(), "the test lock must really block readers");
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&db)
+            .unwrap();
+        assert!(
+            fs::read(&db).is_err(),
+            "the test lock must really block readers"
+        );
 
         let t0 = Instant::now();
         let got = ids(&s); // must return, not block on the lock or panic
         let elapsed = t0.elapsed();
-        assert!(elapsed < Duration::from_secs(2), "scenes() blocked for {elapsed:?} on a busy DB");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "scenes() blocked for {elapsed:?} on a busy DB"
+        );
         // No DB order: plain name order, the documented degraded result.
         assert_eq!(got, [ZZZ, MON, ORCA, REC]);
 
         drop(lock);
-        assert_eq!(ids(&s), [MON, ORCA, REC, ZZZ], "the order must come back once the DB is readable");
+        assert_eq!(
+            ids(&s),
+            [MON, ORCA, REC, ZZZ],
+            "the order must come back once the DB is readable"
+        );
     }
     let _ = fs::remove_dir_all(&t);
 }

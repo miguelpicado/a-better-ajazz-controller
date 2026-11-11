@@ -16,7 +16,8 @@ fn render_label(text: &str, w: u32, h: u32, font_size: u32, color: &str) -> Rgba
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{px}" height="{px}" viewBox="0 0 {px} {px}"><rect width="{px}" height="{px}" fill="#18181b"/><text x="10" y="{text_y}" font-family="Segoe UI, Arial, sans-serif" font-size="{font_size}" font-weight="bold" fill="{color}">{}</text></svg>"##,
         orcadeck_builtin::core::esc(text)
     );
-    let rgba = orcadeck_builtin::raster::svg_to_rgba(&svg, px).unwrap_or_else(|_| vec![24; (px * px * 4) as usize]);
+    let rgba = orcadeck_builtin::raster::svg_to_rgba(&svg, px)
+        .unwrap_or_else(|_| vec![24; (px * px * 4) as usize]);
     let full = RgbaImage::from_raw(px, px, rgba).unwrap();
     let mut out = RgbaImage::new(w, h);
     for y in 0..h {
@@ -60,7 +61,14 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-fn make_agent(label: &str, color: &str, state: State, since_ms_ago: Option<i64>, workers: u32, now: i64) -> Agent {
+fn make_agent(
+    label: &str,
+    color: &str,
+    state: State,
+    since_ms_ago: Option<i64>,
+    workers: u32,
+    now: i64,
+) -> Agent {
     Agent {
         key: format!("k:{label}"),
         handle: format!("h:{label}"),
@@ -211,11 +219,21 @@ fn main() {
         },
         Cell {
             col_label: "State::Idle".into(),
-            svg: render_agent(Some(&make_agent("standby", "#6b7280", State::Idle, None, 0, now)), 0, now, false),
+            svg: render_agent(
+                Some(&make_agent("standby", "#6b7280", State::Idle, None, 0, now)),
+                0,
+                now,
+                false,
+            ),
         },
         Cell {
             col_label: "State::Error".into(),
-            svg: render_agent(Some(&make_agent("failed", "#dc2626", State::Error, None, 0, now)), 0, now, false),
+            svg: render_agent(
+                Some(&make_agent("failed", "#dc2626", State::Error, None, 0, now)),
+                0,
+                now,
+                false,
+            ),
         },
     ];
     rows.push(Row {
@@ -258,7 +276,8 @@ fn main() {
             let col_x = label_w + (c_idx as u32) * (key_upscaled + cell_gap);
 
             // Column header for cell
-            let header_img = render_label(&cell.col_label, key_upscaled, col_header_h, 12, "#a1a1aa");
+            let header_img =
+                render_label(&cell.col_label, key_upscaled, col_header_h, 12, "#a1a1aa");
             let _ = sheet.copy_from(&header_img, col_x, row_y);
 
             // Render key: SVG -> 85x85 RGBA -> JPEG roundtrip -> rotate90 -> 3x NN
@@ -271,7 +290,9 @@ fn main() {
     let out_dir = std::env::temp_dir().join("orcadeck-frames");
     fs::create_dir_all(&out_dir).expect("create out_dir");
     let sheet_path = out_dir.join("sheet.png");
-    sheet.save_with_format(&sheet_path, image::ImageFormat::Png).expect("save sheet.png");
+    sheet
+        .save_with_format(&sheet_path, image::ImageFormat::Png)
+        .expect("save sheet.png");
     println!("Wrote sheet to {}", sheet_path.display());
 
     // Print consecutive frame pixel differences for Working rows
@@ -287,7 +308,11 @@ fn main() {
                     diff_px += 1;
                 }
             }
-            println!("  frame {f} -> {next_f}: {diff_px} / {} pixels differ ({:.1}%)", 85 * 85, (diff_px as f64 / (85.0 * 85.0)) * 100.0);
+            println!(
+                "  frame {f} -> {next_f}: {diff_px} / {} pixels differ ({:.1}%)",
+                85 * 85,
+                (diff_px as f64 / (85.0 * 85.0)) * 100.0
+            );
         }
     }
 

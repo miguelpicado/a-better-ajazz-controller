@@ -28,19 +28,33 @@ const MAX_COMPRESSION_RATIO: u64 = 200;
 /// The ratio is only enforced once an entry is big enough for it to mean anything.
 const RATIO_CHECK_ABOVE_BYTES: u64 = 1024 * 1024;
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "svg", "gif"];
-const LOCALE_SKIP_EXTS: &[&str] = &["png", "jpg", "jpeg", "svg", "gif", "json", "js", "html", "css"];
+const LOCALE_SKIP_EXTS: &[&str] = &[
+    "png", "jpg", "jpeg", "svg", "gif", "json", "js", "html", "css",
+];
 const LITERAL_SKIP_EXTS: &[&str] = &[
     "png", "jpg", "jpeg", "svg", "gif", "json", "js", "html", "css", "exe", "dll", "pdb", "log",
     "sdplugin",
 ];
 const CODE_CANDIDATES: &[&str] = &[
-    "bin/plugin.js", "bin/plugin.mjs", "bin/plugin.cjs",
-    "plugin.js", "plugin.mjs", "plugin.cjs",
-    "index.html", "source/main.html", "main.html",
+    "bin/plugin.js",
+    "bin/plugin.mjs",
+    "bin/plugin.cjs",
+    "plugin.js",
+    "plugin.mjs",
+    "plugin.cjs",
+    "index.html",
+    "source/main.html",
+    "main.html",
 ];
 const ICON_ROOTS: &[&str] = &[
-    "imgs/actions", "images/actions", "imgs", "images", "Images", "resources/actions",
-    "resources/assets", "assets",
+    "imgs/actions",
+    "images/actions",
+    "imgs",
+    "images",
+    "Images",
+    "resources/actions",
+    "resources/assets",
+    "assets",
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -51,9 +65,13 @@ const ICON_ROOTS: &[&str] = &[
 pub enum ManifestState {
     Plain(Value),
     /// Starts with the `ELGATO` magic. Only the size is reported; the content is never parsed.
-    Encrypted { size: u64 },
+    Encrypted {
+        size: u64,
+    },
     Missing,
-    Invalid { size: u64 },
+    Invalid {
+        size: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,8 +114,17 @@ impl Reconstruction {
     fn new(uuid: String, encrypted: bool, confidence: Confidence, manifest: Option<Value>) -> Self {
         let field = |k: &str| manifest.as_ref().and_then(|m| m.get(k));
         let code_path = field("CodePath").and_then(Value::as_str).map(String::from);
-        let action_count = field("Actions").and_then(Value::as_array).map_or(0, Vec::len);
-        Reconstruction { uuid, encrypted, confidence, manifest, code_path, action_count }
+        let action_count = field("Actions")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        Reconstruction {
+            uuid,
+            encrypted,
+            confidence,
+            manifest,
+            code_path,
+            action_count,
+        }
     }
 
     pub fn to_json(&self) -> Value {
@@ -157,7 +184,9 @@ pub fn reconstruct_manifest(plugin_dir: &Path) -> Reconstruction {
     let dir = std::path::absolute(plugin_dir).unwrap_or_else(|_| plugin_dir.to_path_buf());
     let uuid = uuid_from_dir(&dir);
     match read_manifest_state(&dir) {
-        ManifestState::Plain(m) => return Reconstruction::new(uuid, false, Confidence::Plain, Some(m)),
+        ManifestState::Plain(m) => {
+            return Reconstruction::new(uuid, false, Confidence::Plain, Some(m))
+        }
         ManifestState::Missing | ManifestState::Invalid { .. } => {
             return Reconstruction::new(uuid, false, Confidence::None, None)
         }
@@ -173,13 +202,19 @@ pub fn reconstruct_manifest(plugin_dir: &Path) -> Reconstruction {
 
     let mut m = Map::new();
     m.insert("UUID".into(), json!(uuid));
-    m.insert("Name".into(), json!(text(locale.get("Name")).unwrap_or_else(|| humanize(last_segment(&uuid)))));
+    m.insert(
+        "Name".into(),
+        json!(text(locale.get("Name")).unwrap_or_else(|| humanize(last_segment(&uuid)))),
+    );
     for key in ["Description", "Author", "Category"] {
         if let Some(t) = text(locale.get(key)) {
             m.insert(key.into(), json!(t));
         }
     }
-    m.insert("Version".into(), json!(package_version(&dir).unwrap_or_else(|| "1.0.0".into())));
+    m.insert(
+        "Version".into(),
+        json!(package_version(&dir).unwrap_or_else(|| "1.0.0".into())),
+    );
     m.insert("SDKVersion".into(), json!(2));
     if let Some(cp) = &code_path {
         m.insert("CodePath".into(), json!(cp));
@@ -208,9 +243,15 @@ fn build_action(dir: &Path, uuid: &str, action: &str, locale: &Map<String, Value
     let short = if action == uuid {
         ""
     } else {
-        action.strip_prefix(&format!("{uuid}.")).unwrap_or_else(|| last_segment(action))
+        action
+            .strip_prefix(&format!("{uuid}."))
+            .unwrap_or_else(|| last_segment(action))
     };
-    let icon = if short.is_empty() { find_plugin_icon(dir) } else { find_icon(dir, short) };
+    let icon = if short.is_empty() {
+        find_plugin_icon(dir)
+    } else {
+        find_icon(dir, short)
+    };
     let pi = if short.is_empty() {
         find_property_inspector(dir, "launcher").or_else(|| find_top_level_pi(dir))
     } else {
@@ -223,16 +264,28 @@ fn build_action(dir: &Path, uuid: &str, action: &str, locale: &Map<String, Value
         .map(|s| humanize(&strip_pi_suffix(&s.to_string_lossy())))
         .filter(|s| !s.is_empty());
     let states: Vec<Value> = match meta_field("States").and_then(Value::as_array) {
-        Some(a) if !a.is_empty() => {
-            a.iter().map(|s| if s.is_object() { s.clone() } else { json!({}) }).collect()
-        }
+        Some(a) if !a.is_empty() => a
+            .iter()
+            .map(|s| if s.is_object() { s.clone() } else { json!({}) })
+            .collect(),
         _ => vec![json!({})],
     };
 
     let mut a = Map::new();
     a.insert("UUID".into(), json!(action));
-    let fallback = || humanize(if short.is_empty() { last_segment(uuid) } else { short });
-    a.insert("Name".into(), json!(text(meta_field("Name")).or(pi_name).unwrap_or_else(fallback)));
+    let fallback = || {
+        humanize(if short.is_empty() {
+            last_segment(uuid)
+        } else {
+            short
+        })
+    };
+    a.insert(
+        "Name".into(),
+        json!(text(meta_field("Name"))
+            .or(pi_name)
+            .unwrap_or_else(fallback)),
+    );
     if let Some(t) = text(meta_field("Tooltip")) {
         a.insert("Tooltip".into(), json!(t));
     }
@@ -244,8 +297,17 @@ fn build_action(dir: &Path, uuid: &str, action: &str, locale: &Map<String, Value
     }
     a.insert("States".into(), Value::Array(states));
     let lower = short.to_lowercase();
-    let knob = ["dial", "knob", "encoder"].iter().any(|w| lower.contains(w));
-    a.insert("Controllers".into(), if knob { json!(["Keypad", "Knob"]) } else { json!(["Keypad"]) });
+    let knob = ["dial", "knob", "encoder"]
+        .iter()
+        .any(|w| lower.contains(w));
+    a.insert(
+        "Controllers".into(),
+        if knob {
+            json!(["Keypad", "Knob"])
+        } else {
+            json!(["Keypad"])
+        },
+    );
     Value::Object(a)
 }
 
@@ -258,7 +320,11 @@ fn load_locale(dir: &Path) -> Map<String, Value> {
     }
     for entry in entries(dir) {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !is_file(&entry) || !has_ext(&name, &["json"]) || name == "manifest.json" || name == "package.json" {
+        if !is_file(&entry)
+            || !has_ext(&name, &["json"])
+            || name == "manifest.json"
+            || name == "package.json"
+        {
             continue;
         }
         let parsed = as_object(parse_json(&entry.path()));
@@ -273,11 +339,16 @@ fn collect_action_uuids(dir: &Path, uuid: &str, locale: &Map<String, Value>) -> 
     let prefix = format!("{uuid}.");
     let mut found = BTreeSet::new();
     for (key, value) in locale {
-        let Some(obj) = value.as_object() else { continue };
+        let Some(obj) = value.as_object() else {
+            continue;
+        };
         if !key.starts_with(&prefix) || has_ext(key, LOCALE_SKIP_EXTS) {
             continue;
         }
-        if ["Name", "Tooltip", "States"].iter().any(|f| obj.get(*f).is_some_and(truthy)) {
+        if ["Name", "Tooltip", "States"]
+            .iter()
+            .any(|f| obj.get(*f).is_some_and(truthy))
+        {
             found.insert(key.clone());
         }
     }
@@ -305,7 +376,10 @@ fn collect_action_uuids(dir: &Path, uuid: &str, locale: &Map<String, Value>) -> 
             // Non-ASCII code units become a byte that never matches.
             let ascii: Vec<u8> = buf
                 .chunks_exact(2)
-                .map(|c| match u16::from_le_bytes([c[0], c[1]]) { u @ 0..=0x7f => u as u8, _ => 0xff })
+                .map(|c| match u16::from_le_bytes([c[0], c[1]]) {
+                    u @ 0..=0x7f => u as u8,
+                    _ => 0xff,
+                })
                 .collect();
             scan_literals(&ascii, pattern.as_bytes(), &mut found);
         }
@@ -344,15 +418,20 @@ fn read_registry_actions(uuid: &str) -> Vec<String> {
         return Vec::new();
     }
     let mut cmd = std::process::Command::new("reg");
-    cmd.args(["query", &format!(r"HKCU\Software\HotSpot\StreamDock\{uuid}.sdPlugin")])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+    cmd.args([
+        "query",
+        &format!(r"HKCU\Software\HotSpot\StreamDock\{uuid}.sdPlugin"),
+    ])
+    .stdin(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    let Ok(out) = cmd.output() else { return Vec::new() };
+    let Ok(out) = cmd.output() else {
+        return Vec::new();
+    };
     if !out.status.success() {
         return Vec::new();
     }
@@ -422,7 +501,10 @@ fn find_icon(dir: &Path, short: &str) -> Option<String> {
             if name == wanted || name == last || name.starts_with(&wanted) || name.contains(&last) {
                 let rel = relative(dir, &file);
                 // Without extension: the host probes extensions itself.
-                return Some(rel.rsplit_once('.').map_or(rel.clone(), |(head, _)| head.to_string()));
+                return Some(
+                    rel.rsplit_once('.')
+                        .map_or(rel.clone(), |(head, _)| head.to_string()),
+                );
             }
         }
     }
@@ -436,9 +518,13 @@ fn find_property_inspector(dir: &Path, short: &str) -> Option<String> {
     let wanted = squash(short);
     let last = squash(last_segment(short));
     let roots = [
-        "pi".to_string(), "propertyinspector".into(), "ui".into(),
-        "source/actions".into(), "resources/actions".into(),
-        format!("source/actions/{last}"), format!("resources/actions/{last}"),
+        "pi".to_string(),
+        "propertyinspector".into(),
+        "ui".into(),
+        "source/actions".into(),
+        "resources/actions".into(),
+        format!("source/actions/{last}"),
+        format!("resources/actions/{last}"),
     ];
     let mut best: Option<PathBuf> = None;
     let mut best_score = 0;
@@ -452,10 +538,18 @@ fn find_property_inspector(dir: &Path, short: &str) -> Option<String> {
                 continue;
             }
             let name = squash(&stem(&file));
-            let parent = squash(&file.parent().and_then(Path::file_name).unwrap_or_default().to_string_lossy());
+            let parent = squash(
+                &file
+                    .parent()
+                    .and_then(Path::file_name)
+                    .unwrap_or_default()
+                    .to_string_lossy(),
+            );
             let mut score = if name == wanted || name == last {
                 4
-            } else if name.contains(&format!("action{wanted}")) || name.contains(&format!("action{last}")) {
+            } else if name.contains(&format!("action{wanted}"))
+                || name.contains(&format!("action{last}"))
+            {
                 3
             } else if name.contains(&wanted) || name.contains(&last) {
                 2
@@ -477,14 +571,26 @@ fn find_property_inspector(dir: &Path, short: &str) -> Option<String> {
 }
 
 fn find_top_level_pi(dir: &Path) -> Option<String> {
-    ["pi/index.html", "propertyinspector/index.html", "ui/index.html", "inspector.html"]
-        .into_iter()
-        .find(|c| dir.join(c).exists())
-        .map(String::from)
+    [
+        "pi/index.html",
+        "propertyinspector/index.html",
+        "ui/index.html",
+        "inspector.html",
+    ]
+    .into_iter()
+    .find(|c| dir.join(c).exists())
+    .map(String::from)
 }
 
 fn find_plugin_icon(dir: &Path) -> Option<String> {
-    for c in ["imgs/plugin", "images/plugin", "imgs/pluginIcon", "images/pluginIcon", "Images/pluginIcon", "Images/icon"] {
+    for c in [
+        "imgs/plugin",
+        "images/plugin",
+        "imgs/pluginIcon",
+        "images/pluginIcon",
+        "Images/pluginIcon",
+        "Images/icon",
+    ] {
         if dir.join(c).is_file() {
             return Some(c.into());
         }
@@ -524,9 +630,16 @@ pub fn install_package(package: &Path, opts: &InstallOptions) -> io::Result<Inst
         None => plugins.parent().unwrap_or(&plugins).to_path_buf(),
     };
     if !pkg.exists() {
-        return Err(err(io::ErrorKind::NotFound, format!("Package not found: {}", pkg.display())));
+        return Err(err(
+            io::ErrorKind::NotFound,
+            format!("Package not found: {}", pkg.display()),
+        ));
     }
-    let provided = opts.manifest_path.as_deref().map(read_overlay).transpose()?;
+    let provided = opts
+        .manifest_path
+        .as_deref()
+        .map(read_overlay)
+        .transpose()?;
 
     let mut _tmp = None;
     let source = if pkg.is_dir() {
@@ -541,11 +654,17 @@ pub fn install_package(package: &Path, opts: &InstallOptions) -> io::Result<Inst
 
     let uuid = uuid_from_dir(&source);
     if uuid.is_empty() {
-        return Err(err(io::ErrorKind::InvalidInput, format!("Cannot derive a plugin UUID from {}", source.display())));
+        return Err(err(
+            io::ErrorKind::InvalidInput,
+            format!("Cannot derive a plugin UUID from {}", source.display()),
+        ));
     }
     let dest = plugins.join(format!("{uuid}.sdPlugin"));
     if source == dest {
-        return Err(err(io::ErrorKind::InvalidInput, "Source and destination are the same folder".into()));
+        return Err(err(
+            io::ErrorKind::InvalidInput,
+            "Source and destination are the same folder".into(),
+        ));
     }
     fs::create_dir_all(&plugins)?;
     if dest.exists() {
@@ -565,7 +684,8 @@ pub fn install_package(package: &Path, opts: &InstallOptions) -> io::Result<Inst
     let overlay = data.join("manifests").join(format!("{uuid}.json"));
     if let Some(manifest) = provided {
         write_json(&overlay, &manifest)?;
-        let reconstruction = Reconstruction::new(uuid, rec.encrypted, Confidence::Provided, Some(manifest));
+        let reconstruction =
+            Reconstruction::new(uuid, rec.encrypted, Confidence::Provided, Some(manifest));
         return Ok(InstallResult {
             dest,
             overlay: Some(overlay),
@@ -576,10 +696,19 @@ pub fn install_package(package: &Path, opts: &InstallOptions) -> io::Result<Inst
     }
     let write = rec.encrypted && rec.confidence == Confidence::Full;
     if write {
-        write_json(&overlay, rec.manifest.as_ref().expect("full reconstruction has a manifest"))?;
+        write_json(
+            &overlay,
+            rec.manifest
+                .as_ref()
+                .expect("full reconstruction has a manifest"),
+        )?;
     }
     // An overlay from the previous install no longer describes this plugin.
-    let removed_overlay = if write { None } else { remove_stale_overlay(&overlay)? };
+    let removed_overlay = if write {
+        None
+    } else {
+        remove_stale_overlay(&overlay)?
+    };
     Ok(InstallResult {
         dest,
         overlay: write.then_some(overlay),
@@ -605,7 +734,10 @@ pub fn check_entry_name(name: &str) -> io::Result<()> {
         || name.contains(':')
         || name.split(['/', '\\']).any(|part| part == "..");
     if unsafe_name {
-        return Err(err(io::ErrorKind::InvalidData, format!("Unsafe path in package: {name}")));
+        return Err(err(
+            io::ErrorKind::InvalidData,
+            format!("Unsafe path in package: {name}"),
+        ));
     }
     Ok(())
 }
@@ -624,7 +756,10 @@ fn extract_package(pkg: &Path, dest: &Path) -> io::Result<()> {
 fn extract_zip(pkg: &Path, dest: &Path) -> io::Result<()> {
     let mut zip = zip::ZipArchive::new(fs::File::open(pkg)?).map_err(io::Error::other)?;
     if zip.len() > MAX_ENTRIES {
-        return Err(rejected(format!("{} entries (limit {MAX_ENTRIES})", zip.len())));
+        return Err(rejected(format!(
+            "{} entries (limit {MAX_ENTRIES})",
+            zip.len()
+        )));
     }
     // Validate every entry before writing anything.
     for name in zip.file_names() {
@@ -657,10 +792,16 @@ fn extract_zip(pkg: &Path, dest: &Path) -> io::Result<()> {
                 return Err(rejected(format!("{name} is over {MAX_ENTRY_BYTES} bytes")));
             }
             if total > MAX_TOTAL_UNCOMPRESSED_BYTES {
-                return Err(rejected(format!("over {MAX_TOTAL_UNCOMPRESSED_BYTES} bytes uncompressed")));
+                return Err(rejected(format!(
+                    "over {MAX_TOTAL_UNCOMPRESSED_BYTES} bytes uncompressed"
+                )));
             }
-            if entry > RATIO_CHECK_ABOVE_BYTES && entry > file.compressed_size().saturating_mul(MAX_COMPRESSION_RATIO) {
-                return Err(rejected(format!("{name} expands over {MAX_COMPRESSION_RATIO}:1")));
+            if entry > RATIO_CHECK_ABOVE_BYTES
+                && entry > file.compressed_size().saturating_mul(MAX_COMPRESSION_RATIO)
+            {
+                return Err(rejected(format!(
+                    "{name} expands over {MAX_COMPRESSION_RATIO}:1"
+                )));
             }
             writer.write_all(&buf[..n])?;
         }
@@ -669,7 +810,10 @@ fn extract_zip(pkg: &Path, dest: &Path) -> io::Result<()> {
 }
 
 fn rejected(reason: String) -> io::Error {
-    err(io::ErrorKind::InvalidData, format!("Package rejected: {reason}"))
+    err(
+        io::ErrorKind::InvalidData,
+        format!("Package rejected: {reason}"),
+    )
 }
 
 fn find_plugin_dir(root: &Path) -> io::Result<PathBuf> {
@@ -680,7 +824,9 @@ fn find_plugin_dir(root: &Path) -> io::Result<PathBuf> {
                 continue;
             }
             let path = e.path();
-            if has_ext(&e.file_name().to_string_lossy(), &["sdplugin"]) && path.join("manifest.json").exists() {
+            if has_ext(&e.file_name().to_string_lossy(), &["sdplugin"])
+                && path.join("manifest.json").exists()
+            {
                 return Ok(path);
             }
             queue.push_back(path);
@@ -688,7 +834,10 @@ fn find_plugin_dir(root: &Path) -> io::Result<PathBuf> {
     }
     Err(err(
         io::ErrorKind::NotFound,
-        format!("No .sdPlugin folder with manifest.json found under {}", root.display()),
+        format!(
+            "No .sdPlugin folder with manifest.json found under {}",
+            root.display()
+        ),
     ))
 }
 
@@ -713,10 +862,18 @@ impl Watcher {
     pub fn new(inbox: &Path, mut opts: InstallOptions) -> io::Result<Self> {
         let inbox = std::path::absolute(inbox)?;
         if !inbox.is_dir() {
-            return Err(err(io::ErrorKind::NotFound, format!("Watch folder not found: {}", inbox.display())));
+            return Err(err(
+                io::ErrorKind::NotFound,
+                format!("Watch folder not found: {}", inbox.display()),
+            ));
         }
         opts.force = true;
-        Ok(Watcher { inbox, opts, handled: HashMap::new(), pending: HashMap::new() })
+        Ok(Watcher {
+            inbox,
+            opts,
+            handled: HashMap::new(),
+            pending: HashMap::new(),
+        })
     }
 
     /// Install every new or changed package now, without waiting for it to settle.
@@ -764,7 +921,10 @@ pub fn watch_packages(inbox: &Path, opts: InstallOptions, once: bool) -> io::Res
     if once {
         return Ok(());
     }
-    println!("Watching {} for .streamDeckPlugin files...", watcher.inbox.display());
+    println!(
+        "Watching {} for .streamDeckPlugin files...",
+        watcher.inbox.display()
+    );
     loop {
         std::thread::sleep(Duration::from_millis(500));
         report(watcher.poll());
@@ -775,9 +935,17 @@ fn report(events: Vec<WatchEvent>) {
     for (path, result) in events {
         match result {
             Ok(r) => {
-                println!("Installed {} -> {}", r.reconstruction.uuid, r.dest.display());
+                println!(
+                    "Installed {} -> {}",
+                    r.reconstruction.uuid,
+                    r.dest.display()
+                );
                 if let Some(o) = &r.overlay {
-                    println!("  manifest overlay: {} ({})", o.display(), r.reconstruction.confidence.as_str());
+                    println!(
+                        "  manifest overlay: {} ({})",
+                        o.display(),
+                        r.reconstruction.confidence.as_str()
+                    );
                 } else if r.needs_manifest {
                     println!("  encrypted manifest needs --manifest <json>");
                 }
@@ -796,7 +964,10 @@ fn report(events: Vec<WatchEvent>) {
 pub fn export_overlays(data_root: &Path, out_dir: &Path) -> io::Result<usize> {
     let src = data_root.join("manifests");
     if !src.is_dir() {
-        return Err(err(io::ErrorKind::NotFound, format!("No overlays found in {}", src.display())));
+        return Err(err(
+            io::ErrorKind::NotFound,
+            format!("No overlays found in {}", src.display()),
+        ));
     }
     fs::create_dir_all(out_dir)?;
     let files = json_files(&src);
@@ -809,7 +980,10 @@ pub fn export_overlays(data_root: &Path, out_dir: &Path) -> io::Result<usize> {
 /// Copy overlays into `<dataRoot>/manifests`. Every file is validated before any is copied.
 pub fn import_overlays(in_dir: &Path, data_root: &Path) -> io::Result<usize> {
     if !in_dir.is_dir() {
-        return Err(err(io::ErrorKind::NotFound, format!("Overlay folder not found: {}", in_dir.display())));
+        return Err(err(
+            io::ErrorKind::NotFound,
+            format!("Overlay folder not found: {}", in_dir.display()),
+        ));
     }
     let files = json_files(in_dir);
     for f in &files {
@@ -825,9 +999,16 @@ pub fn import_overlays(in_dir: &Path, data_root: &Path) -> io::Result<usize> {
 
 /// Parse an overlay or vendor manifest; it must have a `UUID` and an `Actions` array.
 fn read_overlay(path: &Path) -> io::Result<Value> {
-    let invalid = || err(io::ErrorKind::InvalidData, format!("Invalid overlay: {}", path.display()));
+    let invalid = || {
+        err(
+            io::ErrorKind::InvalidData,
+            format!("Invalid overlay: {}", path.display()),
+        )
+    };
     let manifest = parse_json_bytes(&fs::read(path)?).ok_or_else(invalid)?;
-    if !manifest.get("UUID").is_some_and(truthy) || !manifest.get("Actions").is_some_and(Value::is_array) {
+    if !manifest.get("UUID").is_some_and(truthy)
+        || !manifest.get("Actions").is_some_and(Value::is_array)
+    {
         return Err(invalid());
     }
     Ok(manifest)
@@ -886,7 +1067,9 @@ fn truthy(v: &Value) -> bool {
 
 /// Non-empty string value.
 fn text(v: Option<&Value>) -> Option<String> {
-    v.and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from)
+    v.and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 
 /// `camelCase.with-dots` -> `Camel Case With Dots`, matching the JS `humanize`.
@@ -894,7 +1077,10 @@ fn humanize(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut spaced = String::new();
     for (i, &c) in chars.iter().enumerate() {
-        if i > 0 && c.is_ascii_uppercase() && (chars[i - 1].is_ascii_lowercase() || chars[i - 1].is_ascii_digit()) {
+        if i > 0
+            && c.is_ascii_uppercase()
+            && (chars[i - 1].is_ascii_lowercase() || chars[i - 1].is_ascii_digit())
+        {
             spaced.push(' ');
         }
         spaced.push(c);
@@ -912,7 +1098,11 @@ fn humanize(s: &str) -> String {
         }
         in_sep = false;
         let word = c.is_ascii_alphanumeric();
-        out.push(if word && !prev_word { c.to_ascii_uppercase() } else { c });
+        out.push(if word && !prev_word {
+            c.to_ascii_uppercase()
+        } else {
+            c
+        });
         prev_word = word;
     }
     out
@@ -932,7 +1122,10 @@ fn strip_pi_suffix(s: &str) -> String {
 }
 
 fn squash(s: &str) -> String {
-    s.chars().filter(|c| !matches!(c, '.' | '_' | '-')).collect::<String>().to_lowercase()
+    s.chars()
+        .filter(|c| !matches!(c, '.' | '_' | '-'))
+        .collect::<String>()
+        .to_lowercase()
 }
 
 fn last_segment(s: &str) -> &str {
@@ -945,15 +1138,26 @@ fn parent_short(short: &str) -> Option<&str> {
 
 fn has_ext(name: &str, exts: &[&str]) -> bool {
     let lower = name.to_ascii_lowercase();
-    exts.iter().any(|e| lower.len() > e.len() && lower.ends_with(e) && lower.as_bytes()[lower.len() - e.len() - 1] == b'.')
+    exts.iter().any(|e| {
+        lower.len() > e.len()
+            && lower.ends_with(e)
+            && lower.as_bytes()[lower.len() - e.len() - 1] == b'.'
+    })
 }
 
 fn stem(path: &Path) -> String {
-    path.file_stem().unwrap_or_default().to_string_lossy().into_owned()
+    path.file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn uuid_from_dir(dir: &Path) -> String {
-    let name = dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let name = dir
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     if has_ext(&name, &["sdplugin"]) {
         name[..name.len() - ".sdPlugin".len()].to_string()
     } else {
@@ -964,12 +1168,17 @@ fn uuid_from_dir(dir: &Path) -> String {
 /// `file` relative to `dir`, with `/` separators.
 fn relative(dir: &Path, file: &Path) -> String {
     let rel = file.strip_prefix(dir).unwrap_or(file);
-    rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")
+    rel.components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Directory entries in OS order (same order Node's readdirSync sees on Windows); empty on error.
 fn entries(dir: &Path) -> Vec<fs::DirEntry> {
-    fs::read_dir(dir).map(|rd| rd.flatten().collect()).unwrap_or_default()
+    fs::read_dir(dir)
+        .map(|rd| rd.flatten().collect())
+        .unwrap_or_default()
 }
 
 fn is_file(e: &fs::DirEntry) -> bool {
@@ -1011,7 +1220,9 @@ fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
 
 /// UTC time like JS `toISOString()` with `:` and `.` replaced by `-`: `2026-11-09T12-34-56-789Z`.
 fn timestamp() -> String {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = now.as_secs();
     let (days, rem) = ((secs / 86_400) as i64, secs % 86_400);
     // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
@@ -1039,9 +1250,13 @@ struct TempDir(PathBuf);
 impl TempDir {
     fn new(tag: &str) -> io::Result<Self> {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().subsec_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("orca-sd-{tag}-{}-{nanos}-{n}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("orca-sd-{tag}-{}-{nanos}-{n}", std::process::id()));
         fs::create_dir(&path)?;
         Ok(TempDir(path))
     }
@@ -1064,8 +1279,15 @@ mod tests {
         assert_eq!(humanize("x--y"), "X Y");
         assert_eq!(strip_pi_suffix("Launcher_PI"), "Launcher");
         assert_eq!(strip_pi_suffix("volume.inspector"), "volume");
-        assert!(has_ext("A.JPEG", IMAGE_EXTS) && !has_ext("png", IMAGE_EXTS) && !has_ext("a.mjs", &["js"]));
-        assert!(is_action_uuid("com.vivremotion.windowscockpit.plugin") && !is_action_uuid("HKEY_CURRENT_USER\\x"));
+        assert!(
+            has_ext("A.JPEG", IMAGE_EXTS)
+                && !has_ext("png", IMAGE_EXTS)
+                && !has_ext("a.mjs", &["js"])
+        );
+        assert!(
+            is_action_uuid("com.vivremotion.windowscockpit.plugin")
+                && !is_action_uuid("HKEY_CURRENT_USER\\x")
+        );
         let t = timestamp();
         assert_eq!(t.len(), 24, "{t}");
         assert!(t.ends_with('Z') && !t.contains(':'));
@@ -1076,10 +1298,13 @@ mod tests {
         let src = TempDir::new("bomb-src").unwrap();
         let zip_path = src.0.join("bomb.zip");
         let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
-        let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        zip.start_file("com.example.demo.sdPlugin/manifest.json", o).unwrap();
+        let o = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("com.example.demo.sdPlugin/manifest.json", o)
+            .unwrap();
         zip.write_all(b"{}").unwrap();
-        zip.start_file("com.example.demo.sdPlugin/bomb.bin", o).unwrap();
+        zip.start_file("com.example.demo.sdPlugin/bomb.bin", o)
+            .unwrap();
         zip.write_all(&vec![0u8; 4 * 1024 * 1024]).unwrap();
         zip.finish().unwrap();
 

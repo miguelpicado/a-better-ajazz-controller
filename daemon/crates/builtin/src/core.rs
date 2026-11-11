@@ -73,31 +73,59 @@ fn text(v: &Value, k: &str) -> Option<String> {
 }
 
 fn arr<'a>(v: &'a Value, k: &str) -> &'a [Value] {
-    v.get(k).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
+    v.get(k)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
 /// Main agents: top-level agents (no parent pane) in a root worktree (no parent worktree) whose
 /// terminal is alive and is not an orchestration worker. Inputs are the raw RPC lists:
 /// `worktree.ps` worktrees, `terminal.list` terminals, `orchestration.workerList` workers,
 /// `repo.list` repos and `orchestration.runList` runs.
-pub fn main_agents(ps: &[Value], terminals: &[Value], workers: &[Value], repos: &[Value], runs: &[Value]) -> Vec<Agent> {
+pub fn main_agents(
+    ps: &[Value],
+    terminals: &[Value],
+    workers: &[Value],
+    repos: &[Value],
+    runs: &[Value],
+) -> Vec<Agent> {
     let term: HashMap<String, &Value> = terminals
         .iter()
-        .map(|t| (format!("{}:{}", text(t, "tabId").unwrap_or_default(), text(t, "leafId").unwrap_or_default()), t))
+        .map(|t| {
+            (
+                format!(
+                    "{}:{}",
+                    text(t, "tabId").unwrap_or_default(),
+                    text(t, "leafId").unwrap_or_default()
+                ),
+                t,
+            )
+        })
         .collect();
     let worker_terms: HashSet<String> = workers
         .iter()
         .filter_map(|w| text(w, "agentTerminalHandle").or_else(|| text(w, "terminal")))
         .filter(|h| !h.is_empty())
         .collect();
-    let repo_by_id: HashMap<String, &Value> = repos.iter().filter_map(|r| Some((text(r, "id")?, r))).collect();
+    let repo_by_id: HashMap<String, &Value> = repos
+        .iter()
+        .filter_map(|r| Some((text(r, "id")?, r)))
+        .collect();
     // Live workers per orchestrator: worker.runId -> run.coordinator_handle.
-    let coord: HashMap<String, String> =
-        runs.iter().filter_map(|r| Some((text(r, "id")?, text(r, "coordinator_handle")?))).collect();
+    let coord: HashMap<String, String> = runs
+        .iter()
+        .filter_map(|r| Some((text(r, "id")?, text(r, "coordinator_handle")?)))
+        .collect();
     let mut busy: HashMap<String, u32> = HashMap::new();
     for w in workers {
-        let h = text(w, "runId").and_then(|id| coord.get(&id).cloned()).filter(|h| !h.is_empty());
-        let outcome = w.pointer("/projection/outcome").and_then(Value::as_str).unwrap_or("in_progress");
+        let h = text(w, "runId")
+            .and_then(|id| coord.get(&id).cloned())
+            .filter(|h| !h.is_empty());
+        let outcome = w
+            .pointer("/projection/outcome")
+            .and_then(Value::as_str)
+            .unwrap_or("in_progress");
         if let (Some(h), "in_progress") = (h, outcome) {
             *busy.entry(h).or_default() += 1;
         }
@@ -122,7 +150,10 @@ pub fn main_agents(ps: &[Value], terminals: &[Value], workers: &[Value], repos: 
             let state = if t.get("connected") == Some(&Value::Bool(false)) {
                 State::Error
             } else {
-                a.get("state").and_then(Value::as_str).and_then(State::from_orca).unwrap_or(State::Idle)
+                a.get("state")
+                    .and_then(Value::as_str)
+                    .and_then(State::from_orca)
+                    .unwrap_or(State::Idle)
             };
             let since = a
                 .get("stateStartedAt")
@@ -130,14 +161,19 @@ pub fn main_agents(ps: &[Value], terminals: &[Value], workers: &[Value], repos: 
                 .or_else(|| a.pointer("/mainAgent/stateStartedAt"))
                 .and_then(Value::as_f64)
                 .map(|f| f as i64);
-            let repo_name = repo.and_then(|r| text(r, "displayName")).or_else(|| text(w, "repo")).unwrap_or_else(|| "?".into());
+            let repo_name = repo
+                .and_then(|r| text(r, "displayName"))
+                .or_else(|| text(w, "repo"))
+                .unwrap_or_else(|| "?".into());
             out.push(Agent {
                 workers: busy.get(&handle).copied().unwrap_or(0),
                 handle,
                 worktree_id: text(w, "worktreeId").unwrap_or_default(),
                 label: repo_name.clone(),
                 repo: repo_name,
-                color: repo.and_then(|r| text(r, "badgeColor")).unwrap_or_else(|| "#444444".into()),
+                color: repo
+                    .and_then(|r| text(r, "badgeColor"))
+                    .unwrap_or_else(|| "#444444".into()),
                 state,
                 since,
                 key,
@@ -146,7 +182,11 @@ pub fn main_agents(ps: &[Value], terminals: &[Value], workers: &[Value], repos: 
     }
     // ponytail: approximates JS localeCompare with a case-insensitive compare; ICU collation if it matters.
     let lc = |s: &str| s.to_lowercase();
-    out.sort_by(|x, y| lc(&x.repo).cmp(&lc(&y.repo)).then_with(|| lc(&x.key).cmp(&lc(&y.key))));
+    out.sort_by(|x, y| {
+        lc(&x.repo)
+            .cmp(&lc(&y.repo))
+            .then_with(|| lc(&x.key).cmp(&lc(&y.key)))
+    });
     // Same repo twice or more: number them so the keys can be told apart.
     let mut count: HashMap<String, u32> = HashMap::new();
     for a in &out {
@@ -166,7 +206,11 @@ pub fn main_agents(ps: &[Value], terminals: &[Value], workers: &[Value], repos: 
 /// Keeps each item on the key it already has; new items fill free keys in key order.
 /// `slots` is the ordered list of key contexts, `prev` the last context -> item key map.
 /// ponytail: items beyond the number of keys are not shown; add a "+N" key if that bites.
-pub fn assign(slots: &[String], items: &[String], prev: &HashMap<String, String>) -> HashMap<String, String> {
+pub fn assign(
+    slots: &[String],
+    items: &[String],
+    prev: &HashMap<String, String>,
+) -> HashMap<String, String> {
     let alive: HashSet<&String> = items.iter().collect();
     let mut next = HashMap::new();
     for s in slots {
@@ -208,10 +252,20 @@ fn ink(hex: &str) -> &'static str {
     while h.len() < 6 {
         h.push('0');
     }
-    let digits: String = h.chars().take(6).take_while(|c| c.is_ascii_hexdigit()).collect();
+    let digits: String = h
+        .chars()
+        .take(6)
+        .take_while(|c| c.is_ascii_hexdigit())
+        .collect();
     let n = u32::from_str_radix(&digits, 16).unwrap_or(0);
-    let lum = 0.299 * ((n >> 16) & 255) as f64 + 0.587 * ((n >> 8) & 255) as f64 + 0.114 * (n & 255) as f64;
-    if lum > 160.0 { "#111111" } else { "#ffffff" }
+    let lum = 0.299 * ((n >> 16) & 255) as f64
+        + 0.587 * ((n >> 8) & 255) as f64
+        + 0.114 * (n & 255) as f64;
+    if lum > 160.0 {
+        "#111111"
+    } else {
+        "#ffffff"
+    }
 }
 
 const SANS: &str = r#"font-family="Segoe UI, Arial, sans-serif""#;
@@ -243,23 +297,41 @@ pub fn ago(ms: i64) -> String {
 }
 
 fn svg(body: &str) -> String {
-    format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">{body}</svg>"#)
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">{body}</svg>"#
+    )
 }
 
 /// Agent key. `None` = empty key. Bottom row: time in the current state (left, only for Question/Done),
 /// live workers badge (right). `blink` plus the "on" half of the cycle (frame / 2 even) draws a white ring.
 pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) -> String {
     let Some(a) = agent else {
-        return svg(r##"<rect width="144" height="144" fill="#111"/><circle cx="72" cy="72" r="14" fill="none" stroke="#333" stroke-width="3" stroke-dasharray="5 6"/>"##);
+        return svg(
+            r##"<rect width="144" height="144" fill="#111"/><circle cx="72" cy="72" r="14" fill="none" stroke="#333" stroke-width="3" stroke-dasharray="5 6"/>"##,
+        );
     };
     let fg = ink(&a.color);
     let n = a.label.chars().count();
-    let label = if n > 12 { a.label.chars().take(11).collect::<String>() + "…" } else { a.label.clone() };
+    let label = if n > 12 {
+        a.label.chars().take(11).collect::<String>() + "…"
+    } else {
+        a.label.clone()
+    };
     let len = label.chars().count();
-    let size = if len <= 7 { 24 } else if len <= 10 { 20 } else { 17 };
+    let size = if len <= 7 {
+        24
+    } else if len <= 10 {
+        20
+    } else {
+        17
+    };
     let on = blink && (frame / 2) % 2 == 0;
     let time = match a.state {
-        State::Question | State::Done => a.since.filter(|&s| s != 0).map(|s| ago(now - s)).unwrap_or_default(),
+        State::Question | State::Done => a
+            .since
+            .filter(|&s| s != 0)
+            .map(|s| ago(now - s))
+            .unwrap_or_default(),
         _ => String::new(),
     };
     let badge = if a.workers > 0 {
@@ -281,7 +353,9 @@ pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) ->
         icon(a.state, frame)
     );
     if !time.is_empty() {
-        b += &format!(r#"<text x="14" y="130" {SANS} font-weight="800" font-size="22" fill="{fg}">{time}</text>"#);
+        b += &format!(
+            r#"<text x="14" y="130" {SANS} font-weight="800" font-size="22" fill="{fg}">{time}</text>"#
+        );
     }
     if on {
         b += r##"<rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#000" stroke-width="11"/><rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#fff" stroke-width="7"/>"##;
@@ -305,8 +379,15 @@ pub struct LocalTime {
 /// Side panel tile: HH:MM and short Spanish date ("lun, 9 nov"), as es-ES `toLocale*String`.
 pub fn render_clock(t: LocalTime) -> String {
     const WD: [&str; 7] = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
-    const MO: [&str; 12] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"];
-    let day = format!("{}, {} {}", WD[t.weekday as usize % 7], t.day, MO[(t.month as usize + 11) % 12]);
+    const MO: [&str; 12] = [
+        "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic",
+    ];
+    let day = format!(
+        "{}, {} {}",
+        WD[t.weekday as usize % 7],
+        t.day,
+        MO[(t.month as usize + 11) % 12]
+    );
     svg(&format!(
         r##"<rect width="144" height="144" fill="#000"/><text x="72" y="82" text-anchor="middle" {SANS} font-weight="800" font-size="50" fill="#fff">{:02}:{:02}</text><text x="72" y="118" text-anchor="middle" {SANS} font-size="22" fill="#9ca3af">{}</text>"##,
         t.hour,
@@ -334,7 +415,11 @@ pub fn agent_counts(ps: &[Value]) -> Counts {
             if a.get("hasLivePty") == Some(&Value::Bool(false)) {
                 continue;
             }
-            match a.get("state").and_then(Value::as_str).and_then(State::from_orca) {
+            match a
+                .get("state")
+                .and_then(Value::as_str)
+                .and_then(State::from_orca)
+            {
                 Some(State::Working) => c.working += 1,
                 Some(State::Question) => c.question += 1,
                 Some(State::Done) => c.done += 1,
@@ -386,7 +471,11 @@ pub struct QuotaItem {
     pub bars: Vec<Bar>,
 }
 
-const WINDOWS: [(&str, &str, i64); 3] = [("session", "5h", 300), ("weekly", "sem", 10080), ("monthly", "mes", 43200)];
+const WINDOWS: [(&str, &str, i64); 3] = [
+    ("session", "5h", 300),
+    ("weekly", "sem", 10080),
+    ("monthly", "mes", 43200),
+];
 
 /// Short key names (the key fits ~10 monospace chars next to the window tag).
 fn short(id: &str) -> Option<&'static str> {
@@ -425,12 +514,23 @@ pub fn quota_items(status: &Value) -> Vec<QuotaItem> {
                     let used = w.get("usedPercent")?.as_f64()?;
                     let at = match w.get("resetsAt") {
                         Some(Value::Number(n)) => n.as_f64().map(|f| f as i64),
-                        Some(Value::String(s)) if !s.is_empty() => parse_iso_ms(s).or_else(|| s.trim().parse::<f64>().ok().map(|f| f as i64)),
+                        Some(Value::String(s)) if !s.is_empty() => parse_iso_ms(s)
+                            .or_else(|| s.trim().parse::<f64>().ok().map(|f| f as i64)),
                         _ => None,
                     };
-                    let when = w.get("resetsAtFormatted").and_then(Value::as_str).unwrap_or("").replacen(',', "", 1);
+                    let when = w
+                        .get("resetsAtFormatted")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .replacen(',', "", 1);
                     let when = if when == "-" { String::new() } else { when };
-                    Some(Bar { name, left: 100.0 - used, at, mins, when })
+                    Some(Bar {
+                        name,
+                        left: 100.0 - used,
+                        at,
+                        mins,
+                        when,
+                    })
                 })
                 .collect();
             QuotaItem {
@@ -450,7 +550,13 @@ pub fn quota_items(status: &Value) -> Vec<QuotaItem> {
 }
 
 fn left_color(p: i64) -> &'static str {
-    if p <= 10 { "#ef4444" } else if p <= 30 { "#f59e0b" } else { "#22c55e" }
+    if p <= 10 {
+        "#ef4444"
+    } else if p <= 30 {
+        "#f59e0b"
+    } else {
+        "#22c55e"
+    }
 }
 
 /// JS `Math.round` (halves towards +inf), clamped to 0..=100.
@@ -462,30 +568,59 @@ fn clamp(v: f64) -> i64 {
 /// (5h when present), a second line (other windows, or the reset for a single window), a bar with
 /// a white marker = time left in the window, and the reset time at the bottom.
 pub fn render_quota(item: Option<&QuotaItem>, stale: bool, now: i64) -> String {
-    let Some(item) = item.filter(|i| !i.bars.is_empty()) else { return render_agent(None, 0, now, false) };
+    let Some(item) = item.filter(|i| !i.bars.is_empty()) else {
+        return render_agent(None, 0, now, false);
+    };
     let (main, rest) = (&item.bars[0], &item.bars[1..]);
     let v = clamp(main.left);
     let tag = main.name.to_uppercase() + &item.resets.map(|r| format!(" ↻{r}")).unwrap_or_default();
     let tag_w = tag.chars().count() as f64 * 8.5 + 10.0;
     let name = item.label.to_uppercase();
     let fit = ((126.0 - tag_w) / 8.5).floor().max(1.0) as usize;
-    let name_txt = if name.chars().count() > fit { name.chars().take(fit - 1).collect::<String>() + "…" } else { name };
-    let reset = if main.when.is_empty() { String::new() } else { format!("↺ {}", main.when) };
+    let name_txt = if name.chars().count() > fit {
+        name.chars().take(fit - 1).collect::<String>() + "…"
+    } else {
+        name
+    };
+    let reset = if main.when.is_empty() {
+        String::new()
+    } else {
+        format!("↺ {}", main.when)
+    };
     let line2 = if rest.is_empty() {
         format!(r##"<tspan fill="#9ca3af">{}</tspan>"##, esc(&reset))
     } else {
         rest.iter()
-            .map(|b| format!(r#"<tspan fill="{}">{} {}%</tspan>"#, left_color(clamp(b.left)), b.name, clamp(b.left)))
+            .map(|b| {
+                format!(
+                    r#"<tspan fill="{}">{} {}%</tspan>"#,
+                    left_color(clamp(b.left)),
+                    b.name,
+                    clamp(b.left)
+                )
+            })
             .collect::<Vec<_>>()
             .join(" ")
     };
     let line2_size = if rest.len() > 1 { 13 } else { 18 };
-    let time_left = main.at.map(|at| ((at - now) as f64 / (main.mins as f64 * 60000.0)).clamp(0.0, 1.0));
+    let time_left = main
+        .at
+        .map(|at| ((at - now) as f64 / (main.mins as f64 * 60000.0)).clamp(0.0, 1.0));
     let (bar_x, bar_w, bar_y) = (16.0, 118.0, 104.0);
     let marker = time_left
-        .map(|t| format!(r##"<rect x="{}" y="{}" width="4" height="18" rx="2" fill="#fff"/>"##, bar_x + bar_w * t - 2.0, bar_y - 5.0))
+        .map(|t| {
+            format!(
+                r##"<rect x="{}" y="{}" width="4" height="18" rx="2" fill="#fff"/>"##,
+                bar_x + bar_w * t - 2.0,
+                bar_y - 5.0
+            )
+        })
         .unwrap_or_default();
-    let bottom = if rest.is_empty() { String::new() } else { reset };
+    let bottom = if rest.is_empty() {
+        String::new()
+    } else {
+        reset
+    };
     svg(&format!(
         r##"<rect width="144" height="144" fill="#000"/><g opacity="{}"><rect x="0" y="0" width="6" height="144" fill="{}"/><text x="16" y="24" {MONO} font-size="15" fill="#e5e7eb">{}</text><rect x="{}" y="9" width="{tag_w}" height="21" rx="4" fill="#262626"/><text x="{}" y="24" text-anchor="middle" {MONO} font-size="14" fill="#a3a3a3">{}</text><text x="14" y="68" {SANS} font-weight="800" font-size="38" fill="#fff">{v}%</text><text x="16" y="92" {MONO} font-size="{line2_size}">{line2}</text><rect x="{bar_x}" y="{bar_y}" width="{bar_w}" height="8" rx="4" fill="#262626"/><rect x="{bar_x}" y="{bar_y}" width="{}" height="8" rx="4" fill="{}"/>{marker}<text x="16" y="136" {SANS} font-size="18" fill="#9ca3af">{}</text></g>"##,
         if stale { 0.4 } else { 1.0 },
@@ -513,9 +648,17 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 /// ponytail: no offset = UTC (JS reads a date-time without offset as local); quota-monitor always writes one.
 pub fn parse_iso_ms(s: &str) -> Option<i64> {
     let s = s.trim();
-    let num = |a: usize, b: usize| -> Option<i64> { s.get(a..b).filter(|t| t.bytes().all(|c| c.is_ascii_digit())).and_then(|t| t.parse().ok()) };
+    let num = |a: usize, b: usize| -> Option<i64> {
+        s.get(a..b)
+            .filter(|t| t.bytes().all(|c| c.is_ascii_digit()))
+            .and_then(|t| t.parse().ok())
+    };
     let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
-    if s.as_bytes().get(4) != Some(&b'-') || s.as_bytes().get(7) != Some(&b'-') || !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
+    if s.as_bytes().get(4) != Some(&b'-')
+        || s.as_bytes().get(7) != Some(&b'-')
+        || !(1..=12).contains(&mo)
+        || !(1..=31).contains(&d)
+    {
         return None;
     }
     let mut ms = days_from_civil(y, mo, d) * 86_400_000;
@@ -527,7 +670,12 @@ pub fn parse_iso_ms(s: &str) -> Option<i64> {
         return None;
     }
     let r = &rest[1..];
-    let n2 = |a: usize| -> Option<i64> { r.get(a..a + 2).filter(|t| t.bytes().all(|c| c.is_ascii_digit()))?.parse().ok() };
+    let n2 = |a: usize| -> Option<i64> {
+        r.get(a..a + 2)
+            .filter(|t| t.bytes().all(|c| c.is_ascii_digit()))?
+            .parse()
+            .ok()
+    };
     let (h, mi) = (n2(0)?, n2(3)?);
     let mut i = 5;
     let mut sec_ms = 0;
@@ -546,7 +694,10 @@ pub fn parse_iso_ms(s: &str) -> Option<i64> {
         None | Some(b'Z') | Some(b'z') => Some(ms),
         Some(&sign @ (b'+' | b'-')) => {
             let t = tz[1..].replace(':', "");
-            let (oh, om): (i64, i64) = (t.get(0..2)?.parse().ok()?, t.get(2..4).unwrap_or("00").parse().ok()?);
+            let (oh, om): (i64, i64) = (
+                t.get(0..2)?.parse().ok()?,
+                t.get(2..4).unwrap_or("00").parse().ok()?,
+            );
             let off = (oh * 60 + om) * 60_000;
             Some(if sign == b'+' { ms - off } else { ms + off })
         }

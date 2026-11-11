@@ -27,20 +27,39 @@ pub struct SceneSet {
 /// What the action asks for: `Settings.ProfileUUID` empty is next, `PreviousScene` previous,
 /// anything else a scene id (accepted with or without the `.sdProfile` suffix).
 pub fn target_of(action: &profile::Action) -> Option<SceneTarget> {
-    (action.uuid == ROTATE).then(|| match action.settings.get("ProfileUUID").and_then(|v| v.as_str()).unwrap_or("") {
-        "" => SceneTarget::Next,
-        "PreviousScene" => SceneTarget::Previous,
-        id => SceneTarget::Id(id.trim_end_matches(".sdProfile").to_string()),
+    (action.uuid == ROTATE).then(|| {
+        match action
+            .settings
+            .get("ProfileUUID")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+        {
+            "" => SceneTarget::Next,
+            "PreviousScene" => SceneTarget::Previous,
+            id => SceneTarget::Id(id.trim_end_matches(".sdProfile").to_string()),
+        }
     })
 }
 
 impl SceneSet {
     /// Reads the scene list once. The scene given on the command line wins over the stored current
     /// one, which is persisted so the editor agrees.
-    pub fn open(profile: &Path, plugins: &Path, data: &Path, device: &str) -> Result<SceneSet, String> {
+    pub fn open(
+        profile: &Path,
+        plugins: &Path,
+        data: &Path,
+        device: &str,
+    ) -> Result<SceneSet, String> {
         let parent = profile.parent().unwrap_or(Path::new(""));
-        let profiles = if parent.as_os_str().is_empty() { PathBuf::from(".") } else { parent.to_path_buf() };
-        let legacy_config = profiles.parent().filter(|p| !p.as_os_str().is_empty()).map(|p| p.join("config"));
+        let profiles = if parent.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            parent.to_path_buf()
+        };
+        let legacy_config = profiles
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.join("config"));
         let store = FsStore {
             profiles: profiles.clone(),
             plugins: plugins.to_path_buf(),
@@ -51,14 +70,28 @@ impl SceneSet {
             inspector: None,
         };
         let scenes = store.scenes().map_err(|e| e.msg)?;
-        let order = scenes.iter().filter(|s| s.listed && s.device == device).map(|s| s.id.clone()).collect();
-        let current = profile.file_name().and_then(|n| n.to_str()).unwrap_or_default().trim_end_matches(".sdProfile").to_string();
+        let order = scenes
+            .iter()
+            .filter(|s| s.listed && s.device == device)
+            .map(|s| s.id.clone())
+            .collect();
+        let current = profile
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .trim_end_matches(".sdProfile")
+            .to_string();
         if !scenes.iter().any(|s| s.current && s.id == current) {
             if let Err(e) = store.set_current(&current) {
                 eprintln!("scene {current}: state.json: {}", e.msg);
             }
         }
-        Ok(SceneSet { store, profiles, order, current })
+        Ok(SceneSet {
+            store,
+            profiles,
+            order,
+            current,
+        })
     }
 
     pub fn current(&self) -> &str {
@@ -75,7 +108,12 @@ impl SceneSet {
     }
 
     fn exists(&self, id: &str) -> bool {
-        safe_id(id) && self.profiles.join(format!("{id}.sdProfile")).join("manifest.json").is_file()
+        safe_id(id)
+            && self
+                .profiles
+                .join(format!("{id}.sdProfile"))
+                .join("manifest.json")
+                .is_file()
     }
 
     /// Next/previous with wrap-around. A current scene outside the list has no position: next is
@@ -110,22 +148,37 @@ mod tests {
     use serde_json::json;
 
     fn fixture(name: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!("orcadeck-scenes-{name}-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("orcadeck-scenes-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let (profiles, data) = (root.join("profiles"), root.join("data"));
         std::fs::create_dir_all(&data).unwrap();
         for id in ["A", "B", "C", "D"] {
             let dir = profiles.join(format!("{id}.sdProfile"));
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("manifest.json"), format!(r#"{{"Name":"{id}","DeviceUUID":"AKP153E","Actions":{{}}}}"#)).unwrap();
+            std::fs::write(
+                dir.join("manifest.json"),
+                format!(r#"{{"Name":"{id}","DeviceUUID":"AKP153E","Actions":{{}}}}"#),
+            )
+            .unwrap();
         }
         // C is not listed; D closes the order A -> B -> D.
-        std::fs::write(data.join("state.json"), br#"{"order":["A","B","D"],"current":"A"}"#).unwrap();
+        std::fs::write(
+            data.join("state.json"),
+            br#"{"order":["A","B","D"],"current":"A"}"#,
+        )
+        .unwrap();
         (profiles, data)
     }
 
     fn open(profiles: &Path, data: &Path, scene: &str) -> SceneSet {
-        SceneSet::open(&profiles.join(format!("{scene}.sdProfile")), profiles, data, "AKP153E").unwrap()
+        SceneSet::open(
+            &profiles.join(format!("{scene}.sdProfile")),
+            profiles,
+            data,
+            "AKP153E",
+        )
+        .unwrap()
     }
 
     #[test]
@@ -138,11 +191,26 @@ mod tests {
             settings,
         };
         assert_eq!(target_of(&action("com.other", json!({}))), None);
-        assert_eq!(target_of(&action(ROTATE, json!({}))), Some(SceneTarget::Next));
-        assert_eq!(target_of(&action(ROTATE, json!({"ProfileUUID": ""}))), Some(SceneTarget::Next));
-        assert_eq!(target_of(&action(ROTATE, json!({"ProfileUUID": "PreviousScene"}))), Some(SceneTarget::Previous));
-        assert_eq!(target_of(&action(ROTATE, json!({"ProfileUUID": "ABC"}))), Some(SceneTarget::Id("ABC".into())));
-        assert_eq!(target_of(&action(ROTATE, json!({"ProfileUUID": "ABC.sdProfile"}))), Some(SceneTarget::Id("ABC".into())));
+        assert_eq!(
+            target_of(&action(ROTATE, json!({}))),
+            Some(SceneTarget::Next)
+        );
+        assert_eq!(
+            target_of(&action(ROTATE, json!({"ProfileUUID": ""}))),
+            Some(SceneTarget::Next)
+        );
+        assert_eq!(
+            target_of(&action(ROTATE, json!({"ProfileUUID": "PreviousScene"}))),
+            Some(SceneTarget::Previous)
+        );
+        assert_eq!(
+            target_of(&action(ROTATE, json!({"ProfileUUID": "ABC"}))),
+            Some(SceneTarget::Id("ABC".into()))
+        );
+        assert_eq!(
+            target_of(&action(ROTATE, json!({"ProfileUUID": "ABC.sdProfile"}))),
+            Some(SceneTarget::Id("ABC".into()))
+        );
     }
 
     #[test]
@@ -150,9 +218,17 @@ mod tests {
         let (profiles, data) = fixture("order");
         let mut set = open(&profiles, &data, "A");
         assert_eq!(set.resolve(&SceneTarget::Next).as_deref(), Some("B"));
-        assert_eq!(set.resolve(&SceneTarget::Previous).as_deref(), Some("D"), "wraps to the last");
+        assert_eq!(
+            set.resolve(&SceneTarget::Previous).as_deref(),
+            Some("D"),
+            "wraps to the last"
+        );
         set.switch("D").unwrap();
-        assert_eq!(set.resolve(&SceneTarget::Next).as_deref(), Some("A"), "wraps to the first");
+        assert_eq!(
+            set.resolve(&SceneTarget::Next).as_deref(),
+            Some("A"),
+            "wraps to the first"
+        );
         assert_eq!(set.resolve(&SceneTarget::Previous).as_deref(), Some("B"));
     }
 
@@ -160,7 +236,11 @@ mod tests {
     fn explicit_ids_need_a_manifest_and_are_safe() {
         let (profiles, data) = fixture("explicit");
         let set = open(&profiles, &data, "A");
-        assert_eq!(set.resolve(&SceneTarget::Id("C".into())).as_deref(), Some("C"), "not listed, still exists");
+        assert_eq!(
+            set.resolve(&SceneTarget::Id("C".into())).as_deref(),
+            Some("C"),
+            "not listed, still exists"
+        );
         assert_eq!(set.resolve(&SceneTarget::Id("../A".into())), None);
         assert_eq!(set.resolve(&SceneTarget::Id("nope".into())), None);
     }
@@ -179,9 +259,14 @@ mod tests {
         let mut set = open(&profiles, &data, "A");
         assert_eq!(set.switch("B").unwrap().dir, profiles.join("B.sdProfile"));
         assert_eq!(set.current(), "B");
-        let state: serde_json::Value = serde_json::from_slice(&std::fs::read(data.join("state.json")).unwrap()).unwrap();
+        let state: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(data.join("state.json")).unwrap()).unwrap();
         assert_eq!(state["current"], "B");
-        assert_eq!(state["order"], json!(["A", "B", "D"]), "order is not rewritten");
+        assert_eq!(
+            state["order"],
+            json!(["A", "B", "D"]),
+            "order is not rewritten"
+        );
         assert!(set.switch("nope").is_err());
     }
 }

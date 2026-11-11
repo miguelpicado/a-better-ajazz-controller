@@ -20,7 +20,13 @@ fn start() -> (Host, Receiver<Output>) {
     let tx = std::sync::Mutex::new(tx);
     let cfg = Config {
         port: 0,
-        devices: vec![Device { id: "DEV".into(), name: "AKP153E".into(), columns: 6, rows: 3, kind: 0 }],
+        devices: vec![Device {
+            id: "DEV".into(),
+            name: "AKP153E".into(),
+            columns: 6,
+            rows: 3,
+            kind: 0,
+        }],
         // The editor origin frames the PI; the PI itself is sandboxed, hence `null`.
         origins: vec!["http://127.0.0.1:18619".into(), "null".into()],
         ..Config::default()
@@ -30,11 +36,17 @@ fn start() -> (Host, Receiver<Output>) {
 }
 
 fn plugin() -> Plugin {
-    Plugin::from_manifest(Path::new("x/com.fake.sdPlugin"), json!({"UUID": "com.fake", "CodePath": "p.js"})).unwrap()
+    Plugin::from_manifest(
+        Path::new("x/com.fake.sdPlugin"),
+        json!({"UUID": "com.fake", "CodePath": "p.js"}),
+    )
+    .unwrap()
 }
 
 fn open(host: &Host, origin: &str) -> tungstenite::Result<Ws> {
-    let mut req = format!("ws://127.0.0.1:{}", host.port()).into_client_request().unwrap();
+    let mut req = format!("ws://127.0.0.1:{}", host.port())
+        .into_client_request()
+        .unwrap();
     req.headers_mut().insert("Origin", origin.parse().unwrap());
     let (ws, _) = tungstenite::connect(req)?;
     if let MaybeTlsStream::Plain(s) = ws.get_ref() {
@@ -79,38 +91,78 @@ fn sandboxed_property_inspector_round_trip() {
 
     // Native plugin processes send no Origin header.
     let mut plugin_ws = {
-        let req = format!("ws://127.0.0.1:{}", host.port()).into_client_request().unwrap();
+        let req = format!("ws://127.0.0.1:{}", host.port())
+            .into_client_request()
+            .unwrap();
         let (ws, _) = tungstenite::connect(req).unwrap();
         if let MaybeTlsStream::Plain(s) = ws.get_ref() {
             s.set_read_timeout(Some(T)).unwrap();
         }
         ws
     };
-    send(&mut plugin_ws, json!({"event": "registerPlugin", "uuid": uuid}));
+    send(
+        &mut plugin_ws,
+        json!({"event": "registerPlugin", "uuid": uuid}),
+    );
     assert_eq!(recv(&mut plugin_ws)["event"], "deviceDidConnect");
     assert_eq!(recv(&mut plugin_ws)["event"], "willAppear");
 
     let token = host.open_inspector(&ctx).expect("context exists");
-    let mut pi = connect(&host, "null", json!({"event": "registerPropertyInspector", "uuid": token}));
+    let mut pi = connect(
+        &host,
+        "null",
+        json!({"event": "registerPropertyInspector", "uuid": token}),
+    );
     assert_eq!(recv(&mut pi)["event"], "didReceiveSettings");
     assert_eq!(recv(&mut plugin_ws)["event"], "propertyInspectorDidAppear");
 
-    send(&mut pi, json!({"event": "sendToPlugin", "context": token, "payload": {"x": 1}}));
+    send(
+        &mut pi,
+        json!({"event": "sendToPlugin", "context": token, "payload": {"x": 1}}),
+    );
     let m = recv(&mut plugin_ws);
-    assert_eq!((m["event"].as_str(), m["context"].as_str()), (Some("sendToPlugin"), Some(ctx.as_str())));
+    assert_eq!(
+        (m["event"].as_str(), m["context"].as_str()),
+        (Some("sendToPlugin"), Some(ctx.as_str()))
+    );
 
-    send(&mut plugin_ws, json!({"event": "sendToPropertyInspector", "context": ctx, "payload": {"y": 2}}));
+    send(
+        &mut plugin_ws,
+        json!({"event": "sendToPropertyInspector", "context": ctx, "payload": {"y": 2}}),
+    );
     assert_eq!(recv(&mut pi)["payload"], json!({"y": 2}));
 
-    send(&mut pi, json!({"event": "setSettings", "context": ctx, "payload": {"k": "v"}}));
-    assert_eq!(out.recv_timeout(T).unwrap(), Output::Settings { context: ctx.clone(), settings: json!({"k": "v"}) });
-    assert_eq!(recv(&mut plugin_ws)["payload"]["settings"], json!({"k": "v"}));
+    send(
+        &mut pi,
+        json!({"event": "setSettings", "context": ctx, "payload": {"k": "v"}}),
+    );
+    assert_eq!(
+        out.recv_timeout(T).unwrap(),
+        Output::Settings {
+            context: ctx.clone(),
+            settings: json!({"k": "v"})
+        }
+    );
+    assert_eq!(
+        recv(&mut plugin_ws)["payload"]["settings"],
+        json!({"k": "v"})
+    );
 
     drop(pi);
-    assert_eq!(recv(&mut plugin_ws)["event"], "propertyInspectorDidDisappear");
+    assert_eq!(
+        recv(&mut plugin_ws)["event"],
+        "propertyInspectorDidDisappear"
+    );
 
     // A token is single-use, and `null` is only accepted because this host lists it.
-    let mut again = connect(&host, "null", json!({"event": "registerPropertyInspector", "uuid": token}));
+    let mut again = connect(
+        &host,
+        "null",
+        json!({"event": "registerPropertyInspector", "uuid": token}),
+    );
     assert!(closed(&mut again));
-    assert!(open(&host, "https://evil.example").is_err(), "foreign origin rejected");
+    assert!(
+        open(&host, "https://evil.example").is_err(),
+        "foreign origin rejected"
+    );
 }

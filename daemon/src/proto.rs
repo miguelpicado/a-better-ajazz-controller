@@ -21,7 +21,11 @@ pub fn key_index(col: u8, row: u8) -> Option<u8> {
 }
 
 pub fn image_px(key: u8) -> u32 {
-    if key >= 16 { SIDE_PX } else { KEY_PX }
+    if key >= 16 {
+        SIDE_PX
+    } else {
+        KEY_PX
+    }
 }
 
 /// `CRT\0\0` + verb, zero-padded to `n` bytes; `extra` = (offset, value) pairs.
@@ -35,12 +39,24 @@ pub fn crt(n: usize, verb: &str, extra: &[(usize, u8)]) -> Vec<u8> {
     p
 }
 
-pub fn wake(n: usize) -> Vec<u8> { crt(n, "DIS", &[]) }
-pub fn brightness(n: usize, pct: u8) -> Vec<u8> { crt(n, "LIG", &[(0x0a, pct.min(100))]) }
-pub fn clear_key(n: usize, key: u8) -> Vec<u8> { crt(n, "CLE", &[(0x0b, key)]) }
-pub fn clear_all(n: usize) -> Vec<u8> { clear_key(n, 0xFF) }
-pub fn flush(n: usize) -> Vec<u8> { crt(n, "STP", &[]) }
-pub fn heartbeat(n: usize) -> Vec<u8> { crt(n, "CONNECT", &[]) }
+pub fn wake(n: usize) -> Vec<u8> {
+    crt(n, "DIS", &[])
+}
+pub fn brightness(n: usize, pct: u8) -> Vec<u8> {
+    crt(n, "LIG", &[(0x0a, pct.min(100))])
+}
+pub fn clear_key(n: usize, key: u8) -> Vec<u8> {
+    crt(n, "CLE", &[(0x0b, key)])
+}
+pub fn clear_all(n: usize) -> Vec<u8> {
+    clear_key(n, 0xFF)
+}
+pub fn flush(n: usize) -> Vec<u8> {
+    crt(n, "STP", &[])
+}
+pub fn heartbeat(n: usize) -> Vec<u8> {
+    crt(n, "CONNECT", &[])
+}
 
 /// Reply to the device's `HANLDER` (no CRT prefix).
 pub fn handshake_reply(n: usize) -> Vec<u8> {
@@ -52,7 +68,11 @@ pub fn handshake_reply(n: usize) -> Vec<u8> {
 /// BAT header + JPEG chunks (each exactly `n` bytes, last zero-padded).
 pub fn image_packets(n: usize, key: u8, jpeg: &[u8]) -> Vec<Vec<u8>> {
     let len = jpeg.len();
-    let mut out = vec![crt(n, "BAT", &[(0x0a, (len >> 8) as u8), (0x0b, len as u8), (0x0c, key)])];
+    let mut out = vec![crt(
+        n,
+        "BAT",
+        &[(0x0a, (len >> 8) as u8), (0x0b, len as u8), (0x0c, key)],
+    )];
     for c in jpeg.chunks(n) {
         let mut p = vec![0u8; n];
         p[..c.len()].copy_from_slice(c);
@@ -75,7 +95,10 @@ pub enum Input {
     Error,
     Mode(u8),
     /// key 1..18, raw state byte (press/release meaning unconfirmed on AKP153E)
-    Key { key: u8, state: u8 },
+    Key {
+        key: u8,
+        state: u8,
+    },
 }
 
 pub fn parse_input(b: &[u8]) -> Input {
@@ -89,7 +112,10 @@ pub fn parse_input(b: &[u8]) -> Input {
     } else if b.starts_with(b"CRT") && b.get(5..8) == Some(b"MOD") {
         Input::Mode(at(0x0a))
     } else {
-        Input::Key { key: at(9), state: at(10) }
+        Input::Key {
+            key: at(9),
+            state: at(10),
+        }
     }
 }
 
@@ -103,11 +129,16 @@ pub fn output_len_from_descriptor(d: &[u8]) -> Option<usize> {
             i += 3 + d.get(i + 1).copied().unwrap_or(0) as usize;
             continue;
         }
-        let n = match h & 3 { 3 => 4, k => k as usize };
-        let v = (0..n).fold(0usize, |a, k| a | (*d.get(i + 1 + k).unwrap_or(&0) as usize) << (8 * k));
+        let n = match h & 3 {
+            3 => 4,
+            k => k as usize,
+        };
+        let v = (0..n).fold(0usize, |a, k| {
+            a | (*d.get(i + 1 + k).unwrap_or(&0) as usize) << (8 * k)
+        });
         match h & 0xFC {
-            0x74 => size = v,  // Report Size
-            0x94 => count = v, // Report Count
+            0x74 => size = v,             // Report Size
+            0x94 => count = v,            // Report Count
             0x90 => bits += size * count, // Output
             _ => {}
         }
@@ -131,7 +162,9 @@ mod tests {
         assert_eq!(key_index(5, 2), Some(18));
         assert_eq!(key_index(6, 0), None);
         // all 18 indices unique and in 1..=18
-        let mut s: Vec<u8> = (0..6).flat_map(|c| (0..3).filter_map(move |r| key_index(c, r))).collect();
+        let mut s: Vec<u8> = (0..6)
+            .flat_map(|c| (0..3).filter_map(move |r| key_index(c, r)))
+            .collect();
         s.sort();
         assert_eq!(s, (1..=18).collect::<Vec<u8>>());
     }
@@ -175,7 +208,10 @@ mod tests {
     #[test]
     fn descriptor_output_len() {
         // vendor page, Output: size 8 x count 512 (0x75 0x08, 0x96 0x00 0x02, 0x91 0x02)
-        let d = [0x06, 0xA0, 0xFF, 0x09, 0x01, 0xA1, 0x01, 0x75, 0x08, 0x96, 0x00, 0x02, 0x91, 0x02, 0xC0];
+        let d = [
+            0x06, 0xA0, 0xFF, 0x09, 0x01, 0xA1, 0x01, 0x75, 0x08, 0x96, 0x00, 0x02, 0x91, 0x02,
+            0xC0,
+        ];
         assert_eq!(output_len_from_descriptor(&d), Some(512));
     }
 }
