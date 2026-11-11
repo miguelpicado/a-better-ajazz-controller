@@ -79,6 +79,10 @@ pub trait Store: Send + Sync {
     fn plugin_inspect(&self, path: &str) -> Result<Value>;
     /// Installs a package from the inbox folder. `force` replaces an existing install, keeping a backup.
     fn plugin_install(&self, path: &str, force: bool) -> Result<Value>;
+    /// What a package staged from the shell contains. Token-addressed, never path-addressed.
+    fn plugin_staged(&self, token: &str) -> Result<Value>;
+    /// Installs a staged package; the token is spent only when the install succeeds.
+    fn plugin_install_staged(&self, token: &str, force: bool) -> Result<Value>;
     /// Deletes a plugin, only when this editor installed it.
     fn plugin_remove(&self, uuid: &str) -> Result<Value>;
     /// One-shot scan of the inbox folder, newest first. Never runs in the background.
@@ -308,15 +312,59 @@ impl FsStore {
         if !path.starts_with(&root) {
             return Err(Error::new(400, "el paquete debe estar dentro de Descargas"));
         }
-        let name = path.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase();
-        if path.is_dir() {
-            if !name.ends_with(".sdplugin") || !path.join("manifest.json").is_file() {
-                return Err(Error::new(400, "la carpeta no es un .sdPlugin con manifest.json"));
-            }
-        } else if !path.is_file() || !["streamdeckplugin", "zip"].iter().any(|e| name.ends_with(&format!(".{e}"))) {
-            return Err(Error::new(400, "se esperaba un .streamDeckPlugin, un .zip o una carpeta .sdPlugin"));
+        match crate::staged::package_kind_error(&path) {
+            Some(e) => Err(Error::new(400, e)),
+            None => Ok(path),
         }
-        Ok(path)
+    }
+
+    /// Read-only package summary. `pkg` is already canonical and validated.
+    fn inspect_at(&self, pkg: &Path) -> Result<Value> {
+        let rec = inspect_package(pkg).map_err(package_error)?;
+        if !safe_id(&rec.uuid) {
+            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
+        }
+        let text = |k: &str| rec.manifest.as_ref().and_then(|m| m.get(k)).and_then(Value::as_str).unwrap_or("").trim().to_string();
+        let installed = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).is_dir();
+        Ok(json!({
+            "path": pkg.to_string_lossy(),
+            "kind": if pkg.is_dir() { "folder" } else { "archive" },
+            "uuid": rec.uuid, "name": text("Name"), "version": text("Version"),
+            "author": text("Author"), "description": text("Description"),
+            "actions": rec.action_count, "encrypted": rec.encrypted,
+            "confidence": rec.confidence.as_str(),
+            "needsManifest": matches!(rec.confidence, Confidence::Partial | Confidence::None),
+            "installed": installed,
+        }))
+    }
+
+    /// Copies `pkg` through the existing plugman path. The caller validated `pkg`.
+    fn install_at(&self, pkg: &Path, force: bool) -> Result<Value> {
+        // Read-only pass first: validate the derived UUID before writing anything.
+        let rec = inspect_package(pkg).map_err(package_error)?;
+        if !safe_id(&rec.uuid) {
+            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
+        }
+        let replaced = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).exists();
+        if replaced && !force {
+            return Err(Error::new(409, format!("{} ya está instalado; confirma para reemplazarlo", rec.uuid)));
+        }
+        let opts = InstallOptions {
+            plugins_root: self.plugins.clone(),
+            data_root: Some(self.data.clone()),
+            force,
+            manifest_path: None,
+        };
+        let r = install_package(pkg, &opts).map_err(package_error)?;
+        let mut ids = self.installed_ids();
+        if !ids.iter().any(|i| i == &r.reconstruction.uuid) {
+            ids.push(r.reconstruction.uuid.clone());
+            self.set_installed(&ids)?;
+        }
+        Ok(json!({
+            "uuid": r.reconstruction.uuid, "dir": r.dest.to_string_lossy(),
+            "overlay": r.overlay.is_some(), "needsManifest": r.needs_manifest, "replaced": replaced,
+        }))
     }
 
     fn load_plugin(&self, dir: PathBuf, mut builtin: bool) -> Option<Plugin> {
@@ -452,51 +500,34 @@ impl Store for FsStore {
 
     fn plugin_inspect(&self, path: &str) -> Result<Value> {
         let pkg = self.package_in_downloads(path)?;
-        let rec = inspect_package(&pkg).map_err(package_error)?;
-        if !safe_id(&rec.uuid) {
-            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
-        }
-        let text = |k: &str| rec.manifest.as_ref().and_then(|m| m.get(k)).and_then(Value::as_str).unwrap_or("").trim().to_string();
-        let installed = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).is_dir();
-        Ok(json!({
-            "path": pkg.to_string_lossy(),
-            "kind": if pkg.is_dir() { "folder" } else { "archive" },
-            "uuid": rec.uuid, "name": text("Name"), "version": text("Version"),
-            "author": text("Author"), "description": text("Description"),
-            "actions": rec.action_count, "encrypted": rec.encrypted,
-            "confidence": rec.confidence.as_str(),
-            "needsManifest": matches!(rec.confidence, Confidence::Partial | Confidence::None),
-            "installed": installed,
-        }))
+        self.inspect_at(&pkg)
     }
 
     fn plugin_install(&self, path: &str, force: bool) -> Result<Value> {
         let pkg = self.package_in_downloads(path)?;
-        // Read-only pass first: validate the derived UUID before writing anything.
-        let rec = inspect_package(&pkg).map_err(package_error)?;
-        if !safe_id(&rec.uuid) {
-            return Err(Error::new(400, "el paquete no tiene un UUID de plugin válido"));
+        self.install_at(&pkg, force)
+    }
+
+    fn plugin_staged(&self, token: &str) -> Result<Value> {
+        let staged = crate::staged::peek(token)
+            .ok_or_else(|| Error::new(404, "el enlace de instalación ya se usó o ha caducado"))?;
+        let mut v = self.inspect_at(&staged.path)?;
+        if let Value::Object(m) = &mut v {
+            // Never hand the absolute path back to the page: only the token identifies this file.
+            m.remove("path");
+            m.insert("token".into(), json!(token));
+            m.insert("file".into(), json!(staged.name));
         }
-        let replaced = self.plugins.join(format!("{}.sdPlugin", rec.uuid)).exists();
-        if replaced && !force {
-            return Err(Error::new(409, format!("{} ya está instalado; confirma para reemplazarlo", rec.uuid)));
-        }
-        let opts = InstallOptions {
-            plugins_root: self.plugins.clone(),
-            data_root: Some(self.data.clone()),
-            force,
-            manifest_path: None,
-        };
-        let r = install_package(&pkg, &opts).map_err(package_error)?;
-        let mut ids = self.installed_ids();
-        if !ids.iter().any(|i| i == &r.reconstruction.uuid) {
-            ids.push(r.reconstruction.uuid.clone());
-            self.set_installed(&ids)?;
-        }
-        Ok(json!({
-            "uuid": r.reconstruction.uuid, "dir": r.dest.to_string_lossy(),
-            "overlay": r.overlay.is_some(), "needsManifest": r.needs_manifest, "replaced": replaced,
-        }))
+        Ok(v)
+    }
+
+    fn plugin_install_staged(&self, token: &str, force: bool) -> Result<Value> {
+        let staged = crate::staged::peek(token)
+            .ok_or_else(|| Error::new(404, "el enlace de instalación ya se usó o ha caducado"))?;
+        // Spend the token only on success: a 409 (already installed) can be retried with force.
+        let r = self.install_at(&staged.path, force)?;
+        crate::staged::consume(token);
+        Ok(r)
     }
 
     fn plugin_remove(&self, uuid: &str) -> Result<Value> {

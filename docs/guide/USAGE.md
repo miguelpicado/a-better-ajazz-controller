@@ -205,8 +205,35 @@ $env:ORCADECK_DATA     = "C:\temp\datos-copia"
 
 El editor usa `orcadeck-plugman`; no necesita la app de Elgato ni descifra manifests del Marketplace.
 
+### Doble clic en un paquete: `register`, `install`, `unregister`
+
+```powershell
+.\target\release\orcadeck.exe register              # una vez, sin admin
+.\target\release\orcadeck.exe install C:\ruta\MiPlugin.streamDeckPlugin
+.\target\release\orcadeck.exe unregister            # deshacer
+```
+
+- `register` escribe solo en `HKCU\Software\Classes` (usuario, sin admin): crea el ProgID
+  `OrcaDeck.Plugin` con comando `«ruta de orcadeck.exe» install "%1"` y asocia las extensiones
+  `.streamDeckPlugin` y `.sdPlugin`. A partir de ahí, doble clic sobre el paquete (o «Abrir con» →
+  OrcaDeck) abre el editor en la página de instalación con ese paquete preparado.
+- `install <paquete>` hace lo mismo desde la consola. Si `orcadeck run` está vivo, pide el editor
+  por el named pipe (la instalación se ve en caliente); si no, arranca un editor independiente.
+  Ctrl+C cierra el editor, igual que en `edit`.
+- La página muestra nombre, UUID, versión, autor y si ya hay una versión instalada. **Nada se
+  instala solo**: hay que pulsar **Instalar plugin** (y confirmar si se reemplaza). Después,
+  arrastra sus acciones a una tecla desde la vista **Teclas**.
+- La ruta del fichero no viaja en la URL: el servidor la guarda tras un token de un solo uso. Si
+  instalas y recargas la página, el enlace ya no sirve.
+- Si mueves `orcadeck.exe`, vuelve a ejecutar `register`.
+- `unregister` borra el ProgID y devuelve a cada extensión el valor por defecto que tenía antes del
+  primer `register` (se guarda como `PreviousDefault.<ext>` bajo el ProgID). Si Windows sigue
+  abriendo otra app, elige OrcaDeck en «Abrir con…» o restablece la asociación en Configuración:
+  Windows puede tener su propia elección por usuario (`UserChoice`) por encima de esta entrada.
+
 1. Descarga el `.streamDeckPlugin` con tu sesión del navegador (Marketplace → Download). También vale
-   un `.sdPlugin` en carpeta o un `.zip`.
+   un `.sdPlugin` (carpeta o zip) o un `.zip`. Con la asociación registrada, haz doble clic sobre el
+   fichero y salta al paso 3.
 2. En **Plugins**, pulsa **Buscar en Descargas**. Se escanea `%USERPROFILE%\Downloads` **solo al
    pulsar**: paquetes `.streamDeckPlugin`/`.zip` y carpetas `.sdPlugin` con manifest, modificados en
    los últimos 30 días, máximo 20. No hay vigilante ni polling.
