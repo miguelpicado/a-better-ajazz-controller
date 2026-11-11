@@ -22,6 +22,7 @@ pub struct SceneSet {
     /// Listed scenes of this device, in the device's order.
     order: Vec<String>,
     current: String,
+    device: String,
 }
 
 /// What the action asks for: `Settings.ProfileUUID` empty is next, `PreviousScene` previous,
@@ -91,7 +92,12 @@ impl SceneSet {
             profiles,
             order,
             current,
+            device: device.to_string(),
         })
+    }
+
+    pub fn device(&self) -> &str {
+        &self.device
     }
 
     pub fn current(&self) -> &str {
