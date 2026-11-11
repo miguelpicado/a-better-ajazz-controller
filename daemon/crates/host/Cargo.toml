@@ -16,4 +16,4 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 serde_json = "1"
 log = "0.4"
 # OS CSPRNG for plugin UUIDs, contexts and inspector tokens. Already in the tree via tungstenite.
-getrandom = "0.4"
+getrandom = { workspace = true }

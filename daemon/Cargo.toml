@@ -17,11 +17,16 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.99"
 publish = false
 
+# One version per crate for the whole workspace, so the crates cannot drift apart again.
+[workspace.dependencies]
+base64 = "0.23"
+getrandom = "0.4"
+
 [dependencies]
 orcadeck-host = { path = "crates/host" }
 orcadeck-builtin = { path = "crates/builtin" }
 orcadeck-web = { path = "crates/web" }
-base64 = "0.22"
+base64 = { workspace = true }
 hidapi = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1", features = ["derive"] }

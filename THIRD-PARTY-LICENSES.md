@@ -8,7 +8,6 @@ Generated from `cargo metadata` (daemon/Cargo.lock) on 2026-11-11. OrcaDeck itse
 | arrayref | 0.3.9 | BSD-2-Clause | https://github.com/droundy/arrayref |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 | https://github.com/bluss/arrayvec |
 | autocfg | 1.5.1 | Apache-2.0 OR MIT | https://github.com/cuviper/autocfg |
-| base64 | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | base64 | 0.23.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | bitflags | 2.13.2 | MIT OR Apache-2.0 | https://github.com/bitflags/bitflags |
 | block-buffer | 0.12.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
@@ -39,7 +38,6 @@ Generated from `cargo metadata` (daemon/Cargo.lock) on 2026-11-11. OrcaDeck itse
 | font-types | 0.12.7 | MIT OR Apache-2.0 | https://github.com/googlefonts/fontations |
 | fontconfig-parser | 0.5.8 | MIT | https://github.com/Riey/fontconfig-parser |
 | fontdb | 0.24.0 | MIT | https://github.com/RazrFalcon/fontdb |
-| getrandom | 0.2.17 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
 | getrandom | 0.4.3 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
 | harfrust | 0.12.0 | MIT | https://github.com/harfbuzz/harfrust |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/hashbrown |
@@ -109,7 +107,6 @@ Generated from `cargo metadata` (daemon/Cargo.lock) on 2026-11-11. OrcaDeck itse
 | unicode-vo | 0.1.0 | MIT/Apache-2.0 | https://github.com/RazrFalcon/unicode-vo |
 | usvg | 0.49.0 | Apache-2.0 OR MIT | https://github.com/linebender/resvg |
 | version_check | 0.9.5 | MIT/Apache-2.0 | https://github.com/SergioBenitez/version_check |
-| wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi |
 | wasm-bindgen | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen |
 | wasm-bindgen-macro | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro |
 | wasm-bindgen-macro-support | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support |
