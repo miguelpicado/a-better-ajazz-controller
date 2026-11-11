@@ -17,11 +17,14 @@ Objetivo rector en [`HANDOFF.md`](HANDOFF.md). Estado verificado en [`STATUS.md`
 | 9 | Retirada de plugins sin uso al cambiar de escena | hecho (2 s de gracia, +7 168 B); sin prueba física |
 | 10 | Autoarranque (`tools/autostart/orcadeck-task.ps1`) | tarea `OrcaDeck` instalada DESACTIVADA; activar exige consola elevada |
 | 11 | P0–P2 de [`REPO-AUDIT.md`](REPO-AUDIT.md) | hecho: rutas de usuario, código muerto, metadatos Cargo, `.github/workflows/ci.yml` (sin verificar en GitHub). Pendiente: `base64`/`getrandom` duplicados, `cargo fmt` (28 ficheros), licencia (decide el usuario), clippy no instalado en el toolchain local |
-| 12 | Huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2 | pendiente |
+| 12 | Huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2 | hecho para pipe de Orca, SQLite ocupado, traversal de iconos (corregido en `Scene::image_of`) y cuerpos HTTP enormes (2026-11-11). Pendiente: desconexión HID en caliente con dispositivo, carrera Scene Shift/pintado, límite de tramas WebSocket (`host.rs:562` usa los defectos de tungstenite: 16 MiB/64 MiB) |
 | 13 | Medidas de ligereza: exe, RSS y CPU en reposo con el dispositivo | pendiente (necesita dispositivo); procedimientos en [`PERF-AUDIT.md`](PERF-AUDIT.md) §7 |
-| 14 | Rendimiento P0 de [`PERF-AUDIT.md`](PERF-AUDIT.md): cadencia RPC a Orca (`POLL_MS` 1000→3000–5000, `WORKERS_MS` 10 s→30 s) y `SPIN_MS` 400→800 | pendiente, sin dispositivo (constantes en `builtin`) |
-| 15 | Rendimiento P1: lectura HID bloqueante en hilo lector + `builtin` por plazos (33→0 y 2,5→0 despertares/s), quitar mapa `latest`, pre-escalar imágenes | pendiente; toca `app.rs`, validar con dispositivo (pulsaciones) |
+| 14 | Rendimiento P0: cadencias | hecho 2026-11-11: `POLL_MS` 2000, `WORKERS_MS` 30 s, `QUOTA_MS` 60 s. `SPIN_MS` NO sube a 800: el usuario exige spinner fluido, queda en 250 ms (4 fps), con hueco de lote `BATCH_GAP_MS` 250 (antes 400; `ORCADECK_GAP_MS=400` lo restaura). **Riesgo: pulsaciones perdidas, validar con dispositivo** |
+| 15 | Rendimiento P1: lectura HID bloqueante + `builtin` por plazos | hecho en parte 2026-11-11: `builtin` espera por plazos (`next_timeout`: `SPIN_MS` con agente working/parpadeando, 1 s con temporizador, `POLL_MS` en reposo). Hilo lector HID tras `ORCADECK_HID_READER=thread` (apagado por defecto, **sin validar con dispositivo**). Pendiente: quitar mapa `latest`, pre-escalar imágenes |
 | 16 | Rendimiento P2: unificar `base64`/`getrandom`, `TerminateProcess` directo, hilo RPC persistente, celdas laterales 16–18 | pendiente; sacar el editor a otro binario (−375 KB) es decisión de producto |
+| 17 | Teclas de agente animadas: aro blanco en pregunta/done, temporizador `ago` solo en pregunta/done, spinner de 8 pasos | hecho 2026-11-11 (`core.rs`, `actions.rs`); sin prueba física |
+| 18 | Doble clic en `.streamDeckPlugin`/`.sdPlugin` abre la web de instalación (`orcadeck register`/`unregister`/`install <fichero>`, `register.rs`, `staged.rs`, mensaje INSTALL en `ctl.rs`) | hecho 2026-11-11; la escritura real de `reg.exe` no está probada en vivo |
+| 19 | Cuota global cada 60 s: `orca-dock-rs` refetch fijo a 60 s (repo quota-monitor, `REFRESH_SECONDS`) y OrcaDeck relee cada 60 s | hecho 2026-11-11; reiniciar `orca-dock-rs.exe` recompilado para aplicarlo |
 
 ## B. Pruebas con dispositivo y OK del usuario
 

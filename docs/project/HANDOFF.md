@@ -1,4 +1,4 @@
-# HANDOFF (2026-11-10)
+# HANDOFF (2026-11-11)
 
 Resumen vigente para retomar. Detalle: [`STATUS.md`](STATUS.md); pendientes ordenados:
 [`ROADMAP.md`](ROADMAP.md); arquitectura: [`../design/ARCHITECTURE.md`](../design/ARCHITECTURE.md).
@@ -33,6 +33,10 @@ runtime async ni UI residente, 0 % de CPU en reposo, memoria y tráfico HID mín
 dispositivo: P0-1 (cadencias de RPC a Orca) y P0-2 (`SPIN_MS` 800). Lo que toca `app.rs` (hilo lector HID
 bloqueante, `builtin` por plazos, quitar `latest`) esperar a medir `run` con el dispositivo
 (procedimiento en §7 del informe) para validar que no se pierden pulsaciones.
+
+## Hecho el 2026-11-11 (workers OpenCode y agy)
+
+`main` incluye animación de teclas (spinner 250 ms, aro, temporizador), cadencias nuevas, doble clic en plugins, bucle `builtin` por plazos, hilo lector HID opcional, tests de huecos y el fix de traversal de iconos. Gate: **126 tests verdes**; `orcadeck.exe` = 3 722 240 B. Todo sin probar en dispositivo. Cuidado: `BATCH_GAP_MS` bajó a 250 ms; si se pierden pulsaciones, `ORCADECK_GAP_MS=400`.
 
 ## Siguiente, en orden
 
