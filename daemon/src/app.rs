@@ -45,7 +45,7 @@ fn batch_gap() -> Duration {
             .unwrap_or(BATCH_GAP_MS),
     )
 }
-const DEVICE: &str = "AKP153E";
+const DEVICE: &str = DEFAULT_DEVICE.manifest_id;
 
 fn pct_decode(s: &str) -> Vec<u8> {
     let b = s.as_bytes();
@@ -803,6 +803,7 @@ fn place_scene(
     host: &host::Host,
     rt: &Runtime,
     builtins: &HashSet<&'static str>,
+    manifest_id: &str,
 ) -> Placed {
     let mut p = Placed::default();
     let mut view = ViewState::default();
@@ -832,7 +833,7 @@ fn place_scene(
             p.builtin_keys.push(bi::Key {
                 uuid: a.uuid.clone(),
                 context: ctx.clone(),
-                device: DEVICE.into(),
+                device: manifest_id.into(),
                 row: *r as u32,
                 col: *c as u32,
             });
@@ -852,7 +853,7 @@ fn place_scene(
     *rt.view.lock().unwrap_or_else(|e| e.into_inner()) = view;
     for ((c, r), a, plugin) in appearing {
         let Some(key) = key_index(c, r) else { continue };
-        let mut inst = host::Instance::new(&plugin.id, &a.uuid, DEVICE, c as u32, r as u32);
+        let mut inst = host::Instance::new(&plugin.id, &a.uuid, manifest_id, c as u32, r as u32);
         inst.settings = a.settings.clone();
         inst.state = a.state as u32;
         let ctx = host.appear(inst);
@@ -950,7 +951,7 @@ fn switch_scene(
             Target::Scene(_) => {}
         }
     }
-    let placed = place_scene(&scene, plugins, found, host, rt, builtins);
+    let placed = place_scene(&scene, plugins, found, host, rt, builtins, scenes.device());
     let _ = tx.send(BuiltinMsg::Scene(SceneCmd::Replace {
         old,
         new: placed.builtin_keys,
@@ -996,6 +997,7 @@ fn reload_cell(
     msg_tx: &mpsc::Sender<BuiltinMsg>,
     builtins: &HashSet<&'static str>,
     plugins: &Path,
+    manifest_id: &str,
 ) -> Option<(u8, DynamicImage)> {
     let key = key_index(cell.0, cell.1)?;
     let dir = scene_dir(rt)?;
@@ -1047,7 +1049,7 @@ fn reload_cell(
                 new_builtin = Some(bi::Key {
                     uuid: a.uuid.clone(),
                     context: ctx.clone(),
-                    device: DEVICE.into(),
+                    device: manifest_id.into(),
                     row: cell.1 as u32,
                     col: cell.0 as u32,
                 });
@@ -1057,8 +1059,13 @@ fn reload_cell(
                 .filter(|p| a.uuid.starts_with(&format!("{}.", p.id)))
                 .max_by_key(|p| p.id.len())
             {
-                let mut inst =
-                    host::Instance::new(&plugin.id, &a.uuid, DEVICE, cell.0 as u32, cell.1 as u32);
+                let mut inst = host::Instance::new(
+                    &plugin.id,
+                    &a.uuid,
+                    manifest_id,
+                    cell.0 as u32,
+                    cell.1 as u32,
+                );
                 inst.settings = a.settings.clone();
                 inst.state = a.state as u32;
                 let ctx = host.appear(inst);
@@ -1151,7 +1158,18 @@ fn serve_edit(
     }
 }
 
-pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), String> {
+pub fn run(
+    profile: &Path,
+    plugins: &Path,
+    n: Option<usize>,
+    spec: &'static DeviceSpec,
+) -> Result<(), String> {
+    if !spec.verified {
+        eprintln!(
+            "warning: device {} is not verified; expect wrong layouts; no firmware commands are ever sent",
+            spec.name
+        );
+    }
     let scene = Scene::load(profile)?;
     let (tx, rx) = mpsc::channel::<Paint>();
     let (msg_tx, msg_rx) = mpsc::channel::<BuiltinMsg>();
@@ -1159,7 +1177,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
 
     // Plugin host: only plugins the scene uses are launched.
     let data_root = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("OrcaDeck");
-    let mut scenes = SceneSet::open(profile, plugins, &data_root, DEVICE)?;
+    let mut scenes = SceneSet::open(profile, plugins, &data_root, spec.manifest_id)?;
     let found = host::discover(&[plugins.to_path_buf()], Some(&data_root));
     let view: View = Arc::new(Mutex::new(ViewState::default()));
     let runtime = Arc::new(Runtime {
@@ -1179,8 +1197,8 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let host = host::Host::start(
         host::Config {
             devices: vec![host::Device {
-                id: DEVICE.into(),
-                name: "AKP153E".into(),
+                id: spec.manifest_id.into(),
+                name: spec.name.into(),
                 columns: 5,
                 rows: 3,
                 kind: 0,
@@ -1273,7 +1291,15 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         })
         .map_err(|e| e.to_string())?;
 
-    let placed = place_scene(&scene, plugins, &found, &host, &runtime, &builtins);
+    let placed = place_scene(
+        &scene,
+        plugins,
+        &found,
+        &host,
+        &runtime,
+        &builtins,
+        spec.manifest_id,
+    );
     let _ = msg_tx.send(BuiltinMsg::Scene(SceneCmd::Replace {
         old: Vec::new(),
         new: placed.builtin_keys,
@@ -1294,6 +1320,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     // Main loop: reconnect forever; each new session repaints the keys from the composed view.
     loop {
         let s = session(
+            spec,
             n,
             &rx,
             &reload_rx,
@@ -1347,10 +1374,10 @@ impl DockWriter for Dock {
     }
 }
 
-fn open_read_device(api: &HidApi) -> Result<HidDevice, String> {
+fn open_read_device(api: &HidApi, spec: &DeviceSpec) -> Result<HidDevice, String> {
     let mut cands: Vec<_> = api
         .device_list()
-        .filter(|d| d.vendor_id() == VID && d.product_id() == PID)
+        .filter(|d| d.vendor_id() == spec.vid && d.product_id() == spec.pid)
         .collect();
     cands.sort_by_key(|d| if d.usage_page() >= 0xFF00 { 0 } else { 1 });
     let info = cands.first().ok_or("device not found (reader handle)")?;
@@ -1540,7 +1567,17 @@ fn session_loop_threaded<W: DockWriter>(
 
         while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
             if let Some((key, img)) = reload_cell(
-                &scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins,
+                &scene,
+                cell,
+                rt,
+                by_key,
+                host,
+                found,
+                running,
+                msg_tx,
+                builtins,
+                plugins,
+                scenes.device(),
             ) {
                 pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
             }
@@ -1558,6 +1595,7 @@ fn session_loop_threaded<W: DockWriter>(
 /// One connection to the device. Returns Err when it is lost or cannot be opened.
 #[allow(clippy::too_many_arguments)]
 fn session(
+    spec: &'static DeviceSpec,
     n: Option<usize>,
     rx: &mpsc::Receiver<Paint>,
     reload: &mpsc::Receiver<ReloadCmd>,
@@ -1572,7 +1610,7 @@ fn session(
     builtins: &HashSet<&'static str>,
 ) -> Result<(), String> {
     let api = HidApi::new().map_err(|e| e.to_string())?;
-    let mut dock = Dock::open(&api, n)?;
+    let mut dock = Dock::open_with_n(&api, spec, n)?;
     dock.init(80)?;
     eprintln!("device ready, N = {}", dock.n);
     let mut pending = view_paints(rt);
@@ -1610,7 +1648,17 @@ fn session(
             // Editor saves: repaint just that key, through the same pending batch as everything else.
             while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
                 if let Some((key, img)) = reload_cell(
-                    &scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins,
+                    &scene,
+                    cell,
+                    rt,
+                    by_key,
+                    host,
+                    found,
+                    running,
+                    msg_tx,
+                    builtins,
+                    plugins,
+                    scenes.device(),
                 ) {
                     pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
                 }
@@ -1623,7 +1671,7 @@ fn session(
         }
     } else {
         let (event_tx, event_rx) = mpsc::channel();
-        let read_dev = open_read_device(&api)?;
+        let read_dev = open_read_device(&api, spec)?;
         let report_n = dock.n;
         let reader_tx = event_tx.clone();
         let _reader = thread::Builder::new()
@@ -2090,7 +2138,8 @@ mod tests {
                 &mut running,
                 &tx,
                 &builtins,
-                &root
+                &root,
+                DEVICE
             )
             .is_none(),
             "a scene that is not on the deck is only written to disk"
@@ -2113,6 +2162,7 @@ mod tests {
             &tx,
             &builtins,
             &root,
+            DEVICE,
         )
         .expect("reload");
         assert_eq!(key, 13);
@@ -2164,7 +2214,8 @@ mod tests {
             &mut running,
             &tx,
             &builtins,
-            &root
+            &root,
+            DEVICE,
         )
         .is_some());
         match rx.try_recv().unwrap() {

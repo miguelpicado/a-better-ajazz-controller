@@ -1,5 +1,6 @@
 //! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 75 down by 4).
-use crate::proto::{image_px, MAX_JPEG};
+#[allow(unused_imports)]
+use crate::proto::{image_px, DeviceSpec, DEFAULT_DEVICE, MAX_JPEG};
 use image::{imageops, DynamicImage, ImageEncoder};
 
 fn scale_key(img: &DynamicImage, px: u32) -> DynamicImage {
@@ -16,7 +17,11 @@ pub fn fit_px(img: DynamicImage, px: u32) -> DynamicImage {
 }
 
 pub fn key_jpeg(img: &DynamicImage, key: u8) -> Vec<u8> {
-    let px = image_px(key);
+    key_jpeg_spec(DEFAULT_DEVICE, img, key)
+}
+
+pub fn key_jpeg_spec(spec: &DeviceSpec, img: &DynamicImage, key: u8) -> Vec<u8> {
+    let px = spec.image_px(key);
     let scaled;
     let img = if (img.width(), img.height()) == (px, px) {
         img
@@ -38,7 +43,7 @@ pub fn key_jpeg(img: &DynamicImage, key: u8) -> Vec<u8> {
                 image::ExtendedColorType::Rgb8,
             )
             .expect("jpeg encode");
-        if out.len() <= MAX_JPEG || q <= 1 {
+        if out.len() <= spec.max_jpeg || q <= 1 {
             return out;
         }
         q -= 4;

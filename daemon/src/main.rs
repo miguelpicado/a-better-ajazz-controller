@@ -20,10 +20,19 @@ struct Dock {
 }
 
 impl Dock {
-    fn open(api: &HidApi, n_override: Option<usize>) -> Result<Dock, String> {
+    #[allow(dead_code)]
+    pub fn open(api: &HidApi, spec: &DeviceSpec) -> Result<Dock, String> {
+        Self::open_with_n(api, spec, None)
+    }
+
+    pub fn open_with_n(
+        api: &HidApi,
+        spec: &DeviceSpec,
+        n_override: Option<usize>,
+    ) -> Result<Dock, String> {
         let mut cands: Vec<_> = api
             .device_list()
-            .filter(|d| d.vendor_id() == VID && d.product_id() == PID)
+            .filter(|d| d.vendor_id() == spec.vid && d.product_id() == spec.pid)
             .collect();
         // prefer vendor usage page (INFERRED, see hid-protocol.md §0)
         cands.sort_by_key(|d| if d.usage_page() >= 0xFF00 { 0 } else { 1 });
@@ -68,11 +77,13 @@ impl Dock {
     }
 }
 
-fn tag(vid: u16, pid: u16) -> &'static str {
-    match (vid, pid) {
-        (0xEEEF, 0x2929) => "   <== AKP153E BOOTLOADER",
-        (0x0300, 0x1010) => "   <== AKP153E app",
-        _ => "",
+fn tag(vid: u16, pid: u16) -> String {
+    if (vid, pid) == (0xEEEF, 0x2929) {
+        "   <== AKP153E BOOTLOADER".to_string()
+    } else if let Some(spec) = find_spec(vid, pid) {
+        format!("   <== {} (verified: {})", spec.name, spec.verified)
+    } else {
+        String::new()
     }
 }
 
@@ -136,27 +147,28 @@ fn run(args: &[String]) -> Result<(), String> {
         Some("probe") => {
             let api = HidApi::new().map_err(|e| e.to_string())?;
             let mut found = false;
-            for d in api
-                .device_list()
-                .filter(|d| d.vendor_id() == VID && d.product_id() == PID)
-            {
-                found = true;
-                println!(
-                    "{:?} usage_page={:#06x} usage={:#x} iface={} product={:?}",
-                    d.path(),
-                    d.usage_page(),
-                    d.usage(),
-                    d.interface_number(),
-                    d.product_string()
-                );
-                if let Ok(dev) = d.open_device(&api) {
-                    let mut buf = [0u8; 4096];
-                    if let Ok(len) = dev.get_report_descriptor(&mut buf) {
-                        println!("  descriptor ({len} B): {:02x?}", &buf[..len]);
-                        println!(
-                            "  output payload N = {:?}",
-                            output_len_from_descriptor(&buf[..len])
-                        );
+            for d in api.device_list() {
+                if let Some(spec) = find_spec(d.vendor_id(), d.product_id()) {
+                    found = true;
+                    println!(
+                        "[{}] (verified: {}) {:?} usage_page={:#06x} usage={:#x} iface={} product={:?}",
+                        spec.name,
+                        spec.verified,
+                        d.path(),
+                        d.usage_page(),
+                        d.usage(),
+                        d.interface_number(),
+                        d.product_string()
+                    );
+                    if let Ok(dev) = d.open_device(&api) {
+                        let mut buf = [0u8; 4096];
+                        if let Ok(len) = dev.get_report_descriptor(&mut buf) {
+                            println!("  descriptor ({len} B): {:02x?}", &buf[..len]);
+                            println!(
+                                "  output payload N = {:?}",
+                                output_len_from_descriptor(&buf[..len])
+                            );
+                        }
                     }
                 }
             }
@@ -166,11 +178,15 @@ fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         // the product: driver + plugin host + built-in actions in one process
-        Some("run") => app::run(
-            Path::new(a(1).ok_or("run <sdProfile>")?),
-            &plugins_dir(),
-            n_env,
-        ),
+        Some("run") => {
+            let spec = select_device()?;
+            app::run(
+                Path::new(a(1).ok_or("run <sdProfile>")?),
+                &plugins_dir(),
+                n_env,
+                spec,
+            )
+        }
         Some("edit") => edit::run(&args[1..]),
         // Double click / shell: open the editor with this package staged, never install it directly.
         Some("install") => edit::run_install(a(1).ok_or("install <paquete>")?),
@@ -181,7 +197,8 @@ fn run(args: &[String]) -> Result<(), String> {
             let dir = a(1).ok_or("scene <sdProfile>")?;
             let jp = scene_jpegs(Path::new(dir), &plugins_dir())?;
             let api = HidApi::new().map_err(|e| e.to_string())?;
-            let d = Dock::open(&api, n_env)?;
+            let spec = select_device()?;
+            let d = Dock::open_with_n(&api, spec, n_env)?;
             println!("N = {}", d.n);
             d.init(80)?;
             for (k, j) in &jp {
@@ -191,7 +208,8 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         Some("bright") => {
             let api = HidApi::new().map_err(|e| e.to_string())?;
-            let d = Dock::open(&api, n_env)?;
+            let spec = select_device()?;
+            let d = Dock::open_with_n(&api, spec, n_env)?;
             d.send(&brightness(
                 d.n,
                 a(1).and_then(|v| v.parse().ok()).ok_or("bright <0-100>")?,
@@ -243,7 +261,8 @@ fn run(args: &[String]) -> Result<(), String> {
         // poll GET_REPORT (input id 0) / feature reports and print when content changes (key-held state?)
         Some("poll") => {
             let api = HidApi::new().map_err(|e| e.to_string())?;
-            let d = Dock::open(&api, n_env)?;
+            let spec = select_device()?;
+            let d = Dock::open_with_n(&api, spec, n_env)?;
             d.init(80)?;
             let kind = a(1).unwrap_or("input");
             let mut prev: Vec<u8> = vec![];
@@ -274,7 +293,8 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         Some("watch") => {
             let api = HidApi::new().map_err(|e| e.to_string())?;
-            let d = Dock::open(&api, n_env)?;
+            let spec = select_device()?;
+            let d = Dock::open_with_n(&api, spec, n_env)?;
             println!(
                 "N = {}; press keys (Ctrl+C to stop); raw reports printed",
                 d.n

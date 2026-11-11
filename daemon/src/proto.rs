@@ -1,12 +1,114 @@
 //! AKP153E wire protocol. Pure functions, no I/O. Spec: docs/research/hid-protocol.md.
 //! Every packet returned here is the payload (no report ID); `wire()` prepends 0x00.
 
-pub const VID: u16 = 0x0300;
-pub const PID: u16 = 0x1010;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceSpec {
+    pub name: &'static str,
+    pub manifest_id: &'static str, /* the DeviceUUID in profiles */
+    pub vid: u16,
+    pub pid: u16,
+    pub lcd_keys: u8,
+    pub side_keys: u8,
+    pub key_px: u32,
+    pub side_px: u32,
+    pub max_jpeg: usize,
+    pub verified: bool,
+}
+
+impl DeviceSpec {
+    #[allow(dead_code)]
+    pub const fn total_keys(&self) -> u8 {
+        self.lcd_keys + self.side_keys
+    }
+
+    pub const fn image_px(&self, key: u8) -> u32 {
+        if key > self.lcd_keys {
+            self.side_px
+        } else {
+            self.key_px
+        }
+    }
+}
+
+pub const DEVICES: &[DeviceSpec] = &[
+    // Primary hardware target: verified on real AKP153E physical device.
+    // Source: docs/research/hid/hid-protocol.md §0, §3.1, §4.
+    DeviceSpec {
+        name: "AKP153E",
+        manifest_id: "AKP153E",
+        vid: 0x0300,
+        pid: 0x1010,
+        lcd_keys: 15,
+        side_keys: 3,
+        key_px: 85,
+        side_px: 80,
+        max_jpeg: 9000,
+        verified: true,
+    },
+    // AKP153E rev. 2 (pv3 / firmware V3 "293SV3"): 15 LCD keys + 3 side cells, 95x95 keys / 82x82 side cells.
+    // Source: docs/research/community/community-ideas.md §1.2, §1.4, §7; docs/research/hid/keystate-modes.md §3.
+    DeviceSpec {
+        name: "AKP153E-REV2",
+        manifest_id: "APK153E_293SV3",
+        vid: 0x0300,
+        pid: 0x3010,
+        lcd_keys: 15,
+        side_keys: 3,
+        key_px: 95,
+        side_px: 82,
+        max_jpeg: 9000,
+        verified: false,
+    },
+    // AKP153 international / Mirabox 293S analyzed in Deckhand: 15 LCD keys + 3 side cells, 85x85 / 80x80.
+    // Source: docs/research/community/community-ideas.md §1.2, §1.5.
+    DeviceSpec {
+        name: "AKP153",
+        manifest_id: "AKP153",
+        vid: 0x5548,
+        pid: 0x6674,
+        lcd_keys: 15,
+        side_keys: 3,
+        key_px: 85,
+        side_px: 80,
+        max_jpeg: 9000,
+        verified: false,
+    },
+];
+
+pub const DEFAULT_DEVICE: &DeviceSpec = &DEVICES[0];
+#[allow(dead_code)]
+pub const VID: u16 = DEFAULT_DEVICE.vid;
+#[allow(dead_code)]
+pub const PID: u16 = DEFAULT_DEVICE.pid;
 pub const HEARTBEAT_SECS: u64 = 10;
-pub const MAX_JPEG: usize = 9000;
-pub const KEY_PX: u32 = 85;
-pub const SIDE_PX: u32 = 80;
+pub const MAX_JPEG: usize = DEFAULT_DEVICE.max_jpeg;
+pub const KEY_PX: u32 = DEFAULT_DEVICE.key_px;
+pub const SIDE_PX: u32 = DEFAULT_DEVICE.side_px;
+
+pub fn select_device() -> Result<&'static DeviceSpec, String> {
+    if let Ok(name) = std::env::var("ORCADECK_DEVICE") {
+        let name = name.trim();
+        if let Some(spec) = DEVICES.iter().find(|d| d.name.eq_ignore_ascii_case(name)) {
+            Ok(spec)
+        } else {
+            let known: Vec<&str> = DEVICES.iter().map(|d| d.name).collect();
+            Err(format!(
+                "unknown device '{name}' in ORCADECK_DEVICE; known: {}",
+                known.join(", ")
+            ))
+        }
+    } else {
+        // default selection = the AKP153E (verified)
+        DEVICES
+            .iter()
+            .find(|d| d.verified)
+            .ok_or_else(|| "no verified device in spec table".into())
+    }
+}
+
+pub fn find_spec(vid: u16, pid: u16) -> Option<&'static DeviceSpec> {
+    DEVICES.iter().find(|d| d.vid == vid && d.pid == pid)
+}
 
 /// Hardware key index for profile coordinates (col 0..4 keys, col 5 side cells; row 0..2).
 pub fn key_index(col: u8, row: u8) -> Option<u8> {
@@ -21,11 +123,11 @@ pub fn key_index(col: u8, row: u8) -> Option<u8> {
 }
 
 pub fn image_px(key: u8) -> u32 {
-    if key >= 16 {
-        SIDE_PX
-    } else {
-        KEY_PX
-    }
+    DEFAULT_DEVICE.image_px(key)
+}
+
+pub fn image_px_for(spec: &DeviceSpec, key: u8) -> u32 {
+    spec.image_px(key)
 }
 
 /// `CRT\0\0` + verb, zero-padded to `n` bytes; `extra` = (offset, value) pairs.
@@ -213,5 +315,101 @@ mod tests {
             0xC0,
         ];
         assert_eq!(output_len_from_descriptor(&d), Some(512));
+    }
+
+    #[test]
+    fn akp153e_byte_identical_packets() {
+        let n = 512;
+
+        // 1. Handshake reply: starts with b"HAN" and zero-padded to 512 bytes
+        let mut expected_han = vec![0u8; n];
+        expected_han[0..3].copy_from_slice(b"HAN");
+        assert_eq!(handshake_reply(n), expected_han);
+
+        // 2. Heartbeat: starts with b"CRT\0\0CONNECT" and zero-padded to 512 bytes
+        let mut expected_hb = vec![0u8; n];
+        expected_hb[0..3].copy_from_slice(b"CRT");
+        expected_hb[5..12].copy_from_slice(b"CONNECT");
+        assert_eq!(heartbeat(n), expected_hb);
+
+        // 3. BAT header for key 1 with 1000-byte JPEG (0x03E8)
+        let mut expected_bat1 = vec![0u8; n];
+        expected_bat1[0..3].copy_from_slice(b"CRT");
+        expected_bat1[5..8].copy_from_slice(b"BAT");
+        expected_bat1[0x0a] = 0x03;
+        expected_bat1[0x0b] = 0xE8;
+        expected_bat1[0x0c] = 1;
+        let dummy_jpeg = vec![0x42u8; 1000];
+        let packets_key1 = image_packets(n, 1, &dummy_jpeg);
+        assert_eq!(packets_key1[0], expected_bat1);
+
+        // 4. BAT header for key 15 with 1000-byte JPEG (0x03E8)
+        let mut expected_bat15 = vec![0u8; n];
+        expected_bat15[0..3].copy_from_slice(b"CRT");
+        expected_bat15[5..8].copy_from_slice(b"BAT");
+        expected_bat15[0x0a] = 0x03;
+        expected_bat15[0x0b] = 0xE8;
+        expected_bat15[0x0c] = 15;
+        let packets_key15 = image_packets(n, 15, &dummy_jpeg);
+        assert_eq!(packets_key15[0], expected_bat15);
+
+        // 5. STP (flush): starts with b"CRT\0\0STP" and zero-padded to 512 bytes
+        let mut expected_stp = vec![0u8; n];
+        expected_stp[0..3].copy_from_slice(b"CRT");
+        expected_stp[5..8].copy_from_slice(b"STP");
+        assert_eq!(flush(n), expected_stp);
+
+        // 6. image_px returns 85 for keys 1..=15 and 80 for keys 16..=18
+        for k in 1..=15 {
+            assert_eq!(image_px(k), 85, "key {k} should be 85px");
+            assert_eq!(DEFAULT_DEVICE.image_px(k), 85);
+            assert_eq!(image_px_for(DEFAULT_DEVICE, k), 85);
+        }
+        for k in 16..=18 {
+            assert_eq!(image_px(k), 80, "key {k} should be 80px");
+            assert_eq!(DEFAULT_DEVICE.image_px(k), 80);
+            assert_eq!(image_px_for(DEFAULT_DEVICE, k), 80);
+        }
+        // 7. Verify device constants and geometry helpers
+        assert_eq!(DEFAULT_DEVICE.total_keys(), 18);
+        assert_eq!(VID, 0x0300);
+        assert_eq!(PID, 0x1010);
+        assert_eq!(KEY_PX, 85);
+        assert_eq!(SIDE_PX, 80);
+        assert_eq!(MAX_JPEG, 9000);
+        assert_eq!(HEARTBEAT_SECS, 10);
+    }
+
+    #[test]
+    fn select_device_env_and_defaults() {
+        let def = select_device().expect("default device");
+        assert_eq!(def.name, "AKP153E");
+        assert!(def.verified);
+
+        assert_eq!(find_spec(0x0300, 0x1010).map(|s| s.name), Some("AKP153E"));
+        assert_eq!(
+            find_spec(0x0300, 0x3010).map(|s| s.name),
+            Some("AKP153E-REV2")
+        );
+        assert_eq!(find_spec(0x5548, 0x6674).map(|s| s.name), Some("AKP153"));
+        assert_eq!(find_spec(0x1234, 0x5678), None);
+
+        // Case-insensitive lookup and unverified specs
+        let rev2 = DEVICES
+            .iter()
+            .find(|d| d.name.eq_ignore_ascii_case("akp153e-rev2"))
+            .unwrap();
+        assert_eq!(rev2.pid, 0x3010);
+        assert!(!rev2.verified);
+        assert_eq!(rev2.image_px(1), 95);
+        assert_eq!(rev2.image_px(16), 82);
+
+        let intl = DEVICES
+            .iter()
+            .find(|d| d.name.eq_ignore_ascii_case("akp153"))
+            .unwrap();
+        assert_eq!(intl.vid, 0x5548);
+        assert_eq!(intl.pid, 0x6674);
+        assert!(!intl.verified);
     }
 }
