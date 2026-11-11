@@ -14,10 +14,19 @@ mod api;
 mod http;
 mod pi_static;
 mod sqlite;
+mod staged;
 pub mod store;
 
 pub use api::validate_scene;
 pub use store::{Error, FsStore, Plugin, SceneInfo, Store};
+
+/// Validates a package path handed over by the OS shell (double click, `orcadeck install`).
+pub fn validate_package(raw: &str) -> Result<std::path::PathBuf, String> {
+    staged::validate(std::path::Path::new(raw))
+}
+
+/// Keeps a validated package for a single install and returns its one-use token.
+pub use staged::stage_package;
 
 /// Bridge to the live plugin host. The daemon supplies one while `run` is active; the standalone
 /// editor leaves [`FsStore::inspector`] at `None` and the inspector endpoint answers 501.

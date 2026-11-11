@@ -145,8 +145,11 @@ fn wait_for_ctrl_c() {
 fn open_browser(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        // Quote the URL: `cmd` treats a bare `&` (the install token parameter) as a command separator.
         std::process::Command::new("cmd")
-            .args(["/c", "start", "", url])
+            .arg("/c")
+            .raw_arg(format!("start \"\" \"{url}\""))
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -158,6 +161,18 @@ fn open_browser(url: &str) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+fn editor_store(paths: EditPaths) -> FsStore {
+    FsStore {
+        profiles: paths.profiles,
+        plugins: paths.plugins,
+        builtin_plugins: paths.builtin_plugins,
+        data: paths.data,
+        legacy_config: paths.legacy_config,
+        downloads: None, // %USERPROFILE%\Downloads, scanned only when the UI asks
+        inspector: None, // the daemon attaches its live host when edit runs inside `run`
+    }
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
@@ -213,15 +228,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
 
     let paths = resolve_paths();
-    let store = FsStore {
-        profiles: paths.profiles,
-        plugins: paths.plugins,
-        builtin_plugins: paths.builtin_plugins,
-        data: paths.data,
-        legacy_config: paths.legacy_config,
-        downloads: None, // %USERPROFILE%\Downloads, scanned only when the UI asks
-        inspector: None, // the daemon attaches its live host when edit runs inside `run`
-    };
+    let store = editor_store(paths);
 
     let server = Server::start(Arc::new(store), port)
         .map_err(|e| format!("no se pudo iniciar el servidor web: {e}"))?;
@@ -238,6 +245,42 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     wait_for_ctrl_c();
 
+    println!("\nDeteniendo el editor...");
+    server.stop();
+    Ok(())
+}
+
+/// `orcadeck install <paquete>`: opens the editor with the package staged. Inside a live `run` the
+/// package is staged there over the ctl pipe; otherwise this process serves its own editor.
+pub fn run_install(raw: &str) -> Result<(), String> {
+    let pkg = orcadeck_web::validate_package(raw).map_err(|e| format!("{raw}: {e}"))?;
+    let path = pkg.to_string_lossy().to_string();
+
+    if let Some(res) = ctl::request_install(&path) {
+        let session = res.map_err(|e| format!("orcadeck run no pudo abrir el editor: {e}"))?;
+        println!("OrcaDeck: instala el plugin en el navegador (dentro de orcadeck run).");
+        println!("{}", session.url());
+        println!("Presiona Ctrl+C para cerrar el editor.");
+        if let Err(e) = open_browser(session.url()) {
+            eprintln!("aviso: no se pudo abrir el navegador ({e}); abre {} a mano", session.url());
+        }
+        wait_for_ctrl_c();
+        println!("\nDeteniendo el editor...");
+        drop(session);
+        return Ok(());
+    }
+
+    let token = orcadeck_web::stage_package(&path).map_err(|e| format!("no se pudo preparar el paquete: {e}"))?;
+    let server = Server::start(Arc::new(editor_store(resolve_paths())), 0)
+        .map_err(|e| format!("no se pudo iniciar el servidor web: {e}"))?;
+    let url = format!("{}&install={token}", server.url());
+    println!("OrcaDeck: instala el plugin en el navegador.");
+    println!("{url}");
+    println!("Presiona Ctrl+C para cerrar el editor.");
+    if let Err(e) = open_browser(&url) {
+        eprintln!("aviso: no se pudo abrir el navegador ({e}); abre {url} a mano");
+    }
+    wait_for_ctrl_c();
     println!("\nDeteniendo el editor...");
     server.stop();
     Ok(())

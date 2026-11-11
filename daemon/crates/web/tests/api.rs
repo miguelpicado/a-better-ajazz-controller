@@ -177,6 +177,10 @@ fn security_gate() {
     assert_eq!(r.status, 303);
     assert!(r.has(&format!("set-cookie: orcadeck_{port}={tok}; Path=/; HttpOnly; SameSite=Strict")));
     assert!(r.has("location: /\r") || r.head.to_ascii_lowercase().ends_with("location: /"));
+    // A staged package token survives the token->cookie redirect; it is never a path.
+    let r = raw(&s, &format!("GET /?token={tok}&install=abc123 HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"));
+    assert_eq!(r.status, 303);
+    assert!(r.has("location: /?install=abc123"));
     let r = raw(&s, &format!("GET /?token=wrong HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"));
     assert_eq!(r.status, 200);
     assert!(!r.has("set-cookie"));
@@ -409,6 +413,52 @@ fn plugins_inbox_install_remove() {
     assert!(!dest.exists());
     assert_eq!(del("com.test.inbox"), 403);
     assert!(!call(&s, "GET", "/api/plugins", None).json().as_array().unwrap().iter().any(|p| p["uuid"] == "com.test.inbox"));
+    s.stop();
+    let _ = fs::remove_dir_all(&t);
+}
+
+#[test]
+fn staged_package_is_token_addressed_and_single_use() {
+    let t = fixture("staged");
+    let s = start(&t);
+    let pkg = t.join("outside/com.test.evil.sdPlugin");
+
+    // Outside Downloads on purpose: the shell can hand over any path, the page gets only a token.
+    assert!(orcadeck_web::stage_package(&t.join("downloads/notes.txt").to_string_lossy()).is_err());
+    assert!(orcadeck_web::stage_package(&t.join("downloads/nope.zip").to_string_lossy()).is_err());
+    let token = orcadeck_web::stage_package(&pkg.to_string_lossy()).unwrap();
+
+    let r = call(&s, "GET", &format!("/api/plugins/staged?token={token}"), None);
+    assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+    let j = r.json();
+    assert_eq!(
+        (j["uuid"].as_str(), j["token"].as_str(), j["file"].as_str(), j["name"].as_str()),
+        (Some("com.test.evil"), Some(token.as_str()), Some("com.test.evil.sdPlugin"), Some("Evil"))
+    );
+    assert!(j.get("path").is_none(), "the page never receives the absolute path");
+    assert!(!String::from_utf8_lossy(&r.body).contains(t.to_string_lossy().as_ref()));
+    assert_eq!(call(&s, "GET", "/api/plugins/staged?token=nope", None).status, 404);
+    assert_eq!(call(&s, "GET", "/api/plugins/staged", None).status, 400);
+
+    // Confirmation goes through the existing plugman install.
+    let install = |force: bool, token: &str| {
+        call(&s, "POST", "/api/plugins/install", Some(json!({ "staged": token, "force": force })))
+    };
+    let r = install(false, &token);
+    assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+    assert!(t.join("plugins/com.test.evil.sdPlugin/manifest.json").is_file());
+
+    // Spent: the same token cannot read or install again.
+    assert_eq!(call(&s, "GET", &format!("/api/plugins/staged?token={token}"), None).status, 404);
+    assert_eq!(install(false, &token).status, 404);
+
+    // A conflict keeps the token alive so the page can retry with force; success then spends it.
+    let token = orcadeck_web::stage_package(&pkg.to_string_lossy()).unwrap();
+    assert_eq!(install(false, &token).status, 409);
+    assert_eq!(call(&s, "GET", &format!("/api/plugins/staged?token={token}"), None).status, 200);
+    assert_eq!(install(true, &token).status, 200);
+    assert_eq!(call(&s, "GET", &format!("/api/plugins/staged?token={token}"), None).status, 404);
+
     s.stop();
     let _ = fs::remove_dir_all(&t);
 }

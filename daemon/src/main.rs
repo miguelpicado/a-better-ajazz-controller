@@ -3,6 +3,7 @@ mod ctl;
 mod edit;
 mod proto;
 mod profile;
+mod register;
 mod render;
 mod scenes;
 
@@ -131,6 +132,11 @@ fn run(args: &[String]) -> Result<(), String> {
         // the product: driver + plugin host + built-in actions in one process
         Some("run") => app::run(Path::new(a(1).ok_or("run <sdProfile>")?), &plugins_dir(), n_env),
         Some("edit") => edit::run(&args[1..]),
+        // Double click / shell: open the editor with this package staged, never install it directly.
+        Some("install") => edit::run_install(a(1).ok_or("install <paquete>")?),
+        // Per-user file association for .streamDeckPlugin/.sdPlugin (HKCU: no admin).
+        Some("register") => register::register(),
+        Some("unregister") => register::unregister(),
         Some("scene") => {
             let dir = a(1).ok_or("scene <sdProfile>")?;
             let jp = scene_jpegs(Path::new(dir), &plugins_dir())?;
@@ -233,9 +239,26 @@ fn run(args: &[String]) -> Result<(), String> {
                 println!("{inp:?}  raw[..16]={:02x?}", &b[..k.min(16)]);
             }
         }
-        _ => Err("usage: orcadeck render|probe|scene|run|bright|watch|edit (see docs)".into()),
+        Some("help") | Some("-h") | Some("--help") => {
+            println!("{USAGE}");
+            Ok(())
+        }
+        _ => Err(USAGE.into()),
     }
 }
+
+const USAGE: &str = "\
+uso: orcadeck <comando>
+
+  run <perfil>        driver HID + host de plugins + acciones integradas
+  edit [--port N] [--no-open]   editor web (dentro de run si está vivo)
+  install <paquete>   abre el editor para instalar un .streamDeckPlugin/.sdPlugin/.zip
+  register            asocia esos ficheros a OrcaDeck para este usuario (sin admin)
+  unregister          deshace la asociación y restaura la anterior
+  render <perfil> <outDir>      escena a JPEG (sin dispositivo)
+  scene <perfil> | bright <0-100> | watch | probe | poll | hidwatch
+
+Detalle: docs/guide/USAGE.md";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
