@@ -26,12 +26,11 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 
 #[test]
 fn orcadock_plugin_paints_and_reacts() {
-    let src = std::env::var_os("ORCADOCK_PLUGIN")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../../tools/legacy/com.miguelpicado.orcadock.sdPlugin")
-        });
+    // Opt-in: needs Node plus the legacy plugin's dependencies (tools/legacy), so it is skipped by default.
+    let Some(src) = std::env::var_os("ORCADOCK_PLUGIN").map(PathBuf::from) else {
+        eprintln!("skipped: set ORCADOCK_PLUGIN to the plugin folder to run this test");
+        return;
+    };
     if !src.is_dir() || !src.join("manifest.json").is_file() {
         eprintln!(
             "skipped: plugin not found at {} (set ORCADOCK_PLUGIN)",

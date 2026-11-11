@@ -74,7 +74,7 @@ loopback y carpetas temporales.
 | `daemon/src/edit.rs` | resolución de rutas por defecto y con overrides |
 | `daemon/crates/builtin/tests/port.rs` | paridad con `test.js` del plugin Node, `Registry` con Orca simulado, rasterizado |
 | `daemon/crates/host/tests/fake_plugin.rs` | WebSocket real de loopback con un plugin falso: registro, `willAppear`, teclas, ajustes, PI, origen, reinicio/stop |
-| `daemon/crates/host/tests/real_plugin.rs` | plugin Node real; se **omite** si no hay `node` o la carpeta del plugin |
+| `daemon/crates/host/tests/real_plugin.rs` | plugin Node real; solo corre con `ORCADOCK_PLUGIN` apuntando a la carpeta del plugin y `node` disponible (si no, se omite) |
 | `daemon/crates/plugman/tests/plugman.rs` | zips de fixture, manifests cifrados/planos, overlay, `force`/backup, límites, traversal |
 | `daemon/crates/web/tests/api.rs` | HTTP real en loopback: seguridad (token/Host/Origin), escenas, celdas, plugins, imágenes |
 | `daemon/crates/web/tests/real_folders.rs` | lectura de carpetas reales de Stream Dock; se **omite** si no existen |
