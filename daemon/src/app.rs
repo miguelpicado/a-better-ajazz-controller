@@ -17,7 +17,7 @@ use crate::{
     Dock,
 };
 use base64::Engine;
-use hidapi::HidApi;
+use hidapi::{HidApi, HidDevice};
 use image::{imageops, DynamicImage};
 use orcadeck_builtin as bi;
 use orcadeck_host as host;
@@ -416,6 +416,48 @@ impl Runtime {
             self.send(k, img, "");
         }
         self.flush_settings(now);
+    }
+
+    /// Computes the nearest deadline for pending feedback restores, retire grace periods,
+    /// or debounced settings writes.
+    fn next_deadline(&self, now: Instant) -> Option<Instant> {
+        let mut nearest: Option<Instant> = None;
+        let mut update = |cand: Instant| {
+            nearest = Some(match nearest {
+                Some(cur) => cur.min(cand),
+                None => cand,
+            });
+        };
+
+        // Feedback overlay restores
+        {
+            let restores = self.restores.lock().unwrap_or_else(|e| e.into_inner());
+            for &t in restores.values() {
+                update(t);
+            }
+        }
+
+        // Plugin retire grace deadlines
+        {
+            let retire = self.retire.lock().unwrap_or_else(|e| e.into_inner());
+            for &t in retire.values() {
+                update(t);
+            }
+        }
+
+        // Debounced settings flush
+        {
+            let settings = self.settings.lock().unwrap_or_else(|e| e.into_inner());
+            if !settings.pending.is_empty() {
+                let due = match settings.last {
+                    Some(last) => last + Duration::from_millis(SETTINGS_WRITE_MS),
+                    None => now,
+                };
+                update(due);
+            }
+        }
+
+        nearest
     }
 
     fn queue_settings(&self, context: &str, settings: Value) {
@@ -951,13 +993,15 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
         .spawn(move || {
             let mut ctx_key: HashMap<String, u8> = HashMap::new();
             loop {
-                for (ctx, svg) in registry.tick(bi::now_ms()) {
+                let now = bi::now_ms();
+                for (ctx, svg) in registry.tick(now) {
                     let Some(&k) = ctx_key.get(&ctx) else { continue };
                     if let Some(img) = svg_image(&svg, image_px(k)) {
                         builtin.paint(&ctx, k, img);
                     }
                 }
-                match msg_rx.recv_timeout(Duration::from_millis(400)) {
+                let timeout = registry.next_timeout(bi::now_ms());
+                match msg_rx.recv_timeout(timeout) {
                     Ok(BuiltinMsg::Press(ctx)) => {
                         let fb = registry.key_down(&ctx, bi::now_ms());
                         if fb != bi::Feedback::None {
@@ -1021,6 +1065,216 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     }
 }
 
+fn hid_reader_mode() -> bool {
+    std::env::var("ORCADECK_HID_READER")
+        .map(|v| v.eq_ignore_ascii_case("thread"))
+        .unwrap_or(false)
+}
+
+pub trait DockWriter {
+    fn report_n(&self) -> usize;
+    fn send(&mut self, payload: &[u8]) -> Result<(), String>;
+    fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String>;
+    fn flush(&mut self) -> Result<(), String>;
+}
+
+impl DockWriter for Dock {
+    fn report_n(&self) -> usize {
+        self.n
+    }
+    fn send(&mut self, payload: &[u8]) -> Result<(), String> {
+        Dock::send(self, payload)
+    }
+    fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String> {
+        Dock::set_key(self, key, jpeg)
+    }
+    fn flush(&mut self) -> Result<(), String> {
+        Dock::flush(self)
+    }
+}
+
+pub enum ReaderMsg {
+    Data(Vec<u8>),
+    Error(String),
+}
+
+fn open_read_device(api: &HidApi) -> Result<HidDevice, String> {
+    let mut cands: Vec<_> = api.device_list().filter(|d| d.vendor_id() == VID && d.product_id() == PID).collect();
+    cands.sort_by_key(|d| if d.usage_page() >= 0xFF00 { 0 } else { 1 });
+    let info = cands.first().ok_or("device not found (reader handle)")?;
+    info.open_device(api).map_err(|e| e.to_string())
+}
+
+fn compute_next_wake(
+    pending: &HashMap<u8, (DynamicImage, u64)>,
+    last_batch: Instant,
+    gap: Duration,
+    hb: Instant,
+    rt: &Runtime,
+    now: Instant,
+) -> Instant {
+    let mut wake = hb + Duration::from_secs(HEARTBEAT_SECS);
+    if !pending.is_empty() {
+        wake = wake.min(last_batch + gap);
+    }
+    if let Some(d) = rt.next_deadline(now) {
+        wake = wake.min(d);
+    }
+    wake
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_input_packet<W: DockWriter>(
+    buf: &[u8],
+    dock: &mut W,
+    by_key: &mut HashMap<u8, Target>,
+    msg_tx: &mpsc::Sender<BuiltinMsg>,
+    host: &host::Host,
+    scenes: &mut SceneSet,
+    plugins: &Path,
+    latest: &mut HashMap<u8, DynamicImage>,
+    found: &[host::Plugin],
+    running: &mut HashSet<String>,
+    rt: &Runtime,
+    builtins: &HashSet<&'static str>,
+    pending: &mut HashMap<u8, (DynamicImage, u64)>,
+    t0: Instant,
+) -> Result<(), String> {
+    if std::env::var_os("ORCADECK_TRACE").is_some() {
+        eprintln!("{:>6}ms in {:02x?}", t0.elapsed().as_millis(), &buf[..buf.len().min(16)]);
+    }
+    match parse_input(buf) {
+        Input::Handshake => dock.send(&handshake_reply(dock.report_n()))?,
+        Input::Key { key, .. } if (1..=15).contains(&key) => match by_key.get(&key).cloned() {
+            Some(Target::Builtin(ctx)) => {
+                let _ = msg_tx.send(BuiltinMsg::Press(ctx));
+            }
+            Some(Target::Plugin(ctx)) => {
+                host.key(&ctx, true);
+                host.key(&ctx, false);
+            }
+            Some(Target::Scene(target)) => {
+                match switch_scene(scenes, &target, plugins, by_key, latest, host, found, running, msg_tx, rt, builtins) {
+                    Ok(paints) => {
+                        let gen = rt.gen.load(Ordering::Relaxed);
+                        pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
+                    }
+                    Err(e) => eprintln!("scene: {e}"),
+                }
+            }
+            None => {}
+        },
+        _ => {}
+    }
+    Ok(())
+}
+
+fn process_paints<W: DockWriter>(
+    rx: &mpsc::Receiver<Paint>,
+    rt: &Runtime,
+    latest: &mut HashMap<u8, DynamicImage>,
+    pending: &mut HashMap<u8, (DynamicImage, u64)>,
+    last_batch: &mut Instant,
+    gap: Duration,
+    dock: &mut W,
+    t0: Instant,
+) -> Result<(), String> {
+    while let Ok(p) = rx.try_recv() {
+        if p.gen < rt.gen.load(Ordering::Relaxed) || rt.retired(&p.ctx) {
+            continue;
+        }
+        latest.insert(p.key, p.img.clone());
+        pending.insert(p.key, (p.img, p.gen));
+    }
+    if !pending.is_empty() && last_batch.elapsed() >= gap {
+        let gen = rt.gen.load(Ordering::Relaxed);
+        pending.retain(|_, (_, g)| *g >= gen);
+        if !pending.is_empty() {
+            let (started, count) = (Instant::now(), pending.len());
+            let mut bytes = 0;
+            for (key, (img, _)) in pending.drain() {
+                let j = render::key_jpeg(&img, key);
+                bytes += j.len();
+                dock.set_key(key, &j)?;
+            }
+            dock.flush()?;
+            *last_batch = Instant::now();
+            if std::env::var_os("ORCADECK_TRACE").is_some() {
+                eprintln!("{:>6}ms painted {count} keys {bytes} B in {} ms", t0.elapsed().as_millis(), started.elapsed().as_millis());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn session_loop_threaded<W: DockWriter>(
+    event_rx: &mpsc::Receiver<ReaderMsg>,
+    dock: &mut W,
+    rx: &mpsc::Receiver<Paint>,
+    reload: &mpsc::Receiver<ReloadCmd>,
+    latest: &mut HashMap<u8, DynamicImage>,
+    by_key: &mut HashMap<u8, Target>,
+    host: &host::Host,
+    msg_tx: &mpsc::Sender<BuiltinMsg>,
+    rt: &Runtime,
+    scenes: &mut SceneSet,
+    plugins: &Path,
+    found: &[host::Plugin],
+    running: &mut HashSet<String>,
+    builtins: &HashSet<&'static str>,
+    pending: &mut HashMap<u8, (DynamicImage, u64)>,
+    gap: Duration,
+    mut last_batch: Instant,
+    mut hb: Instant,
+    t0: Instant,
+) -> Result<(), String> {
+    loop {
+        let now = Instant::now();
+        let next_wake = compute_next_wake(pending, last_batch, gap, hb, rt, now);
+        let timeout = next_wake.saturating_duration_since(now);
+
+        match event_rx.recv_timeout(timeout) {
+            Ok(ReaderMsg::Data(buf)) => {
+                handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, pending, t0)?;
+            }
+            Ok(ReaderMsg::Error(err)) => {
+                return Err(err);
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err("reader thread disconnected".into());
+            }
+        }
+
+        while let Ok(msg) = event_rx.try_recv() {
+            match msg {
+                ReaderMsg::Data(buf) => {
+                    handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, pending, t0)?;
+                }
+                ReaderMsg::Error(err) => return Err(err),
+            }
+        }
+
+        rt.tick();
+        retire_due(rt, host, running, Instant::now());
+
+        while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
+            if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
+                latest.insert(key, img.clone());
+                pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
+            }
+        }
+
+        process_paints(rx, rt, latest, pending, &mut last_batch, gap, dock, t0)?;
+
+        if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
+            dock.send(&heartbeat(dock.report_n()))?;
+            hb = Instant::now();
+        }
+    }
+}
+
 /// One connection to the device. Returns Err when it is lost or cannot be opened.
 #[allow(clippy::too_many_arguments)]
 fn session(
@@ -1039,7 +1293,7 @@ fn session(
     builtins: &HashSet<&'static str>,
 ) -> Result<(), String> {
     let api = HidApi::new().map_err(|e| e.to_string())?;
-    let dock = Dock::open(&api, n)?;
+    let mut dock = Dock::open(&api, n)?;
     dock.init(80)?;
     eprintln!("device ready, N = {}", dock.n);
     let gen = rt.gen.load(Ordering::Relaxed);
@@ -1048,75 +1302,78 @@ fn session(
     let mut last_batch = Instant::now() - gap;
     let mut hb = Instant::now();
     let t0 = Instant::now();
-    let mut buf = vec![0u8; dock.n + 1];
-    loop {
-        let k = dock.dev.read_timeout(&mut buf, 30).map_err(|e| e.to_string())?;
-        if k > 0 {
-            if std::env::var_os("ORCADECK_TRACE").is_some() {
-                eprintln!("{:>6}ms in {:02x?}", t0.elapsed().as_millis(), &buf[..k.min(16)]);
+
+    if !hid_reader_mode() {
+        let mut buf = vec![0u8; dock.n + 1];
+        loop {
+            let k = dock.dev.read_timeout(&mut buf, 30).map_err(|e| e.to_string())?;
+            if k > 0 {
+                handle_input_packet(&buf[..k], &mut dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, &mut pending, t0)?;
             }
-            match parse_input(&buf[..k]) {
-                Input::Handshake => dock.send(&handshake_reply(dock.n))?,
-                Input::Key { key, .. } if (1..=15).contains(&key) => match by_key.get(&key).cloned() {
-                    Some(Target::Builtin(ctx)) => {
-                        let _ = msg_tx.send(BuiltinMsg::Press(ctx));
-                    }
-                    Some(Target::Plugin(ctx)) => {
-                        host.key(&ctx, true);
-                        host.key(&ctx, false);
-                    }
-                    Some(Target::Scene(target)) => {
-                        match switch_scene(scenes, &target, plugins, by_key, latest, host, found, running, msg_tx, rt, builtins) {
-                            Ok(paints) => {
-                                let gen = rt.gen.load(Ordering::Relaxed);
-                                pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
+            rt.tick();
+            retire_due(rt, host, running, Instant::now());
+            // Editor saves: repaint just that key, through the same pending batch as everything else.
+            while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
+                if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
+                    latest.insert(key, img.clone());
+                    pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
+                }
+            }
+            process_paints(rx, rt, latest, &mut pending, &mut last_batch, gap, &mut dock, t0)?;
+            if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
+                dock.send(&heartbeat(dock.n))?;
+                hb = Instant::now();
+            }
+        }
+    } else {
+        let (event_tx, event_rx) = mpsc::channel();
+        let read_dev = open_read_device(&api)?;
+        let report_n = dock.n;
+        let _reader = thread::Builder::new()
+            .name("hid-reader".into())
+            .spawn(move || {
+                let mut buf = vec![0u8; report_n + 1];
+                loop {
+                    match read_dev.read(&mut buf) {
+                        Ok(k) if k > 0 => {
+                            if event_tx.send(ReaderMsg::Data(buf[..k].to_vec())).is_err() {
+                                break;
                             }
-                            Err(e) => eprintln!("scene: {e}"),
+                        }
+                        Ok(_) => {
+                            let _ = event_tx.send(ReaderMsg::Error("read returned 0 bytes (device disconnected)".into()));
+                            break;
+                        }
+                        Err(e) => {
+                            let _ = event_tx.send(ReaderMsg::Error(e.to_string()));
+                            break;
                         }
                     }
-                    None => {}
-                },
-                _ => {}
-            }
-        }
-        rt.tick();
-        retire_due(rt, host, running, Instant::now());
-        // Editor saves: repaint just that key, through the same pending batch as everything else.
-        while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
-            if let Some((key, img)) = reload_cell(&scene, cell, rt, by_key, host, found, running, msg_tx, builtins, plugins) {
-                latest.insert(key, img.clone());
-                pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
-            }
-        }
-        while let Ok(p) = rx.try_recv() {
-            if p.gen < rt.gen.load(Ordering::Relaxed) || rt.retired(&p.ctx) {
-                continue;
-            }
-            latest.insert(p.key, p.img.clone());
-            pending.insert(p.key, (p.img, p.gen));
-        }
-        if !pending.is_empty() && last_batch.elapsed() >= gap {
-            let gen = rt.gen.load(Ordering::Relaxed);
-            pending.retain(|_, (_, g)| *g >= gen);
-            if !pending.is_empty() {
-                let (started, count) = (Instant::now(), pending.len());
-                let mut bytes = 0;
-                for (key, (img, _)) in pending.drain() {
-                    let j = render::key_jpeg(&img, key);
-                    bytes += j.len();
-                    dock.set_key(key, &j)?;
                 }
-                dock.flush()?;
-                last_batch = Instant::now();
-                if std::env::var_os("ORCADECK_TRACE").is_some() {
-                    eprintln!("{:>6}ms painted {count} keys {bytes} B in {} ms", t0.elapsed().as_millis(), started.elapsed().as_millis());
-                }
-            }
-        }
-        if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
-            dock.send(&heartbeat(dock.n))?;
-            hb = Instant::now();
-        }
+            })
+            .map_err(|e| e.to_string())?;
+
+        session_loop_threaded(
+            &event_rx,
+            &mut dock,
+            rx,
+            reload,
+            latest,
+            by_key,
+            host,
+            msg_tx,
+            rt,
+            scenes,
+            plugins,
+            found,
+            running,
+            builtins,
+            &mut pending,
+            gap,
+            last_batch,
+            hb,
+            t0,
+        )
     }
 }
 
@@ -1438,5 +1695,169 @@ mod tests {
 
         drop(session); // Ctrl+C in `orcadeck edit`
         server.join().expect("serve_edit returns and stops the server");
+    }
+
+    #[derive(Default)]
+    struct FakeWriter {
+        flushes: Vec<(Instant, usize)>,
+        keys_sent: Vec<(Instant, u8, Vec<u8>)>,
+        sent_payloads: Vec<Vec<u8>>,
+        n: usize,
+    }
+
+    impl DockWriter for FakeWriter {
+        fn report_n(&self) -> usize {
+            self.n
+        }
+        fn send(&mut self, payload: &[u8]) -> Result<(), String> {
+            self.sent_payloads.push(payload.to_vec());
+            Ok(())
+        }
+        fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String> {
+            self.keys_sent.push((Instant::now(), key, jpeg.to_vec()));
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<(), String> {
+            self.flushes.push((Instant::now(), self.keys_sent.len()));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn coalescing_delivers_latest_image_and_batches_stay_separated_by_gap() {
+        let dir = tmp("coalescing");
+        let (rt, rx) = runtime(&dir);
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let gap = Duration::from_millis(50);
+        let mut last_batch = Instant::now() - gap;
+        let mut writer = FakeWriter { n: 512, ..Default::default() };
+
+        // 1. Queue multiple frames for key 3 (e.g. Red, Green, Blue) during one gap
+        let red = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 0, 0])));
+        let green = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 255, 0])));
+        let blue = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([0, 0, 255])));
+
+        rt.send(3, red, "c");
+        rt.send(3, green, "c");
+        rt.send(3, blue.clone(), "c");
+
+        // Also queue another key 4
+        let white_img = white(KEY_PX);
+        rt.send(4, white_img, "c");
+
+        // Process batch
+        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+
+        // Verification:
+        // Key 3 must be sent only ONCE (coalesced to the latest image: blue)
+        // Key 4 must be sent once
+        assert_eq!(writer.flushes.len(), 1, "exactly one STP flush for the batch");
+        assert_eq!(writer.keys_sent.len(), 2, "2 keys sent");
+
+        let key3_sent = writer.keys_sent.iter().find(|(_, k, _)| *k == 3).expect("key 3 sent");
+        let expected_blue_jpeg = render::key_jpeg(&blue, 3);
+        assert_eq!(key3_sent.2, expected_blue_jpeg, "key 3 received the latest image (blue)");
+
+        // 2. Queue another frame for key 3 immediately (during the gap)
+        let yellow = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(KEY_PX, KEY_PX, image::Rgb([255, 255, 0])));
+        rt.send(3, yellow.clone(), "c");
+
+        // Try to process batch immediately: last_batch.elapsed() < gap
+        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+        assert_eq!(writer.flushes.len(), 1, "no new batch sent before gap elapsed");
+
+        // Sleep until gap elapses
+        std::thread::sleep(gap + Duration::from_millis(10));
+        process_paints(&rx, &rt, &mut latest, &mut pending, &mut last_batch, gap, &mut writer, Instant::now()).unwrap();
+
+        assert_eq!(writer.flushes.len(), 2, "second batch sent after gap elapsed");
+        assert!(writer.flushes[1].0.duration_since(writer.flushes[0].0) >= gap, "batches stay separated by the gap");
+
+        let key3_second_sent = writer.keys_sent.last().expect("second key sent");
+        assert_eq!(key3_second_sent.1, 3);
+        assert_eq!(key3_second_sent.2, render::key_jpeg(&yellow, 3));
+    }
+
+    #[test]
+    fn reader_thread_delivers_events_without_polling_delay() {
+        let dir = tmp("reader-latency");
+        let (rt, rx) = runtime(&dir);
+        let (_reload_tx, reload_rx) = mpsc::channel();
+        let (msg_tx, msg_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let mut by_key = HashMap::from([(2u8, Target::Builtin("CTX2".into()))]);
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let mut running = HashSet::new();
+        let builtins = HashSet::new();
+        let scene_path = dir.join("A.sdProfile");
+        std::fs::create_dir_all(&scene_path).unwrap();
+        std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{}}"#).unwrap();
+        let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
+        let mut writer = FakeWriter { n: 64, ..Default::default() };
+        let gap = Duration::from_millis(50);
+
+        let worker = std::thread::spawn(move || {
+            session_loop_threaded(
+                &event_rx,
+                &mut writer,
+                &rx,
+                &reload_rx,
+                &mut latest,
+                &mut by_key,
+                &host,
+                &msg_tx,
+                &rt,
+                &mut scenes,
+                Path::new("."),
+                &[],
+                &mut running,
+                &builtins,
+                &mut pending,
+                gap,
+                Instant::now() - gap,
+                Instant::now(),
+                Instant::now(),
+            )
+        });
+
+        // Send a key press event packet (key 2)
+        let mut press_buf = vec![0u8; 64];
+        press_buf[9] = 2;
+        press_buf[10] = 1;
+
+        let t0 = Instant::now();
+        event_tx.send(ReaderMsg::Data(press_buf)).unwrap();
+        let msg = msg_rx.recv_timeout(Duration::from_millis(15)).expect("received within 15 ms");
+        let elapsed = t0.elapsed();
+        assert!(elapsed < Duration::from_millis(15), "delivered without 30 ms polling delay ({elapsed:?})");
+        match msg {
+            BuiltinMsg::Press(ctx) => assert_eq!(ctx, "CTX2"),
+            _ => panic!("unexpected msg"),
+        }
+
+        // Stop the worker thread with an error (simulating unplug)
+        event_tx.send(ReaderMsg::Error("device unplugged".into())).unwrap();
+        let res = worker.join().expect("thread join");
+        assert_eq!(res, Err("device unplugged".to_string()), "reader exit on error triggers reconnect path");
+    }
+
+    #[test]
+    fn reader_thread_env_switch() {
+        std::env::remove_var("ORCADECK_HID_READER");
+        assert!(!hid_reader_mode(), "default OFF");
+
+        std::env::set_var("ORCADECK_HID_READER", "0");
+        assert!(!hid_reader_mode(), "non-thread is OFF");
+
+        std::env::set_var("ORCADECK_HID_READER", "thread");
+        assert!(hid_reader_mode(), "thread is ON");
+
+        std::env::set_var("ORCADECK_HID_READER", "THREAD");
+        assert!(hid_reader_mode(), "case-insensitive THREAD is ON");
+
+        std::env::remove_var("ORCADECK_HID_READER");
     }
 }

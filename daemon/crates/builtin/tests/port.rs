@@ -458,3 +458,58 @@ fn registry_tick_repaints_only_changed_keys() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn registry_next_timeout_cadence() {
+    let ps_working = json!([
+        { "repoId": "r1", "repo": "r1", "parentWorktreeId": null, "agents": [
+            { "paneKey": "k:a_work", "parentPaneKey": null, "state": "working" }
+        ]}
+    ]);
+    let ps_timer = json!([
+        { "repoId": "r1", "repo": "r1", "parentWorktreeId": null, "agents": [
+            { "paneKey": "k:b_q", "parentPaneKey": null, "state": "waiting", "stateStartedAt": 1_000_000 }
+        ]}
+    ]);
+    let ps_idle = json!([
+        { "repoId": "r1", "repo": "r1", "parentWorktreeId": null, "agents": [
+            { "paneKey": "k:c_idle", "parentPaneKey": null, "state": "idle" }
+        ]}
+    ]);
+    let terms = json!([
+        { "tabId": "k", "leafId": "a_work", "handle": "h_work" },
+        { "tabId": "k", "leafId": "b_q", "handle": "h_q" },
+        { "tabId": "k", "leafId": "c_idle", "handle": "h_idle" }
+    ]);
+    let repos = json!([{ "id": "r1", "displayName": "repo1", "badgeColor": "#333333" }]);
+    let replies = Arc::new(Mutex::new(HashMap::from([
+        ("repo.list".to_string(), json!({ "repos": repos })),
+        ("worktree.ps".to_string(), json!({ "worktrees": ps_working })),
+        ("terminal.list".to_string(), json!({ "terminals": terms })),
+        ("orchestration.workerList".to_string(), json!({ "workers": [] })),
+        ("orchestration.runList".to_string(), json!({ "runs": [] })),
+    ])));
+
+    let dir = std::env::temp_dir().join(format!("orcadeck-timeout-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut reg = Registry::new(Deck::new(Box::new(Mock { replies: replies.clone(), calls: Arc::new(Mutex::new(Vec::new())) }), dir.clone()));
+    assert!(reg.appear(key("agent", "c1", 0)));
+
+    let t0 = 1_000_000;
+    // 1. Working agent visible: cadence is SPIN_MS (250 ms)
+    reg.tick(t0);
+    assert_eq!(reg.next_timeout(t0), std::time::Duration::from_millis(SPIN_MS as u64));
+
+    // 2. Question / timer agent visible (without working or blinking): cadence is 1000 ms
+    replies.lock().unwrap().insert("worktree.ps".to_string(), json!({ "worktrees": ps_timer }));
+    reg.tick(t0 + 2000);
+    assert_eq!(reg.next_timeout(t0 + 2000), std::time::Duration::from_millis(1000));
+
+    // 3. Idle agent only (no working, no blinking, no timer): cadence is slow (POLL_MS = 2000 ms)
+    replies.lock().unwrap().insert("worktree.ps".to_string(), json!({ "worktrees": ps_idle }));
+    reg.tick(t0 + 4000);
+    assert_eq!(reg.next_timeout(t0 + 4000), std::time::Duration::from_millis(POLL_MS as u64));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

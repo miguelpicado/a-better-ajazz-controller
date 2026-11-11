@@ -218,6 +218,10 @@ pub trait BuiltinAction: Send {
     fn on_key(&mut self, _ctx: &mut Ctx, _context: &str) -> Feedback {
         Feedback::None
     }
+    /// Returns (has_working_or_blinking, has_timer) for this key context.
+    fn activity(&self, _deck: &Deck, _context: &str, _now: i64) -> (bool, bool) {
+        (false, false)
+    }
 }
 
 pub fn frame(now: i64) -> u32 {
@@ -255,6 +259,14 @@ impl BuiltinAction for AgentAction {
                 Feedback::Alert
             }
         }
+    }
+    fn activity(&self, deck: &Deck, context: &str, now: i64) -> (bool, bool) {
+        let Some(k) = self.slots.get(context) else { return (false, false); };
+        let Some(a) = deck.agent(k) else { return (false, false); };
+        let wb = a.state == core::State::Working || deck.is_blinking(&a.key, now);
+        let tm = (a.state == core::State::Question || a.state == core::State::Done)
+            && a.since.map(|s| s != 0).unwrap_or(false);
+        (wb, tm)
     }
 }
 
@@ -392,6 +404,55 @@ impl Registry {
         let action = self.actions.get_mut(uuid.as_str()).expect("appear checks the uuid");
         action.on_key(&mut Ctx { deck: &mut self.deck, keys: &ctxs, now }, context)
     }
+
+    /// Checks all currently visible keys and returns `(has_working_or_blinking, has_timer)`.
+    pub fn visible_activity(&self, now: i64) -> (bool, bool) {
+        let mut wb = false;
+        let mut tm = false;
+        for k in &self.keys {
+            if let Some(action) = self.actions.get(k.uuid.as_str()) {
+                let (w, t) = action.activity(&self.deck, &k.context, now);
+                if w { wb = true; }
+                if t { tm = true; }
+            }
+        }
+        (wb, tm)
+    }
+
+    /// Computes the wait Duration until the next builtin tick.
+    pub fn next_timeout(&self, now: i64) -> std::time::Duration {
+        let (wb, tm) = self.visible_activity(now);
+        let mut nearest = POLL_MS as u64;
+        let poll_rem = (self.deck.agents_at + POLL_MS).saturating_sub(now);
+        if poll_rem > 0 {
+            nearest = nearest.min(poll_rem as u64);
+        }
+        for &end in self.deck.blinking.values() {
+            if end > now {
+                nearest = nearest.min((end - now) as u64);
+            }
+        }
+        let ms = next_wait_ms(wb, tm, nearest, POLL_MS as u64);
+        std::time::Duration::from_millis(ms)
+    }
+}
+
+/// Pure helper to compute the wait timeout in milliseconds for the builtin loop.
+///
+/// - If `working_or_blinking`: base interval is `SPIN_MS` (250 ms).
+/// - If `has_timer`: base interval is 1000 ms (1 s).
+/// - Otherwise (idle): base interval is `slow_cadence_ms` (e.g. `POLL_MS` = 2000 ms).
+///
+/// The wait duration is clamped to `base.min(nearest_deadline_ms).max(1)`.
+pub fn next_wait_ms(working_or_blinking: bool, has_timer: bool, nearest_deadline_ms: u64, slow_cadence_ms: u64) -> u64 {
+    let base = if working_or_blinking {
+        SPIN_MS as u64
+    } else if has_timer {
+        1000
+    } else {
+        slow_cadence_ms
+    };
+    base.min(nearest_deadline_ms).max(1)
 }
 
 /// ms since the epoch, for `tick` / `key_down`.
@@ -416,5 +477,26 @@ mod tests {
 
         std::env::remove_var("APPDATA");
         assert_eq!(Deck::default_quota_dir(), std::env::temp_dir().join("OrcaDeck").join("quota"));
+    }
+
+    #[test]
+    fn next_wait_ms_deadline_helper() {
+        // 1. Visible working or blinking key wakes at SPIN_MS (250 ms)
+        assert_eq!(next_wait_ms(true, false, 2000, 2000), SPIN_MS as u64);
+        assert_eq!(next_wait_ms(true, true, 2000, 2000), SPIN_MS as u64);
+
+        // 2. Visible timer key (not working/blinking) wakes at 1000 ms (1 s)
+        assert_eq!(next_wait_ms(false, true, 2000, 2000), 1000);
+
+        // 3. Idle (neither working/blinking nor timer) wakes at slow cadence (POLL_MS = 2000 ms)
+        assert_eq!(next_wait_ms(false, false, 2000, 2000), 2000);
+
+        // 4. Nearest deadline is sooner than base interval: nearest deadline wins
+        assert_eq!(next_wait_ms(true, false, 100, 2000), 100);
+        assert_eq!(next_wait_ms(false, true, 400, 2000), 400);
+        assert_eq!(next_wait_ms(false, false, 800, 2000), 800);
+
+        // 5. Clamped to at least 1 ms if nearest deadline is 0 or negative
+        assert_eq!(next_wait_ms(false, false, 0, 2000), 1);
     }
 }

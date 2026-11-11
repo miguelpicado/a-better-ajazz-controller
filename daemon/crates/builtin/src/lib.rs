@@ -12,6 +12,6 @@ pub mod orca;
 pub mod raster;
 
 pub use actions::{
-    blink_ms, frame, now_ms, BuiltinAction, Ctx, Deck, Feedback, Key, Registry, POLL_MS, QUOTA_MS, SPIN_MS, WORKERS_MS,
+    blink_ms, frame, next_wait_ms, now_ms, BuiltinAction, Ctx, Deck, Feedback, Key, Registry, POLL_MS, QUOTA_MS, SPIN_MS, WORKERS_MS,
 };
 pub use orca::{Orca, PipeOrca};
