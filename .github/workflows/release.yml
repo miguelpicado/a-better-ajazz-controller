@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (v*)'
+        required: true
+        default: v0.0.0-test
+        type: string
+      publish:
+        description: 'Create a GitHub Release (only when the tag starts with v)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same as ci.yml: daemon/rust-toolchain.toml pins a local gnullvm toolchain that is not on the
+  # runner, so use the runner's stable MSVC toolchain (no libunwind.dll needed).
+  RUSTUP_TOOLCHAIN: stable
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            daemon/target
+          key: cargo-${{ hashFiles('daemon/Cargo.lock') }}
+          restore-keys: cargo-
+      - name: Build
+        working-directory: daemon
+        run: cargo build --release --workspace
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:TAG -notmatch '^v[0-9A-Za-z._-]+$') {
+            throw "Unsupported tag '$env:TAG': expected v followed by letters, digits, '.', '_' or '-'."
+          }
+
+          $stage = Join-Path $env:RUNNER_TEMP 'stage'
+          New-Item -ItemType Directory -Force -Path $stage, dist | Out-Null
+          Copy-Item -Path daemon/target/release/orcadeck.exe, LICENSE-MIT, LICENSE-APACHE, THIRD-PARTY-LICENSES.md, README.md -Destination $stage
+
+          $zip = "dist/orcadeck-$env:TAG-windows-x64.zip"
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+
+          $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $zip -Leaf)" | Set-Content -Path "$zip.sha256" -Encoding ascii
+
+          # The asset must contain exactly these five files, and the .sha256 must match the zip.
+          $check = Join-Path $env:RUNNER_TEMP 'check'
+          Expand-Archive -Path $zip -DestinationPath $check -Force
+          $expected = @('LICENSE-APACHE', 'LICENSE-MIT', 'README.md', 'THIRD-PARTY-LICENSES.md', 'orcadeck.exe')
+          $actual = @(Get-ChildItem -Path $check -File | ForEach-Object Name | Sort-Object)
+          if (Compare-Object -ReferenceObject $expected -DifferenceObject $actual) {
+            throw "Unexpected zip contents: $($actual -join ', ')"
+          }
+          if ((Get-Content -Path "$zip.sha256" -Raw).Trim() -ne "$hash  $(Split-Path $zip -Leaf)") {
+            throw 'SHA-256 file does not match the zip.'
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orcadeck-windows-x64
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.publish == 'true' &&
+       startsWith(github.event.inputs.tag, 'v'))
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: orcadeck-windows-x64
+          path: dist
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          NOTES: |
+            **Experimental software, no warranty.** OrcaDeck is an unofficial project, not affiliated with or endorsed by AJAZZ, and is provided "as is" without warranty of any kind. The firmware tools are NOT part of this release.
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $zip = "dist/orcadeck-$env:TAG-windows-x64.zip"
+          if (-not (Test-Path -Path $zip) -or -not (Test-Path -Path "$zip.sha256")) {
+            throw "Missing release assets for tag '$env:TAG'."
+          }
+
+          gh release create "$env:TAG" $zip "$zip.sha256" `
+            --repo "$env:GITHUB_REPOSITORY" `
+            --title "$env:TAG" `
+            --generate-notes `
+            --notes $env:NOTES

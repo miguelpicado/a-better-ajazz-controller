@@ -168,3 +168,33 @@ Estas reglas no se negocian y aplican también a tests y scripts:
 - No toques `daemon/rust-toolchain.toml` ni los perfiles reales de Stream Dock.
 - El repo no tiene CI: la verificación es local (`cargo test --release --workspace`) y, cuando toca
   hardware, manual y con Stream Dock parado.
+
+## 10. Releases
+
+Las releases se publican desde el repo público (`github.com/miguelpicado/a-better-ajazz-controller`)
+con [`.github/workflows/release.yml`](../../.github/workflows/release.yml), que compila `orcadeck.exe`
+para Windows x64 al empujar un tag `v*` y adjunta
+`orcadeck-<tag>-windows-x64.zip` (binario, `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY-LICENSES.md`
+y `README.md`) más su `.sha256`, con notas generadas automáticamente.
+
+Para cortar una release, desde `main` ya verificado y en el repo público:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+El workflow también se puede lanzar a mano (`workflow_dispatch`) con un `tag` y `publish`; si
+`publish` no es `true` o el tag no empieza por `v`, solo deja el zip como artifact del run y no crea
+release.
+
+Verificar la descarga (PowerShell):
+
+```powershell
+Get-FileHash .\orcadeck-v0.1.0-windows-x64.zip -Algorithm SHA256
+Get-Content .\orcadeck-v0.1.0-windows-x64.zip.sha256
+```
+
+Los dos hashes deben coincidir; el `.sha256` lleva el hash y el nombre del zip, con el formato que
+espera `sha256sum -c`. El binario **no está firmado**: Windows SmartScreen puede avisar antes de
+ejecutarlo. Las herramientas de firmware no forman parte de la release.
