@@ -79,7 +79,7 @@ fn decode_uri(uri: &str, px: u32) -> Option<DynamicImage> {
     if meta.starts_with("image/svg") {
         svg_image(std::str::from_utf8(&bytes).ok()?, px)
     } else {
-        image::load_from_memory(&bytes).ok()
+        image::load_from_memory(&bytes).ok().map(|img| render::fit_px(img, px))
     }
 }
 
@@ -173,10 +173,12 @@ struct ViewState {
 type View = Arc<Mutex<ViewState>>;
 
 impl ViewState {
-    /// Base image with the title bar drawn on it (black if the key has no image yet).
+    /// Base image with the title bar drawn on it (black if the key has no image yet), always at key
+    /// size so `key_jpeg` has nothing left to resize.
     fn effective(&self, key: u8) -> DynamicImage {
         let px = image_px(key);
         let base = self.base.get(&key).cloned().unwrap_or_else(|| DynamicImage::new_rgb8(px, px));
+        let base = render::fit_px(base, px);
         match self.title.get(&key) {
             Some(top) => blend(&base, top, px),
             None => base,
@@ -388,7 +390,7 @@ impl Runtime {
                 }
                 let path = v.states.get(&k).and_then(|s| s.get(state as usize)).cloned().flatten();
                 if let Some(img) = path.and_then(|p| load_img(&p).ok()) {
-                    v.base.insert(k, img);
+                    v.base.insert(k, render::fit_px(img, px));
                     image = Some(v.effective(k));
                 }
             }
@@ -418,6 +420,7 @@ impl Runtime {
         if self.retired(context) {
             return;
         }
+        let img = render::fit_px(img, image_px(key));
         self.view.lock().unwrap_or_else(|e| e.into_inner()).base.insert(key, img.clone());
         self.send(key, img, context);
     }
@@ -695,7 +698,7 @@ fn place_scene(
     for ((c, r), a) in &scene.actions {
         let Some(key) = key_index(*c, *r) else { continue };
         if let Some(img) = scene.image_of(a, plugins).and_then(|path| load_img(&path).ok()) {
-            view.base.insert(key, img.clone());
+            view.base.insert(key, render::fit_px(img.clone(), image_px(key)));
             p.latest.insert(key, img);
         }
         view.states.insert(key, (0..a.states.len()).map(|i| state_path(scene, a, plugins, i)).collect());
@@ -917,7 +920,7 @@ fn reload_cell(
     v.title.remove(&key);
     v.base.remove(&key);
     if let Some(img) = action.and_then(|a| scene.image_of(a, plugins)).and_then(|path| load_img(&path).ok()) {
-        v.base.insert(key, img);
+        v.base.insert(key, render::fit_px(img, image_px(key)));
     }
     let states = action.map(|a| (0..a.states.len()).map(|i| state_path(&scene, a, plugins, i)).collect()).unwrap_or_default();
     v.states.insert(key, states);
@@ -1607,6 +1610,32 @@ mod tests {
         let svg = title_svg("a&b <c>", KEY_PX);
         assert!(svg.contains("a&amp;b &lt;c&gt;"));
         assert!(title_svg(&"x".repeat(40), KEY_PX).contains('…'));
+    }
+
+    fn big(px: u32) -> DynamicImage {
+        DynamicImage::ImageRgb8(image::RgbImage::from_pixel(px, px, image::Rgb([1, 2, 3])))
+    }
+
+    #[test]
+    fn ingest_scales_images_to_key_size_once() {
+        let dir = tmp("ingest-px");
+        let (rt, rx) = runtime(&dir);
+        rt.paint("c", 1, big(200));
+        rt.paint("c", 16, big(200));
+        {
+            let v = rt.view.lock().unwrap();
+            assert_eq!((v.base[&1].width(), v.base[&1].height()), (KEY_PX, KEY_PX), "main key stored at 85");
+            assert_eq!((v.base[&16].width(), v.base[&16].height()), (SIDE_PX, SIDE_PX), "side key stored at 80");
+        }
+        for p in [rx.try_recv().unwrap(), rx.try_recv().unwrap()] {
+            assert_eq!((p.img.width(), p.img.height()), (image_px(p.key), image_px(p.key)), "paint already at key size");
+        }
+
+        let png = dir.join("big.png");
+        big(200).save(&png).unwrap();
+        let uri = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(std::fs::read(&png).unwrap()));
+        let img = decode_uri(&uri, image_px(1)).expect("data uri");
+        assert_eq!((img.width(), img.height()), (KEY_PX, KEY_PX), "raster data URI scaled at decode");
     }
 
     #[test]
