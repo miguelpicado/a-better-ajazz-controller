@@ -33,10 +33,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub const BATCH_GAP_MS: u64 = 250;
+
 /// Minimum time between paint batches (all pending keys go out together). The firmware misses key
-/// presses while busy with images, so paint traffic must leave idle gaps. ORCADECK_GAP_MS tunes it.
+/// presses while busy with images, so paint traffic must leave idle gaps. Default is 250 ms (smooth 4 fps
+/// spinner); ORCADECK_GAP_MS=400 restores the conservative 400 ms gap if needed.
 fn batch_gap() -> Duration {
-    Duration::from_millis(std::env::var("ORCADECK_GAP_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(400))
+    Duration::from_millis(std::env::var("ORCADECK_GAP_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(BATCH_GAP_MS))
 }
 const DEVICE: &str = "AKP153E";
 
@@ -211,12 +214,21 @@ pub enum ReloadCmd {
     Cell { scene: String, cell: (u8, u8) },
 }
 
+#[derive(Debug)]
+pub enum ReaderMsg {
+    Data(Vec<u8>),
+    Wake,
+    Error(String),
+}
+
 /// State shared by plugin socket threads, the builtin thread and the device loop. Plugin outputs
 /// only touch this; the device loop drains it in `tick`, so nothing else writes the device.
 struct Runtime {
     tx: mpsc::Sender<Paint>,
     /// Editor saves waiting for the device loop.
     reload_tx: mpsc::Sender<ReloadCmd>,
+    /// Optional wake channel used in threaded HID mode to wake the device loop immediately on paints/reloads.
+    wake_tx: Mutex<Option<mpsc::Sender<ReaderMsg>>>,
     view: View,
     /// Bumped on every scene switch; paints tagged with an older generation are stale.
     gen: Arc<AtomicU64>,
@@ -245,6 +257,17 @@ struct SettingsPending {
 }
 
 impl Runtime {
+    /// In threaded mode, registers the channel to wake the device loop when work arrives.
+    fn set_wake_tx(&self, tx: Option<mpsc::Sender<ReaderMsg>>) {
+        *self.wake_tx.lock().unwrap_or_else(|e| e.into_inner()) = tx;
+    }
+
+    fn wake(&self) {
+        if let Some(ref tx) = *self.wake_tx.lock().unwrap_or_else(|e| e.into_inner()) {
+            let _ = tx.send(ReaderMsg::Wake);
+        }
+    }
+
     /// Registers where a plugin instance's context lives in the scene.
     fn set_cell(&self, context: &str, cell: (u8, u8)) {
         self.settings.lock().unwrap_or_else(|e| e.into_inner()).cells.insert(context.to_string(), cell);
@@ -260,12 +283,14 @@ impl Runtime {
     /// One paint, tagged so the device loop can drop it after a scene switch.
     fn send(&self, key: u8, img: DynamicImage, context: &str) {
         let _ = self.tx.send(Paint { key, img, gen: self.gen.load(Ordering::Relaxed), ctx: context.to_string() });
+        self.wake();
     }
 
     /// Tells the device loop that the editor saved a cell of `scene` (see [`ReloadCmd`]).
     #[allow(dead_code)] // crates/web's mutation hook sends these once its merge lands
     fn reload(&self, scene: &str, cell: (u8, u8)) {
         let _ = self.reload_tx.send(ReloadCmd::Cell { scene: scene.to_string(), cell });
+        self.wake();
     }
 
     /// Forgets a plugin context whose cell is about to hold another action.
@@ -954,6 +979,7 @@ pub fn run(profile: &Path, plugins: &Path, n: Option<usize>) -> Result<(), Strin
     let runtime = Arc::new(Runtime {
         tx: tx.clone(),
         reload_tx,
+        wake_tx: Mutex::new(None),
         view: Arc::clone(&view),
         gen: Arc::new(AtomicU64::new(0)),
         retired: Mutex::new(HashSet::new()),
@@ -1091,11 +1117,6 @@ impl DockWriter for Dock {
     fn flush(&mut self) -> Result<(), String> {
         Dock::flush(self)
     }
-}
-
-pub enum ReaderMsg {
-    Data(Vec<u8>),
-    Error(String),
 }
 
 fn open_read_device(api: &HidApi) -> Result<HidDevice, String> {
@@ -1238,6 +1259,7 @@ fn session_loop_threaded<W: DockWriter>(
             Ok(ReaderMsg::Data(buf)) => {
                 handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, pending, t0)?;
             }
+            Ok(ReaderMsg::Wake) => {}
             Ok(ReaderMsg::Error(err)) => {
                 return Err(err);
             }
@@ -1252,6 +1274,7 @@ fn session_loop_threaded<W: DockWriter>(
                 ReaderMsg::Data(buf) => {
                     handle_input_packet(&buf, dock, by_key, msg_tx, host, scenes, plugins, latest, found, running, rt, builtins, pending, t0)?;
                 }
+                ReaderMsg::Wake => {}
                 ReaderMsg::Error(err) => return Err(err),
             }
         }
@@ -1329,6 +1352,7 @@ fn session(
         let (event_tx, event_rx) = mpsc::channel();
         let read_dev = open_read_device(&api)?;
         let report_n = dock.n;
+        let reader_tx = event_tx.clone();
         let _reader = thread::Builder::new()
             .name("hid-reader".into())
             .spawn(move || {
@@ -1336,16 +1360,16 @@ fn session(
                 loop {
                     match read_dev.read(&mut buf) {
                         Ok(k) if k > 0 => {
-                            if event_tx.send(ReaderMsg::Data(buf[..k].to_vec())).is_err() {
+                            if reader_tx.send(ReaderMsg::Data(buf[..k].to_vec())).is_err() {
                                 break;
                             }
                         }
                         Ok(_) => {
-                            let _ = event_tx.send(ReaderMsg::Error("read returned 0 bytes (device disconnected)".into()));
+                            let _ = reader_tx.send(ReaderMsg::Error("read returned 0 bytes (device disconnected)".into()));
                             break;
                         }
                         Err(e) => {
-                            let _ = event_tx.send(ReaderMsg::Error(e.to_string()));
+                            let _ = reader_tx.send(ReaderMsg::Error(e.to_string()));
                             break;
                         }
                     }
@@ -1353,7 +1377,8 @@ fn session(
             })
             .map_err(|e| e.to_string())?;
 
-        session_loop_threaded(
+        rt.set_wake_tx(Some(event_tx));
+        let res = session_loop_threaded(
             &event_rx,
             &mut dock,
             rx,
@@ -1373,7 +1398,9 @@ fn session(
             last_batch,
             hb,
             t0,
-        )
+        );
+        rt.set_wake_tx(None);
+        res
     }
 }
 
@@ -1394,11 +1421,16 @@ mod tests {
     }
 
     fn runtime(dir: &Path) -> (Runtime, mpsc::Receiver<Paint>) {
-        let (tx, rx) = mpsc::channel();
         let (reload_tx, _) = mpsc::channel();
+        runtime_with_reload(dir, reload_tx)
+    }
+
+    fn runtime_with_reload(dir: &Path, reload_tx: mpsc::Sender<ReloadCmd>) -> (Runtime, mpsc::Receiver<Paint>) {
+        let (tx, rx) = mpsc::channel();
         let rt = Runtime {
             tx,
             reload_tx,
+            wake_tx: Mutex::new(None),
             view: Arc::new(Mutex::new(ViewState::default())),
             gen: Arc::new(AtomicU64::new(0)),
             retired: Mutex::new(HashSet::new()),
@@ -1859,5 +1891,121 @@ mod tests {
         assert!(hid_reader_mode(), "case-insensitive THREAD is ON");
 
         std::env::remove_var("ORCADECK_HID_READER");
+    }
+
+    #[test]
+    fn batch_gap_defaults_to_250_and_honours_env() {
+        std::env::remove_var("ORCADECK_GAP_MS");
+        assert_eq!(batch_gap(), Duration::from_millis(BATCH_GAP_MS));
+        assert_eq!(BATCH_GAP_MS, 250);
+
+        std::env::set_var("ORCADECK_GAP_MS", "400");
+        assert_eq!(batch_gap(), Duration::from_millis(400));
+
+        std::env::remove_var("ORCADECK_GAP_MS");
+    }
+
+    #[test]
+    fn threaded_loop_wakes_on_runtime_send_and_reload() {
+        let dir = tmp("threaded-wake");
+        let (reload_tx, reload_rx) = mpsc::channel();
+        let (rt, rx) = runtime_with_reload(&dir, reload_tx);
+        let (msg_tx, _msg_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        rt.set_wake_tx(Some(event_tx.clone()));
+
+        let scene_path = dir.join("A.sdProfile");
+        std::fs::create_dir_all(&scene_path).unwrap();
+        std::fs::write(scene_path.join("manifest.json"), r#"{"DeviceUUID":"AKP153E","Actions":{"0,0":{"UUID":"builtin","States":[{"Image":""}]}}}"#).unwrap();
+        let mut scenes = SceneSet::open(&scene_path, &dir, &dir, DEVICE).unwrap();
+        rt.set_manifest(scene_path.join("manifest.json"));
+        let rt = Arc::new(rt);
+
+        let host = host::Host::start(host::Config { port: 0, ..Default::default() }, |_| {}).unwrap();
+        let mut by_key = HashMap::new();
+        let mut latest = HashMap::new();
+        let mut pending = HashMap::new();
+        let mut running = HashSet::new();
+        let builtins = HashSet::new();
+        let fake = Arc::new(Mutex::new(FakeWriter { n: 64, ..Default::default() }));
+        let fake_clone = Arc::clone(&fake);
+        let gap = Duration::from_millis(50);
+
+        struct SharedWriter(Arc<Mutex<FakeWriter>>);
+        impl DockWriter for SharedWriter {
+            fn report_n(&self) -> usize { self.0.lock().unwrap().report_n() }
+            fn send(&mut self, payload: &[u8]) -> Result<(), String> { self.0.lock().unwrap().send(payload) }
+            fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String> { self.0.lock().unwrap().set_key(key, jpeg) }
+            fn flush(&mut self) -> Result<(), String> { self.0.lock().unwrap().flush() }
+        }
+
+        let mut writer = SharedWriter(fake_clone);
+        let rt_worker = Arc::clone(&rt);
+        let worker = std::thread::spawn(move || {
+            session_loop_threaded(
+                &event_rx,
+                &mut writer,
+                &rx,
+                &reload_rx,
+                &mut latest,
+                &mut by_key,
+                &host,
+                &msg_tx,
+                &rt_worker,
+                &mut scenes,
+                Path::new("."),
+                &[],
+                &mut running,
+                &builtins,
+                &mut pending,
+                gap,
+                Instant::now() - gap,
+                Instant::now(),
+                Instant::now(),
+            )
+        });
+
+        // Loop is idle (waiting on event_rx with up to 10s heartbeat).
+        // 1. Test paint wake: a Runtime::send paint must be flushed within gap + 50 ms.
+        let t0 = Instant::now();
+        rt.send(1, white(KEY_PX), "c");
+
+        let deadline = t0 + gap + Duration::from_millis(50);
+        let mut flushed = false;
+        while Instant::now() < deadline {
+            if fake.lock().unwrap().flushes.len() >= 1 {
+                flushed = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let elapsed = t0.elapsed();
+        assert!(flushed, "paint flushed within gap + 50 ms (took {elapsed:?}, heartbeat is 10s)");
+        assert!(elapsed < Duration::from_millis(150), "woke immediately without waiting for 10s heartbeat");
+
+        // Wait gap before testing reload so batch gap doesn't hold back the reload paint
+        std::thread::sleep(gap);
+
+        // 2. Test reload wake: a reload is handled promptly
+        let prev_flushes = fake.lock().unwrap().flushes.len();
+        let t_reload = Instant::now();
+        rt.reload("A", (0, 0));
+
+        let reload_deadline = t_reload + gap + Duration::from_millis(50);
+        let mut reloaded = false;
+        while Instant::now() < reload_deadline {
+            if fake.lock().unwrap().flushes.len() > prev_flushes {
+                reloaded = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let reload_elapsed = t_reload.elapsed();
+        assert!(reloaded, "reload caused repaint and flushed within gap + 50 ms (took {reload_elapsed:?})");
+        assert!(reload_elapsed < Duration::from_millis(150), "reload woke immediately without waiting for 10s heartbeat");
+
+        // Stop loop
+        event_tx.send(ReaderMsg::Error("done".into())).unwrap();
+        worker.join().unwrap().unwrap_err();
     }
 }
