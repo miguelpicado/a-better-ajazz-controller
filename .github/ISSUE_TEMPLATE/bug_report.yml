@@ -1,0 +1,77 @@
+name: Bug report
+description: Report a reproducible problem with OrcaDeck
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Before posting, remove tokens, editor URLs with tokens, user names and
+        personal paths from any log you paste. **Do not attach firmware dumps or vendor installers.**
+        For a security vulnerability, use [SECURITY.md](https://github.com/miguelpicado/a-better-ajazz-controller/blob/main/SECURITY.md)
+        instead of this form.
+  - type: input
+    id: device
+    attributes:
+      label: Device model and firmware version
+      description: OrcaDeck is designed and tested only on the AJAZZ AKP153E, firmware v1.
+      placeholder: AKP153E, firmware v1
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 10 22H2 x64
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OrcaDeck version
+      description: Release tag or the commit you built from. `orcadeck help` lists the available commands.
+      placeholder: v0.1.0, or commit abc1234
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands and the scene or plugin involved.
+      placeholder: |
+        1. Stop Stream Dock with `schtasks /end /tn StreamDock`
+        2. Run `orcadeck.exe run <profile>`
+        3. Press key ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and diagnostics
+      description: |
+        Run with `$env:ORCADECK_TRACE=1` and paste the relevant output. Include `orcadeck help`
+        output if the command set is unclear.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed tokens, editor URLs and personal data from the logs.
+          required: true
+        - label: I did not attach firmware dumps, vendor installers or third-party packages.
+          required: true

@@ -1,5 +1,7 @@
 # Uso de OrcaDeck
 
+> English: [USAGE.en.md](USAGE.en.md).
+
 `orcadeck` es el sustituto ligero de «Stream Dock AJAZZ» para el teclado AKP153E. Lee los perfiles
 de Stream Dock tal cual y ejecuta plugins del SDK v2 (`.exe` y Node) y acciones Orca integradas.
 

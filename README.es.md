@@ -103,10 +103,13 @@ vendor/                 paquetes de terceros del usuario (gitignorado)
 ## Documentación
 
 - [docs/README.md](docs/README.md) — índice completo.
-- [docs/guide/USAGE.md](docs/guide/USAGE.md) — uso, subcomandos, variables, Scene Shift, plugins, autoarranque.
+- [docs/guide/USAGE.md](docs/guide/USAGE.md) — uso, subcomandos, variables, Scene Shift, plugins, autoarranque. English: [USAGE.en.md](docs/guide/USAGE.en.md).
+- [docs/guide/TROUBLESHOOTING.md](docs/guide/TROUBLESHOOTING.md) — errores y diagnóstico. English: [TROUBLESHOOTING.en.md](docs/guide/TROUBLESHOOTING.en.md).
+- [SECURITY.md](SECURITY.md) — política de seguridad y reporte privado.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — cómo contribuir.
+- [docs/project/ROADMAP.md](docs/project/ROADMAP.md) — hoja de ruta.
 - [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) — hilos, canales, lotes, formato de escena, estado.
 - [docs/guide/DEVELOPMENT.md](docs/guide/DEVELOPMENT.md) — compilar, tests, probar sin dispositivo.
-- [docs/guide/TROUBLESHOOTING.md](docs/guide/TROUBLESHOOTING.md) — errores y diagnóstico.
 
 ## Reglas
 

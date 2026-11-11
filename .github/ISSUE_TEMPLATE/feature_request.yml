@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest an improvement or a new capability for OrcaDeck
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first. OrcaDeck targets a small Windows-only binary for the AKP153E;
+        features that need an async runtime, a resident UI or admin rights are unlikely to be
+        accepted.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Does this involve the device?
+      description: Painting, presses, scenes or firmware need a real AKP153E to validate.
+      options:
+        - "No, this is software-only"
+        - "Yes, it changes device behaviour"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, screenshots or notes. Do not attach firmware dumps or vendor installers.
+    validations:
+      required: false

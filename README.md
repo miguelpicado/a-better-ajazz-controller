@@ -67,6 +67,16 @@ schtasks /end /tn StreamDock
 Never run the official app and this one at the same time. Full usage and the `ORCADECK_*` variables:
 [docs/guide/USAGE.md](docs/guide/USAGE.md). Architecture: [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md).
 
+## Documentation
+
+- [Usage](docs/guide/USAGE.en.md) — commands, `ORCADECK_*` variables, Scene Shift, plugins, autostart.
+- [Troubleshooting](docs/guide/TROUBLESHOOTING.en.md) — common errors and diagnostics.
+- [Security policy](SECURITY.md) — supported versions, private reporting, security model.
+- [Contributing](CONTRIBUTING.md) — build, test gate, conventions, licensing.
+- [Roadmap](docs/project/ROADMAP.md) — known limits and open work.
+
+Developer and design docs are in Spanish for now.
+
 ## Firmware (very experimental)
 
 This repository also carries research and a **patcher** for an improved AKP153E firmware (press/release

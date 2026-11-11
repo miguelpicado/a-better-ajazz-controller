@@ -1,5 +1,7 @@
 # Problemas y diagnóstico
 
+> English: [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md).
+
 Orden de comprobación rápida, de lo más común a lo más raro. Si el problema es de compilación, ve
 directamente a §10.
 
