@@ -125,3 +125,17 @@ oficial y `node tools/legacy/com.miguelpicado.orcadock.sdPlugin/test.js` ejecuta
 
 Los iconos del plugin Node (`tools/legacy/com.miguelpicado.orcadock.sdPlugin/imgs/`) vienen de
 [1am/orca-agent-deck](https://github.com/1am/orca-agent-deck) (MIT).
+
+## Licencia
+
+`MIT OR Apache-2.0` a elección de quien lo use ([`LICENSE-MIT`](LICENSE-MIT), [`LICENSE-APACHE`](LICENSE-APACHE)).
+Todas las dependencias son permisivas; sus avisos están en [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
+
+Procedencia: el código es propio. De los repositorios de la comunidad analizados
+([`docs/research/community/`](docs/research/community/)) solo se usaron datos fácticos del protocolo
+(VID/PID, mapa de teclas, offsets); no se copió código de los licenciados con GPL-3.0, MPL-2.0 ni sin licencia.
+
+**Antes de hacer público el repositorio:** `docs/research/firmware/` contiene binarios de firmware del
+fabricante (`backup/AKP153E.bin`, `work/*.bin`), que no se pueden redistribuir con esta licencia. Hay que
+sacarlos del árbol y del historial (y de `docs/research/firmware/work/emu/` si dependen de ellos) o publicar
+sin historial previo.
