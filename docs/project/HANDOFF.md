@@ -36,13 +36,13 @@ bloqueante, `builtin` por plazos, quitar `latest`) esperar a medir `run` con el 
 
 ## Hecho el 2026-11-11 (workers OpenCode y agy)
 
-`main` incluye animación de teclas (spinner 250 ms, aro, temporizador), cadencias nuevas, doble clic en plugins, bucle `builtin` por plazos, hilo lector HID opcional, tests de huecos y el fix de traversal de iconos. Gate: **126 tests verdes**; `orcadeck.exe` = 3 722 240 B. Todo sin probar en dispositivo. Cuidado: `BATCH_GAP_MS` bajó a 250 ms; si se pierden pulsaciones, `ORCADECK_GAP_MS=400`.
+`main` incluye animación de teclas (spinner 250 ms, aro, temporizador), cadencias nuevas, doble clic en plugins, bucle `builtin` por plazos, hilo lector HID opcional, tests de huecos y el fix de traversal de iconos. Gate: **135 tests verdes**; `orcadeck.exe` = 3 721 728 B. Todo sin probar en dispositivo. Cuidado: `BATCH_GAP_MS` bajó a 250 ms; si se pierden pulsaciones, `ORCADECK_GAP_MS=400`.
 
 ## Siguiente, en orden
 
 1. Sin dispositivo: ver el primer run de CI en GitHub (`.github/workflows/ci.yml`, sin probar),
-   los huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2, `cargo fmt` aparte, `base64`/
-   `getrandom` duplicados y la licencia (decide el usuario). Hecho: retirada de plugins, rutas de
+   `base64`/
+   `getrandom` duplicados . Hecho: retirada de plugins, rutas de
    usuario, código muerto, metadatos Cargo.
    **Cuidado:** sin `QUOTA_DIR` las teclas de cuota leen `%APPDATA%\OrcaDeck\quota` y quedan
    vacías; definir `QUOTA_DIR=C:\Users\migue\Github\quota-monitor` (entorno o tarea de autoarranque).

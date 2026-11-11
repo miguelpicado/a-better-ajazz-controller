@@ -18,8 +18,8 @@ el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue
 | Instalar/quitar plugins desde `edit` | `plugman` + `web`, ledger propio de instalados y escaneo de Descargas bajo demanda (sin vigilante) |
 | Property Inspector | servidor en `host` + iframe en `edit`: sandbox sin `allow-same-origin`, token de un solo uso por `postMessage`, CSP sin red externa y `Origin: null` solo con sesión de PI abierta |
 | `edit` dentro de `run` | canal de control `ctl.rs` (named pipe) con fallback standalone; recarga en caliente de una tecla; `RunInspector` como `InspectorBridge` |
-| Tests | **126 verdes** con `cargo test --release --workspace` (medido 2026-11-11; 0 fallos) |
-| Binario | `orcadeck.exe` = **3 722 240 B** (~3,55 MiB) recompilado el 2026-11-11 |
+| Tests | **135 verdes** con `cargo test --release --workspace` (medido 2026-11-11; 0 fallos) |
+| Binario | `orcadeck.exe` = **3 721 728 B** (~3,55 MiB) recompilado el 2026-11-11 |
 
 ## Limpieza hecha
 
@@ -32,9 +32,8 @@ el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue
 
 1. Verificar el primer run de `.github/workflows/ci.yml` en GitHub (usa el toolchain MSVC del
    runner con `RUSTUP_TOOLCHAIN=stable`; no se pudo probar en local).
-2. Restos de [`REPO-AUDIT.md`](REPO-AUDIT.md): `base64`/`getrandom` duplicados, `cargo fmt`
-   (28 ficheros, diff grande: hacerlo en un commit aparte), licencia (decide el usuario) y clippy
-   (no está instalado en el toolchain `gnullvm-local`). Hechos: rutas de usuario, código muerto,
+2. Restos de [`REPO-AUDIT.md`](REPO-AUDIT.md): `base64`/`getrandom` duplicados y clippy
+   (no está instalado en el toolchain `gnullvm-local`). Hechos: `cargo fmt` (commit aparte, 2026-11-11), licencia `MIT OR Apache-2.0`, rutas de usuario, código muerto,
    metadatos de Cargo, retirada de plugins.
 3. Huecos de tests de [`REPO-AUDIT.md`](REPO-AUDIT.md) §4.2: desconexión HID en caliente, caída de
    la tubería de Orca, SQLite ocupado, traversal en iconos de perfil, tramas WebSocket enormes y
