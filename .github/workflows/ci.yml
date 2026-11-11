@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['daemon/**', '.github/workflows/ci.yml']
+    paths: ['daemon/**', 'tools/e2e/**', 'tools/smoke/**', '.github/workflows/ci.yml']
   pull_request:
-    paths: ['daemon/**', '.github/workflows/ci.yml']
+    paths: ['daemon/**', 'tools/e2e/**', 'tools/smoke/**', '.github/workflows/ci.yml']
 
 env:
   CARGO_TERM_COLOR: always
@@ -37,6 +37,32 @@ jobs:
         shell: pwsh
         run: pwsh -File ../tools/smoke/smoke.ps1 -Exe target/release/orcadeck.exe
       - run: cargo test --release --workspace
+      # E2E after the Rust gate: the release binary is already built, and a source regression
+      # fails in cargo test before spending time on npm/browser setup.
+      - name: e2e npm ci
+        working-directory: tools/e2e
+        run: npm ci
+      - name: e2e browser cache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\ms-playwright
+          key: playwright-${{ hashFiles('tools/e2e/package-lock.json') }}
+      - name: e2e browser
+        working-directory: tools/e2e
+        run: npx playwright install chromium
+      - name: e2e (Playwright)
+        working-directory: tools/e2e
+        env:
+          ORCADECK_BIN: ${{ github.workspace }}\daemon\target\release\orcadeck.exe
+        run: npx playwright test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            tools/e2e/test-results
+            tools/e2e/playwright-report
+          if-no-files-found: ignore
 
   lint:
     runs-on: windows-latest
