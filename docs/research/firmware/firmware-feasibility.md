@@ -207,7 +207,7 @@ Total: 50 bytes cambiados (`cmp -l`). Se mantienen el orden de la línea amarill
 
 - REA no puede abrir binarios ARM raw en Windows: Ghidra no está configurado y el proveedor P0 solo admite PE/6502.
   Por eso se usaron REA `inspect_byte_entropy` y capstone 5.0.9 (scripts en
-  `C:\Users\migue\AppData\Local\Temp\claude\2c80c354be5b99aa\281ad4cd-058d-4455-8739-62ab64a348c6\scratchpad\`:
+  `<temp>`:
   `decomp.py`, `lits.py`, `str.py`, `estr.py`, `fx.py`, `xr.py`, `upd*.txt`).
 - La identificación del MCU (C*Core) es INFERRED. Falta ver el chip.
 - Los dos JSON del CDN se descargaron con una petición GET anónima, sin datos del usuario.

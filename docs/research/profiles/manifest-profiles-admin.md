@@ -240,7 +240,7 @@ DataCache). STRINGS in E: `%1-%2-%3-%4-%5.sdProfile`.
   "DeviceSerialNumber": "355499441494", // present on newer scenes; binds the scene to one physical unit
   "AppIdentifier":  "*",                // foreground-app auto-switch: "*" = default/any, "" = none,
   "AppIdentifier0": "*",                //   or an absolute exe path with forward slashes,
-  "AppIdentifier1": "",                 //   e.g. "C:/Users/migue/AppData/Roaming/Zoom/bin/Zoom.exe" (Grabación)
+  "AppIdentifier1": "",                 //   e.g. "%USERPROFILE%/AppData/Roaming/Zoom/bin/Zoom.exe" (Grabación)
   "AppIdentifier2": "",                 // INFERRED: up to 3 apps (0..2); AppIdentifier mirrors AppIdentifier0
   "Pages": {                            // multi-page container; every observed scene lists only itself
     "Current": "R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile",
@@ -320,7 +320,7 @@ AKP153E\SerialNumber=355499441494
 [AKP153E355499441494DeviceConfig]        ; <Model><Serial>: the scene currently shown on that unit
 DeviceUUID=AKP153E
 sdProfileName=R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile
-sdProfilePath=C:\\Users\\migue\\AppData\\Roaming\\HotSpot\\StreamDock\\profiles\\R0KZ54Z0-….sdProfile
+sdProfilePath=%USERPROFILE%\\AppData\\Roaming\\HotSpot\\StreamDock\\profiles\\R0KZ54Z0-….sdProfile
 [AKP153EDeviceConfig]                     ; serial-less legacy entry; points to UGNF54G2-… which no longer exists (stale)
 [DeviceBrightness]  AKP153E=100, AKP153E355499441494=100
 [ScreenOffTime]     time=-10087, AKP153E355499441494=-10087   ; INFERRED: negative = disabled

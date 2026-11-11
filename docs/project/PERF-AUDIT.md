@@ -1,7 +1,7 @@
 # Auditoría de rendimiento: `orcadeck run` y `orcadeck edit`
 
 - **Fecha:** 2026-11-10
-- **Repositorio:** `C:\Users\migue\orca\workspaces\orca-stream-dock\perf-audit`
+- **Repositorio:** `%USERPROFILE%\orca\workspaces\orca-stream-dock\perf-audit`
 - **Rama:** `miguelpicado/perf-audit`
 - **Alcance:** auditoría de solo lectura. No se modificó código, `Cargo.toml` ni configuración; el único fichero creado es este informe.
 - **Herramienta / entorno:** Rust `1.99.0` (`gnullvm-local`, `x86_64-pc-windows-gnullvm`), `llvm-mingw-20261104-ucrt-x86_64`, Windows, PowerShell. Builds con `CARGO_TARGET_DIR` propio en `%TEMP%\opencode\ocdeck-perf\*` y perfil release alterado solo por variables `CARGO_PROFILE_RELEASE_*`.
@@ -396,7 +396,7 @@ Con el puerto cerrado el plugin reintenta y la CPU no es representativa; el RSS 
 
 ```powershell
 $env:PATH="C:\Tools\llvm-mingw-20261104-ucrt-x86_64\bin;$env:USERPROFILE\.cargo\bin;$env:PATH"
-$env:RUSTUP_HOME="C:\Users\migue\.rustup"; $env:CARGO_HOME="C:\Users\migue\.cargo"
+$env:RUSTUP_HOME="%USERPROFILE%\.rustup"; $env:CARGO_HOME="%USERPROFILE%\.cargo"
 $env:RUSTUP_TOOLCHAIN="gnullvm-local"
 foreach ($v in @(
   @{n='actual'; e=@{}},

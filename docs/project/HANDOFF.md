@@ -45,7 +45,7 @@ bloqueante, `builtin` por plazos, quitar `latest`) esperar a medir `run` con el 
    `getrandom` duplicados . Hecho: retirada de plugins, rutas de
    usuario, código muerto, metadatos Cargo.
    **Cuidado:** sin `QUOTA_DIR` las teclas de cuota leen `%APPDATA%\OrcaDeck\quota` y quedan
-   vacías; definir `QUOTA_DIR=C:\Users\migue\Github\quota-monitor` (entorno o tarea de autoarranque).
+   vacías; definir `QUOTA_DIR=<quota-monitor>` (entorno o tarea de autoarranque).
 2. Con dispositivo y OK del usuario: parar Stream Dock (`schtasks /end /tn StreamDock`), probar
    `run`, `edit`, Scene Shift, PI e instalación de plugins en vivo; medir exe/RSS/CPU; autoarranque.
 3. Pulsación larga: solo investigación/emulación de firmware. **No flashear** sin plan de

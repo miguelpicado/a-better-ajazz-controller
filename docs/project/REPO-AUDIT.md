@@ -6,7 +6,7 @@
 > pendiente está en [`STATUS.md`](STATUS.md) y [`ROADMAP.md`](ROADMAP.md).
 
 - **Fecha:** 2026-11-10
-- **Repositorio:** `C:\Users\migue\orca\workspaces\orca-stream-dock\repo-audit` (worktree de `C:\Users\migue\Github\orca-stream-dock`)
+- **Repositorio:** `%USERPROFILE%\orca\workspaces\orca-stream-dock\repo-audit` (worktree de `<repo>`)
 - **Rama:** `miguelpicado/repo-audit`
 - **Herramienta / Entorno:** Antigravity / Gemini 3.8 Flash, Rust `gnullvm-local` (1.99.0) + `llvm-mingw-20261104-ucrt-x86_64`
 - **Objetivo rector del proyecto:** Sustituto en Rust extremadamente ligero y optimizado de la app oficial "Stream Dock AJAZZ", 0 % CPU en reposo, sin dependencias superfluas, un solo binario, UI web bajo demanda (`orcadeck edit`) nunca residente.
@@ -17,11 +17,11 @@
 
 ### 1.1 Evidencia y comandos ejecutados
 - Árbol rastreado: `git ls-files` (77 ficheros registrados).
-- Estado de ficheros ignorados y sin seguimiento: `git status --ignored` tanto en el worktree como en el repositorio principal (`C:\Users\migue\Github\orca-stream-dock`).
+- Estado de ficheros ignorados y sin seguimiento: `git status --ignored` tanto en el worktree como en el repositorio principal (`<repo>`).
 - Medición de tamaño en disco por directorio:
   - Comando PowerShell:
     ```powershell
-    Get-ChildItem -Force C:\Users\migue\Github\orca-stream-dock | ForEach-Object {
+    Get-ChildItem -Force <repo> | ForEach-Object {
         $item = $_
         if ($item.PSIsContainer) {
             $size = (Get-ChildItem -Recurse -Force $item.FullName -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
@@ -52,31 +52,31 @@
 ### 1.3 Análisis de ficheros obsoletos, duplicados o huérfanos
 
 1. **`deploy.ps1` (raíz):**
-   - *Ruta:* [deploy.ps1](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/deploy.ps1#L1-L18)
+   - *Ruta:* [deploy.ps1](deploy.ps1#L1-L18)
    - *Propósito:* Script de PowerShell para compilar (`npm install`) e instalar el plugin `com.miguelpicado.orcadock.sdPlugin` dentro de la aplicación propietaria `Stream Dock AJAZZ.exe` en `%APPDATA%\HotSpot\StreamDock\plugins\`.
    - *Diagnóstico:* **Obsoleto / Huérfano**. El plugin en Node.js ya fue migrado íntegramente a Rust como acciones nativas en `daemon/crates/builtin`, y el daemon `orcadeck` sustituye a la app oficial. Además, contiene rutas locales absolutas cableadas (`C:\Program Files (x86)\Stream Dock AJAZZ Global\Stream Dock AJAZZ.exe`).
    - *Acción recomendada:* Retirar del árbol o trasladar a `tools/legacy/` cuando el coordinador lo decida.
 
 2. **`com.miguelpicado.orcadock.sdPlugin` (raíz):**
-   - *Ruta:* [com.miguelpicado.orcadock.sdPlugin](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/com.miguelpicado.orcadock.sdPlugin)
+   - *Ruta:* [com.miguelpicado.orcadock.sdPlugin](com.miguelpicado.orcadock.sdPlugin)
    - *Contenido:* `core.js`, `plugin.js`, `test.js`, `manifest.json`, `package.json`, `raise.ps1`, `imgs/`.
    - *Diagnóstico:* **Duplicado funcional / Legacy**. Fue el prototipo inicial en Node.js. En `docs/STATUS.md` (§1.16 y §1.23) y `docs/HANDOFF.md` (§1.64) se especifica que fue migrado a `daemon/crates/builtin` (`actions.rs`, `core.rs`, `orca.rs`, `raster.rs`), y su suite de pruebas (`test.js`) está portada a Rust en `daemon/crates/builtin/tests/port.rs`.
    - *Acción recomendada:* No borrar en este turno; planificar su archivado en una rama legacy o carpeta de referencia histórica `tools/legacy/`.
 
 3. **`tools/streamdock`:**
-   - *Ruta:* [tools/streamdock](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/tools/streamdock)
+   - *Ruta:* [tools/streamdock](tools/streamdock)
    - *Contenido:* `ARROW_LEFT.png`, `ARROW_RIGHT.png`, `arrows.ps1`, `insta360-manifest.json`, `profiles.mjs`.
    - *Diagnóstico:* **Herramientas de un solo uso (One-off) y artefactos estáticos**. El script `profiles.mjs` indica explícitamente en la línea 1: `// One-off: arrows on Orca scene, Orca Deck clock/summary on the side panel, Grabación scene. Run with Stream Dock stopped.`. Modificaba perfiles directamente en `%APPDATA%`. Actualmente, la manipulación de perfiles está integrada en `daemon/src/profile.rs`, `scenes.rs` y el editor web `orcadeck-web`. Las imágenes `ARROW_*.png` son generadas por `arrows.ps1`.
    - *Acción recomendada:* Conservar en `tools/streamdock/` como utilidades de mantenimiento y fixtures, o documentar su condición de herramienta puntual.
 
 4. **`tools/plugin-install`:**
-   - *Ruta:* [tools/plugin-install](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/tools/plugin-install)
+   - *Ruta:* [tools/plugin-install](tools/plugin-install)
    - *Contenido:* `install.mjs`, `install.test.mjs`, `README.md`.
    - *Diagnóstico:* **Prototipo de referencia sustituido**. Fue la implementación de referencia en Node para descifrado de estructura de plugins Elgato con `ELGATO` DRM y generación de overlays. Ha sido portado al 100% a Rust en `daemon/crates/plugman` (probado con 13 tests en `tests/plugman.rs`).
    - *Acción recomendada:* Conservar como especificación ejecutable de referencia o mover a `tools/legacy/plugin-install-node/`.
 
 5. **`docs/design`:**
-   - *Ruta:* [docs/design](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/design)
+   - *Ruta:* [docs/design](docs/design)
    - *Contenido:* `architecture.md` (borrador del 2026-11-09) y `plugin-install-handoff.md`.
    - *Diagnóstico:* **Diseño fundacional histórico**. Valioso como trazabilidad, pero `architecture.md` contiene decisiones tempranas que fueron superadas (como la asunción de usar `axum` y `tokio-tungstenite`, o la espera de ACK en paquetes `BAT`, descartadas en la implementación final síncrona sin runtime async).
    - *Acción recomendada:* Conservar intactos, añadiendo una nota de vigencia que remita a `docs/HANDOFF.md`.
@@ -98,32 +98,32 @@
 
 | Fichero y línea | Afirmación en el documento | Realidad comprobada en el código / estado actual | Gravedad |
 |---|---|---|---|
-| [STATUS.md:8-10](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/STATUS.md#L8-L10) | *"cinco piezas independientes que aún no están integradas ni probadas con el dispositivo"* | Las cinco piezas **ya están integradas** en el workspace único `daemon/` con los subcomandos `orcadeck run` y `orcadeck edit`, probadas y con 74 tests verdes. Documentado en [HANDOFF.md:64-75](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/HANDOFF.md#L64-L75). | Alta |
-| [STATUS.md:26-27](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/STATUS.md#L26-L27) | *"Cada crate de crates/ es independiente (su propio [workspace] vacío y rust-toolchain.toml); daemon/Cargo.toml no las referencia todavía."* | [daemon/Cargo.toml:7-8](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/Cargo.toml#L7-L8) ya declara `members = ["crates/host", "crates/plugman", "crates/builtin", "crates/web"]` con dependencias por path unificadas y un solo `Cargo.lock`. | Alta |
-| [STATUS.md:12](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/STATUS.md#L12) | *"Nada está commiteado: daemon/, docs/, tools/plugin-install/, .opencode/ y .playwright-mcp/ están sin seguimiento"* | En git, `daemon/`, `docs/` y `tools/plugin-install/` **sí están rastreados**. Solo `.opencode/` quedaba sin seguimiento. | Media |
-| [STATUS.md:137-140](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/STATUS.md#L137-L140) | *Pendiente #2: "Integración en el daemon: convertir daemon/ en workspace con las 4 crates..."* | Tarea completada. Ya es workspace y compila en conjunto. | Media |
-| [hid-protocol.md:46-47](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/hid-protocol.md#L46-L47) y [architecture.md:33-34](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/design/architecture.md#L33-L34) | *"BAT cabecera de imagen ... seguida del JPEG en trozos de N bytes y espera de ACK..OK (<= 1 s)"* | Falso en el hardware real: capturas de Frida en vivo demostraron que el dispositivo **no envía ACK** de imágenes y que esperarlo provoca pérdida masiva de fotogramas ([HANDOFF.md:36, 72-76](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/HANDOFF.md#L36)). | Alta |
+| [STATUS.md:8-10](docs/STATUS.md#L8-L10) | *"cinco piezas independientes que aún no están integradas ni probadas con el dispositivo"* | Las cinco piezas **ya están integradas** en el workspace único `daemon/` con los subcomandos `orcadeck run` y `orcadeck edit`, probadas y con 74 tests verdes. Documentado en [HANDOFF.md:64-75](docs/HANDOFF.md#L64-L75). | Alta |
+| [STATUS.md:26-27](docs/STATUS.md#L26-L27) | *"Cada crate de crates/ es independiente (su propio [workspace] vacío y rust-toolchain.toml); daemon/Cargo.toml no las referencia todavía."* | [daemon/Cargo.toml:7-8](daemon/Cargo.toml#L7-L8) ya declara `members = ["crates/host", "crates/plugman", "crates/builtin", "crates/web"]` con dependencias por path unificadas y un solo `Cargo.lock`. | Alta |
+| [STATUS.md:12](docs/STATUS.md#L12) | *"Nada está commiteado: daemon/, docs/, tools/plugin-install/, .opencode/ y .playwright-mcp/ están sin seguimiento"* | En git, `daemon/`, `docs/` y `tools/plugin-install/` **sí están rastreados**. Solo `.opencode/` quedaba sin seguimiento. | Media |
+| [STATUS.md:137-140](docs/STATUS.md#L137-L140) | *Pendiente #2: "Integración en el daemon: convertir daemon/ en workspace con las 4 crates..."* | Tarea completada. Ya es workspace y compila en conjunto. | Media |
+| [hid-protocol.md:46-47](docs/research/hid-protocol.md#L46-L47) y [architecture.md:33-34](docs/design/architecture.md#L33-L34) | *"BAT cabecera de imagen ... seguida del JPEG en trozos de N bytes y espera de ACK..OK (<= 1 s)"* | Falso en el hardware real: capturas de Frida en vivo demostraron que el dispositivo **no envía ACK** de imágenes y que esperarlo provoca pérdida masiva de fotogramas ([HANDOFF.md:36, 72-76](docs/HANDOFF.md#L36)). | Alta |
 
 ### 2.2 Frases erróneas sobre UpDateTool y FirmwareUpgradeTool
 
 Tal como señalaba `docs/HANDOFF.md:40-44`, los documentos de investigación preliminar asumieron inicialmente que `FirmwareUpgradeTool.exe` no servía para el AKP153E y que se requería una herramienta ausente llamada `UpDateTool11-11.exe`. El hallazgo posterior en `docs/research/updatetool-origin.md` refutó esto por completo: `FirmwareUpgradeTool.exe` **es** la herramienta oficial de flasheo cuando se le pasan 4 argumentos (`768 4112 <bin> <icono>`).
 
 #### Localización exacta de afirmaciones erróneas en `docs/research/updatetool-analysis.md`:
-1. [Línea 20](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/updatetool-analysis.md#L20): `| …\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe | 1 809 384 B | — | Para el SoC Actions (familia d13x), no AKP153E |` — **Erróneo:** SÍ es para el AKP153E.
-2. [Línea 21](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/updatetool-analysis.md#L21): `| UpDateToolV2\UpDateTool11-11.exe | — | — | Ausente en todo el disco y en el instalador (ver §1) |` — **Desfasado:** UpDateTool no tiene relación con el flasheo de este dispositivo.
-3. [Líneas 48-53](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/updatetool-analysis.md#L48-L53): `"Conclusión §1: el EXE delega el flasheo en UpDateTool11-11.exe, que no se instala con este build ni viene como cadena en el instalador..."` — **Erróneo:** El flasheo real por HID lo ejecuta `FirmwareUpgradeTool.exe`.
-4. [Líneas 79-82, 87](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/updatetool-analysis.md#L79-L87): `"Quién envía ese disparo: Desconocido: ni EXE ni DLL lo construyen -> lo haría UpDateTool"` — **Erróneo:** Lo envía `FirmwareUpgradeTool.exe` al detectar que no está en modo bootloader.
-5. [Línea 206](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/updatetool-analysis.md#L206): `| ¿Herramienta de flasheo disponible? | No (UpDateTool ausente; no extraíble del instalador con lo presente) |` — **Erróneo:** La herramienta está instalada en disco.
-6. [Líneas 214-215](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/updatetool-analysis.md#L214-L215): `"1. Conseguir UpDateToolV2\UpDateTool11-11.exe ... y analizarlo en estático ... PARADA 1"` — **Erróneo:** Línea de investigación abandonada por irrelevante.
+1. [Línea 20](docs/research/updatetool-analysis.md#L20): `| …\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe | 1 809 384 B | — | Para el SoC Actions (familia d13x), no AKP153E |` — **Erróneo:** SÍ es para el AKP153E.
+2. [Línea 21](docs/research/updatetool-analysis.md#L21): `| UpDateToolV2\UpDateTool11-11.exe | — | — | Ausente en todo el disco y en el instalador (ver §1) |` — **Desfasado:** UpDateTool no tiene relación con el flasheo de este dispositivo.
+3. [Líneas 48-53](docs/research/updatetool-analysis.md#L48-L53): `"Conclusión §1: el EXE delega el flasheo en UpDateTool11-11.exe, que no se instala con este build ni viene como cadena en el instalador..."` — **Erróneo:** El flasheo real por HID lo ejecuta `FirmwareUpgradeTool.exe`.
+4. [Líneas 79-82, 87](docs/research/updatetool-analysis.md#L79-L87): `"Quién envía ese disparo: Desconocido: ni EXE ni DLL lo construyen -> lo haría UpDateTool"` — **Erróneo:** Lo envía `FirmwareUpgradeTool.exe` al detectar que no está en modo bootloader.
+5. [Línea 206](docs/research/updatetool-analysis.md#L206): `| ¿Herramienta de flasheo disponible? | No (UpDateTool ausente; no extraíble del instalador con lo presente) |` — **Erróneo:** La herramienta está instalada en disco.
+6. [Líneas 214-215](docs/research/updatetool-analysis.md#L214-L215): `"1. Conseguir UpDateToolV2\UpDateTool11-11.exe ... y analizarlo en estático ... PARADA 1"` — **Erróneo:** Línea de investigación abandonada por irrelevante.
 
 #### Localización exacta de afirmaciones erróneas en `docs/research/firmware-feasibility.md`:
-1. [Líneas 12-16](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/firmware-feasibility.md#L12-L16): `"En este equipo no existe ninguna herramienta que actualice el firmware del AKP153E... Mientras no se consiga el bootloader (volcado por SWD) o la herramienta oficial de actualización, no hay forma segura de flashear."` — **Erróneo.**
-2. [Línea 21](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/firmware-feasibility.md#L21): `| Carga en el dispositivo | Desconocida: no hay herramienta local y el bootloader no está en el .bin |` — **Erróneo:** `FirmwareUpgradeTool.exe` está presente localmente.
-3. [Línea 33](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/firmware-feasibility.md#L33): `| C:\Program Files (x86)\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe | 1 809 384 B | ... | Herramienta para otro chip, ver §3 |` — **Erróneo.**
-4. [Líneas 104-105](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/firmware-feasibility.md#L104-L105): `"FirmwareUpgradeTool.exe es para el SoC de Actions ... No habla HID ni CRT"` — **Erróneo:** Con 4 argumentos habla HID directo con el bootloader `EEEF:2929` y envía comandos `CRT\0\0APP NEW`.
-5. [Líneas 107-110](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/firmware-feasibility.md#L107-L110): `"Conclusión: con lo instalado no se puede reconstruir el protocolo HID con que el bootloader del AKP153E recibe la imagen..."` — **Erróneo:** El protocolo fue completamente reconstruido en `updatetool-origin.md`.
-6. [Línea 172](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/firmware-feasibility.md#L172): `"Pero el 'mismo mecanismo de la app' no existe para el AKP153E (§3.2)..."` — **Erróneo.**
-7. [Líneas 180-182](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/docs/research/firmware-feasibility.md#L180-L182): `"1. Sin abrir nada: conseguir UpDateToolV2\UpDateTool11-11.exe ... PARADA 1"` — **Erróneo.**
+1. [Líneas 12-16](docs/research/firmware-feasibility.md#L12-L16): `"En este equipo no existe ninguna herramienta que actualice el firmware del AKP153E... Mientras no se consiga el bootloader (volcado por SWD) o la herramienta oficial de actualización, no hay forma segura de flashear."` — **Erróneo.**
+2. [Línea 21](docs/research/firmware-feasibility.md#L21): `| Carga en el dispositivo | Desconocida: no hay herramienta local y el bootloader no está en el .bin |` — **Erróneo:** `FirmwareUpgradeTool.exe` está presente localmente.
+3. [Línea 33](docs/research/firmware-feasibility.md#L33): `| C:\Program Files (x86)\Stream Dock AJAZZ Global\FirmwareUpgradeTool.exe | 1 809 384 B | ... | Herramienta para otro chip, ver §3 |` — **Erróneo.**
+4. [Líneas 104-105](docs/research/firmware-feasibility.md#L104-L105): `"FirmwareUpgradeTool.exe es para el SoC de Actions ... No habla HID ni CRT"` — **Erróneo:** Con 4 argumentos habla HID directo con el bootloader `EEEF:2929` y envía comandos `CRT\0\0APP NEW`.
+5. [Líneas 107-110](docs/research/firmware-feasibility.md#L107-L110): `"Conclusión: con lo instalado no se puede reconstruir el protocolo HID con que el bootloader del AKP153E recibe la imagen..."` — **Erróneo:** El protocolo fue completamente reconstruido en `updatetool-origin.md`.
+6. [Línea 172](docs/research/firmware-feasibility.md#L172): `"Pero el 'mismo mecanismo de la app' no existe para el AKP153E (§3.2)..."` — **Erróneo.**
+7. [Líneas 180-182](docs/research/firmware-feasibility.md#L180-L182): `"1. Sin abrir nada: conseguir UpDateToolV2\UpDateTool11-11.exe ... PARADA 1"` — **Erróneo.**
 
 ---
 
@@ -148,7 +148,7 @@ Tal como señalaba `docs/HANDOFF.md:40-44`, los documentos de investigación pre
 
 ### 3.3 Warnings de `rustc` (`cargo check --release --workspace --all-targets`)
 El compilador genera exactamente 2 advertencias conocidas en el crate raíz:
-1. `warning: method wait_ack is never used` en [daemon/src/main.rs:38:8](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/src/main.rs#L38-L50):
+1. `warning: method wait_ack is never used` en [daemon/src/main.rs:38:8](daemon/src/main.rs#L38-L50):
    ```rust
    fn wait_ack(&self) {
        let t = Instant::now();
@@ -157,7 +157,7 @@ El compilador genera exactamente 2 advertencias conocidas en el crate raíz:
    }
    ```
    - **Confirmación:** Es **CÓDIGO MUERTO REAL**. Ningún método ni función lo invoca en todo el workspace. Se creó durante el análisis preliminar pensando que el hardware respondía ACK tras cada bloque de imagen.
-2. `warning: function screen_off is never used` en [daemon/src/proto.rs:44:8](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/src/proto.rs#L44):
+2. `warning: function screen_off is never used` en [daemon/src/proto.rs:44:8](daemon/src/proto.rs#L44):
    ```rust
    pub fn screen_off(n: usize) -> Vec<u8> { crt(n, "HAN", &[(0x0a, 1)]) }
    ```
@@ -180,14 +180,14 @@ El compilador genera exactamente 2 advertencias conocidas en el crate raíz:
 El comando `cargo tree -d` identifica 4 paquetes duplicados:
 
 1. **`base64`:**
-   - `base64 v0.22.1` (directa en [daemon/Cargo.toml:14](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/Cargo.toml#L14)).
+   - `base64 v0.22.1` (directa en [daemon/Cargo.toml:14](daemon/Cargo.toml#L14)).
    - `base64 v0.23.1` (transitiva vía `usvg v0.49` -> `resvg v0.49` en `orcadeck-builtin`).
    - *Coste:* Compilación duplicada del crate y desaprovechamiento de optimizaciones LTO.
    - *Solución:* Subir `base64 = "0.23"` en `daemon/Cargo.toml`.
 
 2. **`getrandom`:**
-   - `getrandom v0.2.17` (directa en [daemon/crates/web/Cargo.toml:11](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/web/Cargo.toml#L11)).
-   - `getrandom v0.4.3` (directa en [daemon/crates/host/Cargo.toml:16](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/host/Cargo.toml#L16), y transitiva vía `rand v0.10` / `tungstenite` / `zip`).
+   - `getrandom v0.2.17` (directa en [daemon/crates/web/Cargo.toml:11](daemon/crates/web/Cargo.toml#L11)).
+   - `getrandom v0.4.3` (directa en [daemon/crates/host/Cargo.toml:16](daemon/crates/host/Cargo.toml#L16), y transitiva vía `rand v0.10` / `tungstenite` / `zip`).
    - *Coste:* Duplica las llamadas al sistema para generación de números aleatorios criptográficos (CSPRNG en Windows `BCryptGenRandom` / `ProcessPrng`).
    - *Solución:* Actualizar `orcadeck-web` a `getrandom = "0.4"`.
 
@@ -207,9 +207,9 @@ El comando `cargo tree -d` identifica 4 paquetes duplicados:
 
 ### 4.1 Inventario de pruebas por crate (Total: 74 tests, 100 % pasando)
 
-- **`orcadeck` (binario principal):** **23 tests unitarios** ([daemon/src/main.rs](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/src/main.rs)).
+- **`orcadeck` (binario principal):** **23 tests unitarios** ([daemon/src/main.rs](daemon/src/main.rs)).
   - Cubre: parseo y chunks de protocolo HID (`proto.rs`), validación de dimensiones JPEG y límites de 9000 bytes (`render.rs`), debounce y persistencia de `Settings`/`GlobalSettings` (`app.rs`), filtrado estricto de URLs `http(s)` para `OpenUrl`, orden de escenas y transiciones cíclicas `Scene Shift` (`scenes.rs`), resolución de rutas de perfiles (`edit.rs`).
-- **`orcadeck-builtin`:** **6 tests de integración** ([daemon/crates/builtin/tests/port.rs](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/builtin/tests/port.rs)).
+- **`orcadeck-builtin`:** **6 tests de integración** ([daemon/crates/builtin/tests/port.rs](daemon/crates/builtin/tests/port.rs)).
   - Cubre: compatibilidad exacta con `test.js` del plugin legacy de Node, rasterización SVG de tarjetas de agente y panel lateral a 85x85 y 80x80 px con `resvg`, simulación del pipe RPC de Orca y tarjeta de cuota.
 - **`orcadeck-host`:** **20 tests** (10 unitarios en `lib.rs`, 8 integración en `fake_plugin.rs`, 1 integración en `real_plugin.rs`, 1 doc-test).
   - Cubre: WebSocket RFC 6455 en loopback, allowlist estricta de `Origin`, generación y consumo único de tokens para Property Inspector, secuencia de backoff exponencial en reinicio de plugins, ciclo `register` / `appear` / `setImage` / `keyDown`.
@@ -308,27 +308,27 @@ jobs:
 ### 6.1 Auditoría de Secretos y Credenciales
 - **Resultado:** No existen secretos reales, credenciales de producción ni claves privadas comprometidas en el árbol rastreado de git.
 - **Manejo de tokens verificado:**
-  - `authToken` en [daemon/crates/builtin/src/orca.rs:32](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/builtin/src/orca.rs#L32): Se lee en tiempo de ejecución desde la tubería local de Orca; no hay tokens cableados.
-  - Token de servidor web en [daemon/crates/web/src/api.rs:60](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/web/src/api.rs#L60): Se genera aleatoriamente con CSPRNG (`getrandom`) de 256 bits en cada arranque del proceso y se compara con `constant_time_eq`.
-  - Tokens de Property Inspector en [daemon/crates/host/src/host.rs:188](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/host/src/host.rs#L188): Tokens de un solo uso por UUID criptográfico.
+  - `authToken` en [daemon/crates/builtin/src/orca.rs:32](daemon/crates/builtin/src/orca.rs#L32): Se lee en tiempo de ejecución desde la tubería local de Orca; no hay tokens cableados.
+  - Token de servidor web en [daemon/crates/web/src/api.rs:60](daemon/crates/web/src/api.rs#L60): Se genera aleatoriamente con CSPRNG (`getrandom`) de 256 bits en cada arranque del proceso y se compara con `constant_time_eq`.
+  - Tokens de Property Inspector en [daemon/crates/host/src/host.rs:188](daemon/crates/host/src/host.rs#L188): Tokens de un solo uso por UUID criptográfico.
 - **Advertencia higiénica:** En `docs/research/manifest-profiles-admin.md:243` se señala que la base de datos local SQLite de Stream Dock oficial (`OBSServerInfo`) guarda contraseñas de OBS en texto claro en la máquina del usuario; se debe mantener la regla de no copiar ni commitear esa tabla.
 
 ### 6.2 Rutas absolutas del usuario en ficheros rastreados
 Se han localizado las siguientes rutas personales rastreadas en git:
 
-1. [daemon/crates/builtin/src/actions.rs:87](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/builtin/src/actions.rs#L87):
+1. [daemon/crates/builtin/src/actions.rs:87](daemon/crates/builtin/src/actions.rs#L87):
    ```rust
-   std::env::var_os("QUOTA_DIR").map(PathBuf::from).unwrap_or_else(|| "C:/Users/migue/Github/quota-monitor".into())
+   std::env::var_os("QUOTA_DIR").map(PathBuf::from).unwrap_or_else(|| "<quota-monitor>".into())
    ```
    *Riesgo:* Ruta cableada del usuario `migue`. Si otro usuario o un runner de CI ejecuta las pruebas sin definir `QUOTA_DIR`, intentará buscar esa ruta inexistente.
-2. [daemon/crates/host/tests/real_plugin.rs:30](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/daemon/crates/host/tests/real_plugin.rs#L30):
+2. [daemon/crates/host/tests/real_plugin.rs:30](daemon/crates/host/tests/real_plugin.rs#L30):
    ```rust
-   PathBuf::from(r"C:\Users\migue\Github\orca-dock\com.miguelpicado.orcadock.sdPlugin")
+   PathBuf::from(r"<orca-dock>\com.miguelpicado.orcadock.sdPlugin")
    ```
    *Riesgo:* Test que depende de la existencia de un directorio fuera del repositorio en la máquina del desarrollador.
-3. [com.miguelpicado.orcadock.sdPlugin/plugin.js:22](file:///C:/Users/migue/orca/workspaces/orca-stream-dock/repo-audit/com.miguelpicado.orcadock.sdPlugin/plugin.js#L22):
+3. [com.miguelpicado.orcadock.sdPlugin/plugin.js:22](com.miguelpicado.orcadock.sdPlugin/plugin.js#L22):
    ```javascript
-   const QUOTA_DIR = process.env.QUOTA_DIR ?? 'C:/Users/migue/Github/quota-monitor';
+   const QUOTA_DIR = process.env.QUOTA_DIR ?? '<quota-monitor>';
    ```
 4. Ficheros de documentación que registran trazas forenses:
    - `docs/HANDOFF.md:3, 22`

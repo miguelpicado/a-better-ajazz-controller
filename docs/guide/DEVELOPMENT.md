@@ -20,8 +20,8 @@ ligero, sin runtime async, con 0 % de CPU en reposo y UI web solo bajo demanda.
 
 ```powershell
 $env:PATH="C:\Tools\llvm-mingw-20261104-ucrt-x86_64\bin;$env:USERPROFILE\.cargo\bin;$env:PATH"
-$env:RUSTUP_HOME="C:\Users\migue\.rustup"
-$env:CARGO_HOME="C:\Users\migue\.cargo"
+$env:RUSTUP_HOME="%USERPROFILE%\.rustup"
+$env:CARGO_HOME="%USERPROFILE%\.cargo"
 $env:RUSTUP_TOOLCHAIN="gnullvm-local"   # toolchain local; rust-toolchain.toml no se toca
 cd <repo>\daemon
 

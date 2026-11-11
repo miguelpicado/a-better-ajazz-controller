@@ -19,7 +19,7 @@ const log = (m) => appendFileSync(LOG, `${new Date().toISOString()} ${m}\n`);
 const args = {};
 for (let i = 2; i < process.argv.length; i += 2) args[process.argv[i].replace(/^-/, '')] = process.argv[i + 1];
 
-const QUOTA_DIR = process.env.QUOTA_DIR ?? 'C:/Users/migue/Github/quota-monitor';
+const QUOTA_DIR = process.env.QUOTA_DIR ?? './quota';
 const QUOTA_FILE = join(QUOTA_DIR, 'quota-status.json');
 const POLL_MS = 1000;
 const SPIN_MS = 400; // Stream Dock drops faster image updates

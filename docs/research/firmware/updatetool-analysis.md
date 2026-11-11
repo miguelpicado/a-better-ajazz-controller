@@ -28,7 +28,7 @@ sin prueba directa. Direcciones `0x080…`/`0x200…` = firmware AKP153E. `0x14�
 | `UpDateToolV2\UpDateTool11-11.exe` | — | — | **Ausente en todo el disco y en el instalador** (ver §1). No interviene en el flasheo del AKP153E; es de N1/N4/S1/S3 |
 | `backup/AKP153E.bin` = `update\AKP153E.bin` (idénticos) | 96 496 B | `15e03f5b…4f6f` | Firmware app actual. SP=`0x200321C0`, Reset=`0x08004159` |
 | `work/AKP153E_pressrelease_NO_PROBADO.bin` | 96 496 B | `a7ea1549…48fc4` | Parche NO PROBADO. 50 bytes distintos, sin cambio de tamaño |
-| `C:\Users\migue\Downloads\AJAZZ_ak820_pro_2.4G_upgrade.zip` | 863 766 B | `dffb09a6…6351` | Herramienta oficial de OTRO dispositivo (referencia) |
+| `%USERPROFILE%\Downloads\AJAZZ_ak820_pro_2.4G_upgrade.zip` | 863 766 B | `dffb09a6…6351` | Herramienta oficial de OTRO dispositivo (referencia) |
 | ↳ `2.4G_upgrade.exe` (dentro del zip) | 4 343 808 B | `02991598…e38d31` | `HFD_IAPTool_230823`, PE32 x86 MFC |
 | `<repo>\Stream-Dock-AJAZZ-Installer_Windows_global.exe` (2º lote, raíz) | 560 933 008 B | `8e91648f…1abe9` | **Distinto** del de 377 MB (`61b104dc…1625`). Build mayor/nuevo. Ver §9 |
 | `<repo>\AJAZZ_AKP153E&AKP815&AKP03E_Screen Driver (…) _V2.10.185.rar` | 263 816 499 B | `9a2b7765…124f` | RAR5. Contiene 1 exe anidado. Ver §9 |
