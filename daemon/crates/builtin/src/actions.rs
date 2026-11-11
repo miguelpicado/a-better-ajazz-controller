@@ -1,25 +1,25 @@
 //! Built-in actions and their registry. The daemon calls `Registry::appear/disappear` as scenes
-//! load, `tick` every ~400 ms (paint what it returns) and `key_down` on a press.
+//! load, `tick` every ~250 ms (paint what it returns) and `key_down` on a press.
 use crate::core::{self, Agent, Counts, QuotaItem};
 use crate::orca::Orca;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-pub const POLL_MS: i64 = 1000;
-/// Spinner/blink frame length; Stream Dock dropped faster image updates.
-pub const SPIN_MS: i64 = 400;
-pub const QUOTA_MS: i64 = 30_000;
+pub const POLL_MS: i64 = 2000;
+/// Spinner/blink frame length (4 fps); AKP153E loses presses if painted without pause.
+pub const SPIN_MS: i64 = 250;
+pub const QUOTA_MS: i64 = 60_000;
 /// quota-status.json older than this: quota keys dim (orca-dock-rs not running).
 pub const QUOTA_STALE_MS: i64 = 10 * 60_000;
 const REPOS_MS: i64 = 30_000;
-/// workerList is slow (~450 ms) and changes rarely.
-const WORKERS_MS: i64 = 10_000;
+/// workerList and runList change rarely; refreshed every 30 s.
+pub const WORKERS_MS: i64 = 30_000;
 const WAKE_EVERY_MS: i64 = 3000;
 const WAKE_FOR_MS: i64 = 45_000;
 
 /// How long an agent key blinks after turning done / waiting.
-fn blink_ms(s: core::State) -> Option<i64> {
+pub fn blink_ms(s: core::State) -> Option<i64> {
     match s {
         core::State::Done => Some(20_000),
         core::State::Question => Some(60_000),
@@ -220,7 +220,7 @@ pub trait BuiltinAction: Send {
     }
 }
 
-fn frame(now: i64) -> u32 {
+pub fn frame(now: i64) -> u32 {
     (now.div_euclid(SPIN_MS) % 8) as u32
 }
 

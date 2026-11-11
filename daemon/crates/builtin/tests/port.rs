@@ -1,6 +1,6 @@
 //! Every assertion of the Node plugin's test.js, ported, plus registry (mocked Orca) and raster tests.
 use orcadeck_builtin::core::*;
-use orcadeck_builtin::{raster, Deck, Feedback, Key, Orca, Registry};
+use orcadeck_builtin::{frame, raster, Deck, Feedback, Key, Orca, Registry, POLL_MS, QUOTA_MS, SPIN_MS, WORKERS_MS};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -70,7 +70,7 @@ fn test_js_ok() {
     assert_eq!(got, [("h4", 0), ("h1", 1), ("h3", 0)]);
     assert_eq!(b[1].since, Some(1000));
     let img = render_agent(Some(&b[1]), 0, 1000 + 13 * 60000, true);
-    assert!(img.contains(">13m<"));
+    assert!(!img.contains(">13m<"), "Working agent does not show elapsed time");
     assert!(img.contains("⚙1"));
     assert!(img.contains(r#"stroke-width="7""#), "blink ring on frame 0");
     assert!(!render_agent(Some(&b[1]), 2, 0, true).contains(r#"stroke-width="7""#), "off half");
@@ -177,7 +177,7 @@ fn registry_with_mocked_orca() {
 
     // laya 1 turns done -> its key blinks (ring on the "on" frames) until pressed.
     replies.lock().unwrap().get_mut("worktree.ps").unwrap()["worktrees"][0]["agents"][0]["state"] = json!("done");
-    let t1 = t0 + 1600; // frame 0: "on" half of the blink
+    let t1 = t0 + 2000; // frame 0: "on" half of the blink, and now - t0 == POLL_MS (2000)
     let paints: HashMap<_, _> = reg.tick(t1).into_iter().collect();
     assert!(paints["a2"].contains(r#"stroke-width="7""#));
     assert!(reg.deck.is_blinking("t1:l1", t1));
@@ -219,4 +219,242 @@ fn raster_agent_key_85_and_side_cell_80() {
     }
     let clock = raster::svg_to_rgba(&render_clock(LocalTime { hour: 9, minute: 5, day: 9, month: 11, weekday: 1 }), 80).unwrap();
     assert!(clock.chunks(4).filter(|p| p[0] > 200).count() > 50, "clock digits drawn");
+}
+
+#[test]
+fn cadence_constants_match_perf_audit_and_owner_requirements() {
+    assert_eq!(SPIN_MS, 250, "SPIN_MS must be 250 ms (4 fps, one revolution in 2 s)");
+    assert_eq!(POLL_MS, 2000, "POLL_MS must be 2000 ms (2 s)");
+    assert_eq!(WORKERS_MS, 30_000, "WORKERS_MS must be 30_000 ms (30 s)");
+    assert_eq!(QUOTA_MS, 60_000, "QUOTA_MS must be 60_000 ms (60 s)");
+}
+
+#[test]
+fn working_spinner_rotation_and_frame_cadence() {
+    // Frame advances every 250 ms (SPIN_MS) and wraps modulo 8 (one revolution in 2000 ms).
+    assert_eq!(frame(0), 0);
+    assert_eq!(frame(100), 0);
+    assert_eq!(frame(249), 0);
+    assert_eq!(frame(250), 1);
+    assert_eq!(frame(499), 1);
+    assert_eq!(frame(500), 2);
+    assert_eq!(frame(749), 2);
+    assert_eq!(frame(750), 3);
+    assert_eq!(frame(1000), 4);
+    assert_eq!(frame(1250), 5);
+    assert_eq!(frame(1500), 6);
+    assert_eq!(frame(1750), 7);
+    assert_eq!(frame(1999), 7);
+    assert_eq!(frame(2000), 0);
+    assert_eq!(frame(2250), 1);
+
+    // Consecutive frames 0..7 render different SVGs (both in core::icon and render_agent).
+    let working = Agent {
+        key: "w1".into(),
+        handle: "h1".into(),
+        worktree_id: "wt1".into(),
+        repo: "test".into(),
+        label: "test".into(),
+        color: "#f97316".into(),
+        state: State::Working,
+        since: Some(1000),
+        workers: 0,
+    };
+
+    for f in 0..8 {
+        let next_f = (f + 1) % 8;
+        let icon_curr = icon(State::Working, f);
+        let icon_next = icon(State::Working, next_f);
+        assert_ne!(icon_curr, icon_next, "icon must change between frame {f} and {next_f}");
+        assert!(icon_curr.contains(&format!("rotate({} 12 12)", f * 45)));
+
+        let svg_curr = render_agent(Some(&working), f, 5000, false);
+        let svg_next = render_agent(Some(&working), next_f, 5000, false);
+        assert_ne!(svg_curr, svg_next, "rendered agent SVG must differ between frame {f} and {next_f}");
+    }
+}
+
+#[test]
+fn question_done_white_ring_alternation() {
+    for state in [State::Question, State::Done] {
+        let agent = Agent {
+            key: "a".into(),
+            handle: "h".into(),
+            worktree_id: "wt".into(),
+            repo: "repo".into(),
+            label: "repo".into(),
+            color: "#00ff00".into(),
+            state,
+            since: Some(1000),
+            workers: 0,
+        };
+
+        // When blink is true:
+        // Frames 0 and 1: ON (frame / 2 % 2 == 0)
+        // Frames 2 and 3: OFF (frame / 2 % 2 == 1)
+        // Frames 4 and 5: ON
+        // Frames 6 and 7: OFF
+        for f in [0u32, 1, 4, 5] {
+            let svg = render_agent(Some(&agent), f, 2000, true);
+            assert!(svg.contains(r#"stroke-width="7""#), "state {state:?} frame {f} must have white ring");
+        }
+        for f in [2u32, 3, 6, 7] {
+            let svg = render_agent(Some(&agent), f, 2000, true);
+            assert!(!svg.contains(r#"stroke-width="7""#), "state {state:?} frame {f} must NOT have white ring");
+        }
+
+        // When blink is false: white ring never appears regardless of frame.
+        for f in 0..8 {
+            let svg = render_agent(Some(&agent), f, 2000, false);
+            assert!(!svg.contains(r#"stroke-width="7""#), "state {state:?} frame {f} with blink=false must NOT have white ring");
+        }
+    }
+
+    // Blinking window durations.
+    assert_eq!(orcadeck_builtin::blink_ms(State::Question), Some(60_000));
+    assert_eq!(orcadeck_builtin::blink_ms(State::Done), Some(20_000));
+    assert_eq!(orcadeck_builtin::blink_ms(State::Working), None);
+    assert_eq!(orcadeck_builtin::blink_ms(State::Idle), None);
+    assert_eq!(orcadeck_builtin::blink_ms(State::Error), None);
+}
+
+#[test]
+fn elapsed_time_shown_only_for_question_and_done() {
+    let make = |state: State| Agent {
+        key: "a".into(),
+        handle: "h".into(),
+        worktree_id: "wt".into(),
+        repo: "repo".into(),
+        label: "repo".into(),
+        color: "#444444".into(),
+        state,
+        since: Some(10_000),
+        workers: 0,
+    };
+
+    // Working shows NO elapsed time text at all (spinner stays clean).
+    let working = make(State::Working);
+    for now in [10_000, 10_500, 11_000, 20_000, 70_000] {
+        let svg = render_agent(Some(&working), 0, now, false);
+        assert!(!svg.contains("y=\"131\""), "Working agent must not render elapsed time text");
+        assert!(!svg.contains(">0s<") && !svg.contains(">1s<") && !svg.contains(">10s<") && !svg.contains(">1m<"));
+    }
+
+    // Idle and Error show no elapsed time.
+    for state in [State::Idle, State::Error] {
+        let svg = render_agent(Some(&make(state)), 0, 20_000, false);
+        assert!(!svg.contains("y=\"131\""), "{state:?} agent must not render elapsed time text");
+    }
+
+    // Question shows elapsed time formatted every second under 60 s, then m/h/d.
+    let question = make(State::Question);
+    let s0 = render_agent(Some(&question), 0, 10_000, false);
+    assert!(s0.contains(">0s<"), "Question at start shows 0s");
+
+    let s0_half = render_agent(Some(&question), 0, 10_500, false);
+    assert!(s0_half.contains(">0s<"), "Question within first second still shows 0s");
+
+    let s1 = render_agent(Some(&question), 0, 11_000, false);
+    assert!(s1.contains(">1s<"), "Question after 1 second shows 1s");
+
+    let s2 = render_agent(Some(&question), 0, 12_000, false);
+    assert!(s2.contains(">2s<"), "Question after 2 seconds shows 2s");
+
+    let s59 = render_agent(Some(&question), 0, 69_999, false);
+    assert!(s59.contains(">59s<"), "Question at 59s shows 59s");
+
+    let s60 = render_agent(Some(&question), 0, 70_000, false);
+    assert!(s60.contains(">1m<"), "Question at 60s shows 1m");
+
+    // Done also shows elapsed time.
+    let done = make(State::Done);
+    assert!(render_agent(Some(&done), 0, 10_000, false).contains(">0s<"));
+    assert!(render_agent(Some(&done), 0, 15_000, false).contains(">5s<"));
+}
+
+#[test]
+fn registry_tick_repaints_only_changed_keys() {
+    let ps = json!([
+        { "repoId": "r1", "repo": "r1", "parentWorktreeId": null, "agents": [
+            { "paneKey": "k:a_work", "parentPaneKey": null, "state": "working" },
+            { "paneKey": "k:b_q", "parentPaneKey": null, "state": "waiting", "stateStartedAt": 1_000_000 },
+            { "paneKey": "k:c_idle", "parentPaneKey": null, "state": "idle" }
+        ]}
+    ]);
+    let terms = json!([
+        { "tabId": "k", "leafId": "a_work", "handle": "h_work" },
+        { "tabId": "k", "leafId": "b_q", "handle": "h_q" },
+        { "tabId": "k", "leafId": "c_idle", "handle": "h_idle" }
+    ]);
+    let repos = json!([{ "id": "r1", "displayName": "repo1", "badgeColor": "#333333" }]);
+    let replies = Arc::new(Mutex::new(HashMap::from([
+        ("repo.list".to_string(), json!({ "repos": repos })),
+        ("worktree.ps".to_string(), json!({ "worktrees": ps })),
+        ("terminal.list".to_string(), json!({ "terminals": terms })),
+        ("orchestration.workerList".to_string(), json!({ "workers": [] })),
+        ("orchestration.runList".to_string(), json!({ "runs": [] })),
+    ])));
+
+    let dir = std::env::temp_dir().join(format!("orcadeck-tick-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut reg = Registry::new(Deck::new(Box::new(Mock { replies, calls: Arc::new(Mutex::new(Vec::new())) }), dir.clone()));
+    assert!(reg.appear(key("agent", "c_work", 0)));
+    assert!(reg.appear(key("agent", "c_q", 1)));
+    assert!(reg.appear(key("agent", "c_idle", 2)));
+
+    let t0 = 1_000_000;
+    // Tick 0: initial appearance, all 3 keys are returned.
+    let p0: HashMap<_, _> = reg.tick(t0).into_iter().collect();
+    assert_eq!(p0.len(), 3);
+    assert!(p0.contains_key("c_work"));
+    assert!(p0.contains_key("c_q"));
+    assert!(p0.contains_key("c_idle"));
+
+    // Set blinking on question agent (simulating the state transition into waiting).
+    reg.deck.blinking.insert("k:b_q".into(), t0 + 60_000);
+    // Refresh shown entry for c_q with blinking on frame 0 so tick 1 compares against the blinking ring on.
+    reg.tick(t0);
+
+    // Tick 1 (t0 + 250):
+    // - c_work rotates spinner to frame 1: MUST repaint.
+    // - c_idle is unchanged: MUST NOT repaint.
+    // - c_q has frame 1 (same on-half, same second 0s): unchanged, MUST NOT repaint.
+    let p1: HashMap<_, _> = reg.tick(t0 + 250).into_iter().collect();
+    assert_eq!(p1.len(), 1, "only working agent repaints at 250 ms: {p1:?}");
+    assert!(p1.contains_key("c_work"));
+    assert!(!p1.contains_key("c_idle"), "idle key must never repaint if state has not changed");
+    assert!(!p1.contains_key("c_q"), "question key does not repaint when ring & timer did not change");
+
+    // Tick 2 (t0 + 500):
+    // - c_work rotates spinner to frame 2: MUST repaint.
+    // - c_idle is unchanged: MUST NOT repaint.
+    // - c_q frame 2 switches ring from ON to OFF: MUST repaint.
+    let p2: HashMap<_, _> = reg.tick(t0 + 500).into_iter().collect();
+    assert_eq!(p2.len(), 2, "working and question ring toggle repaint: {p2:?}");
+    assert!(p2.contains_key("c_work"));
+    assert!(p2.contains_key("c_q"));
+    assert!(!p2.contains_key("c_idle"), "idle key must never repaint");
+
+    // Tick 3 (t0 + 750):
+    // - c_work rotates spinner to frame 3: MUST repaint.
+    // - c_idle is unchanged: MUST NOT repaint.
+    // - c_q frame 3 is still OFF and elapsed time is still 0s: MUST NOT repaint.
+    let p3: HashMap<_, _> = reg.tick(t0 + 750).into_iter().collect();
+    assert_eq!(p3.len(), 1);
+    assert!(p3.contains_key("c_work"));
+    assert!(!p3.contains_key("c_idle"));
+    assert!(!p3.contains_key("c_q"));
+
+    // Tick 4 (t0 + 1000):
+    // - c_work rotates spinner to frame 4: MUST repaint.
+    // - c_idle is unchanged: MUST NOT repaint.
+    // - c_q ring turns back ON and elapsed time ticks to 1s: MUST repaint.
+    let p4: HashMap<_, _> = reg.tick(t0 + 1000).into_iter().collect();
+    assert_eq!(p4.len(), 2);
+    assert!(p4.contains_key("c_work"));
+    assert!(p4.contains_key("c_q"));
+    assert!(!p4.contains_key("c_idle"));
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

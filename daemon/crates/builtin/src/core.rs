@@ -218,11 +218,11 @@ const SANS: &str = r#"font-family="Segoe UI, Arial, sans-serif""#;
 const MONO: &str = r#"font-family="Consolas, Cascadia Mono, monospace""#;
 
 /// State icons drawn in a 24x24 box (Lucide-style strokes), placed in a dark disc.
-fn icon(state: State, frame: u32) -> String {
+pub fn icon(state: State, frame: u32) -> String {
     match state {
         State::Working => format!(
-            r##"<circle cx="12" cy="12" r="8" fill="none" stroke="#f97316" stroke-opacity=".25" stroke-width="3"/><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" transform="rotate({} 12 12)"/>"##,
-            frame * 45
+            r##"<circle cx="12" cy="12" r="8" fill="none" stroke="#f97316" stroke-opacity=".35" stroke-width="3"/><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" transform="rotate({} 12 12)"/>"##,
+            (frame % 8) * 45
         ),
         State::Question => r##"<g fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></g>"##.into(),
         State::Done => r##"<circle cx="12" cy="12" r="10" fill="#22c55e"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>"##.into(),
@@ -246,8 +246,8 @@ fn svg(body: &str) -> String {
     format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">{body}</svg>"#)
 }
 
-/// Agent key. `None` = empty key. Bottom row: time in the current state (left), live workers badge
-/// (right). `blink` plus the "on" half of the cycle (frame / 2 even) draws a white ring.
+/// Agent key. `None` = empty key. Bottom row: time in the current state (left, only for Question/Done),
+/// live workers badge (right). `blink` plus the "on" half of the cycle (frame / 2 even) draws a white ring.
 pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) -> String {
     let Some(a) = agent else {
         return svg(r##"<rect width="144" height="144" fill="#111"/><circle cx="72" cy="72" r="14" fill="none" stroke="#333" stroke-width="3" stroke-dasharray="5 6"/>"##);
@@ -258,7 +258,10 @@ pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) ->
     let len = label.chars().count();
     let size = if len <= 7 { 24 } else if len <= 10 { 20 } else { 17 };
     let on = blink && (frame / 2) % 2 == 0;
-    let time = a.since.filter(|&s| s != 0).map(|s| ago(now - s)).unwrap_or_default();
+    let time = match a.state {
+        State::Question | State::Done => a.since.filter(|&s| s != 0).map(|s| ago(now - s)).unwrap_or_default(),
+        _ => String::new(),
+    };
     let badge = if a.workers > 0 {
         let d = a.workers.to_string().len() as f64;
         format!(
