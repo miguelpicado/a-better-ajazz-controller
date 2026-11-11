@@ -1,0 +1,48 @@
+{
+  "Name": "Synthetic Profile",
+  "Version": "1.0",
+  "DeviceUUID": "AKP153E",
+  "DeviceModel": "20GBA9901",
+  "DeviceSerialNumber": "1234567890",
+  "AppIdentifier0": "*",
+  "Pages": {
+    "Current": "SYNTHETIC01-0000-0000-0000-000000000001.sdProfile",
+    "Pages": [
+      "SYNTHETIC01-0000-0000-0000-000000000001.sdProfile"
+    ]
+  },
+  "Actions": {
+    "0,0": {
+      "ActionID": "action-0-0",
+      "Controller": "",
+      "Name": "Synthetic Action 1",
+      "Settings": {
+        "volume": 50
+      },
+      "State": 0,
+      "States": [
+        {
+          "Image": "alpha.png",
+          "Title": "Original Title 1"
+        }
+      ],
+      "UUID": "com.synthetic.fixture.action1"
+    },
+    "1,0": {
+      "ActionID": "action-1-0",
+      "Controller": "",
+      "Name": "Synthetic Action 2",
+      "Settings": {
+        "mode": "on"
+      },
+      "State": 0,
+      "States": [
+        {
+          "Image": "beta.png",
+          "Title": "Original Title 2"
+        }
+      ],
+      "UUID": "com.synthetic.fixture.action2"
+    }
+  }
+}

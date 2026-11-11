@@ -26,3 +26,8 @@ target-*/
 
 # Cadenas privadas que el script de publicación no debe dejar pasar
 tools/publish-denylist.txt
+
+tools/e2e/node_modules/
+tools/e2e/test-results/
+tools/e2e/playwright-report/
+
