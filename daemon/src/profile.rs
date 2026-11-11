@@ -135,3 +135,71 @@ mod tests {
         assert!(!save_action_settings(&path, 9, 9, &json!({})).unwrap(), "missing cell: no write");
     }
 }
+
+/// Containment of manifest `States[].Image` paths (REPO-AUDIT.md §4.2). These are failing
+/// reproductions: `image_of` joins the raw manifest string, so it can point outside the profile or
+/// plugin folder. Remove the `#[ignore]`s once the source rejects them.
+#[cfg(test)]
+mod manifest_image_containment {
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn action(image: &str) -> Action {
+        Action {
+            uuid: "com.test.demo.one".into(),
+            name: String::new(),
+            state: 0,
+            states: vec![State { image: image.into() }],
+            settings: serde_json::Value::Null,
+        }
+    }
+
+    fn scene(dir: &Path) -> Scene {
+        Scene { dir: dir.to_path_buf(), actions: vec![] }
+    }
+
+    #[test]
+    #[ignore = "BUG: image_of joins the manifest Image path without containment (profile.rs:65)"]
+    fn rejects_parent_traversal_out_of_the_profile() {
+        let t = tmp("escape-parent");
+        let profile = t.join("profiles/S.sdProfile");
+        fs::create_dir_all(profile.join("Images")).unwrap();
+        fs::write(t.join("profiles/secret.png"), b"secret").unwrap();
+
+        let found = scene(&profile).image_of(&action("../../secret.png"), &t.join("plugins"));
+        assert_eq!(found, None, "resolved outside the profile: {found:?}");
+    }
+
+    #[test]
+    #[ignore = "BUG: image_of accepts absolute Image paths without containment (profile.rs:65)"]
+    fn rejects_absolute_image_paths() {
+        let t = tmp("escape-absolute");
+        let profile = t.join("profiles/S.sdProfile");
+        fs::create_dir_all(profile.join("Images")).unwrap();
+        let secret = t.join("secret.png");
+        fs::write(&secret, b"secret").unwrap();
+
+        let found = scene(&profile).image_of(&action(&secret.to_string_lossy()), &t.join("plugins"));
+        assert_eq!(found, None, "read an absolute path outside the profile: {found:?}");
+    }
+
+    #[test]
+    #[ignore = "BUG: image_of joins the manifest Image path without containment (profile.rs:73)"]
+    fn rejects_parent_traversal_out_of_the_plugin() {
+        let t = tmp("escape-plugin");
+        let profile = t.join("profiles/S.sdProfile");
+        fs::create_dir_all(profile.join("Images")).unwrap();
+        let plugins = t.join("plugins");
+        fs::create_dir_all(plugins.join("com.test.demo.sdPlugin")).unwrap();
+        fs::write(t.join("secret.png"), b"secret").unwrap();
+
+        let found = scene(&profile).image_of(&action("../../secret.png"), &plugins);
+        assert_eq!(found, None, "resolved outside the plugin: {found:?}");
+    }
+}
