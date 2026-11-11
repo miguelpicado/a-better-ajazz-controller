@@ -51,12 +51,11 @@ jobs:
           restore-keys: cargo-lint-
       - run: rustup component add clippy rustfmt
       - run: cargo fmt --all --check
-      # Non-blocking until the first cleanup lands; the report is uploaded for reading.
+      # Blocking: warnings fail the job. The report is uploaded either way for reading.
       - name: clippy
         shell: pwsh
-        continue-on-error: true
         run: |
-          cargo clippy --workspace --all-targets --message-format short 2>&1 | Tee-Object -FilePath clippy.txt
+          cargo clippy --workspace --all-targets --message-format short -- -D warnings 2>&1 | Tee-Object -FilePath clippy.txt
           exit $LASTEXITCODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
