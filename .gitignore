@@ -23,3 +23,6 @@ target-*/
 /docs/research/firmware/backup/
 /docs/research/firmware/work/*.bin
 *.bin
+
+# Cadenas privadas que el script de publicación no debe dejar pasar
+tools/publish-denylist.txt

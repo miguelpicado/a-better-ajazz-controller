@@ -168,3 +168,30 @@ Estas reglas no se negocian y aplican también a tests y scripts:
 - No toques `daemon/rust-toolchain.toml` ni los perfiles reales de Stream Dock.
 - El repo no tiene CI: la verificación es local (`cargo test --release --workspace`) y, cuando toca
   hardware, manual y con Stream Dock parado.
+
+## 10. Publicar el espejo público
+
+El repo privado se publica en `miguelpicado/a-better-ajazz-controller` con la historia limpia: sin
+firmware del fabricante ni correos reales. No lo hagas a mano; usa el script (Node, sin
+dependencias):
+
+```powershell
+node tools/publish-public.mjs --dry-run   # clona y filtra en %TEMP%; no empuja
+node tools/publish-public.mjs             # publica main (push normal, sin --force)
+```
+
+- **Cuándo**: cuando `main` tenga algo que publicar y el árbol esté limpio. El script se niega si
+  hay cambios sin commitear, porque solo se publica la historia commiteada.
+- **Qué elimina**: los cuatro `.bin` de `docs/research/firmware/` y cualquier `*.bin`, `*.exe` o
+  `*.dll` de la historia (salvo lista blanca explícita), y reescribe los correos de autor y
+  committer al noreply de GitHub (`<id>+<login>@users.noreply.github.com`).
+- **Qué comprueba antes de empujar**: que no queden binarios ni correos ajenos, que no aparezca
+  ninguna cadena de `tools/publish-denylist.txt` (opcional, local y gitignorado: una por línea, `#`
+  para comentarios) y que sigan existiendo `LICENSE-MIT`, `LICENSE-APACHE` y `README.md`. Si algo
+  falla, sale con código 1 y no empuja nada.
+- **Requisitos**: `git filter-repo` en el `PATH` y `gh auth status` correcto.
+- **Nunca** ejecutes `git filter-repo` en este repo: reescribe todo el historial. El script clona
+  con `--no-local` en un temporal, filtra solo ahí y borra el temporal al terminar
+  (`--keep-tmp` lo conserva).
+- El push es `main:main` sin `--force`. Si lo rechazan por non-fast-forward, para y revisa qué hay
+  en el espejo; no fuerces.

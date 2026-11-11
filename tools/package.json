@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "Node 22 treats a directory argument as a file; this makes `node --test tools/` run the suite.",
+  "main": "publish-public.test.mjs"
+}
