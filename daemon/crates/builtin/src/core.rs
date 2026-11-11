@@ -221,7 +221,7 @@ const MONO: &str = r#"font-family="Consolas, Cascadia Mono, monospace""#;
 pub fn icon(state: State, frame: u32) -> String {
     match state {
         State::Working => format!(
-            r##"<circle cx="12" cy="12" r="8" fill="none" stroke="#f97316" stroke-opacity=".35" stroke-width="3"/><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" transform="rotate({} 12 12)"/>"##,
+            r##"<circle cx="12" cy="12" r="8" fill="none" stroke="#f97316" stroke-opacity=".25" stroke-width="3"/><g transform="rotate({} 12 12)"><path d="M4 12a8 8 0 0 1 8-8" fill="none" stroke="#f97316" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="#f97316" stroke-width="3.2" stroke-linecap="round"/><circle cx="20" cy="12" r="2.2" fill="#fff"/></g>"##,
             (frame % 8) * 45
         ),
         State::Question => r##"<g fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></g>"##.into(),
@@ -281,11 +281,11 @@ pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) ->
         icon(a.state, frame)
     );
     if !time.is_empty() {
-        b += &format!(r#"<text x="12" y="131" {SANS} font-weight="700" font-size="20" fill="{fg}">{time}</text>"#);
+        b += &format!(r#"<text x="14" y="130" {SANS} font-weight="800" font-size="22" fill="{fg}">{time}</text>"#);
     }
     b += &badge;
     if on {
-        b += r##"<rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#fff" stroke-width="7"/>"##;
+        b += r##"<rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#000" stroke-width="11"/><rect x="4" y="4" width="136" height="136" rx="24" fill="none" stroke="#fff" stroke-width="7"/>"##;
     }
     svg(&b)
 }

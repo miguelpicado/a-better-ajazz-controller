@@ -336,14 +336,14 @@ fn elapsed_time_shown_only_for_question_and_done() {
     let working = make(State::Working);
     for now in [10_000, 10_500, 11_000, 20_000, 70_000] {
         let svg = render_agent(Some(&working), 0, now, false);
-        assert!(!svg.contains("y=\"131\""), "Working agent must not render elapsed time text");
+        assert!(!svg.contains("y=\"130\""), "Working agent must not render elapsed time text");
         assert!(!svg.contains(">0s<") && !svg.contains(">1s<") && !svg.contains(">10s<") && !svg.contains(">1m<"));
     }
 
     // Idle and Error show no elapsed time.
     for state in [State::Idle, State::Error] {
         let svg = render_agent(Some(&make(state)), 0, 20_000, false);
-        assert!(!svg.contains("y=\"131\""), "{state:?} agent must not render elapsed time text");
+        assert!(!svg.contains("y=\"130\""), "{state:?} agent must not render elapsed time text");
     }
 
     // Question shows elapsed time formatted every second under 60 s, then m/h/d.
