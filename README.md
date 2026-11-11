@@ -26,7 +26,7 @@ the same *useful* functionality with almost no footprint:
 
 **Designed exclusively for, and only tested on, the AJAZZ AKP153E** (15 keys + side panel, firmware v1).
 The protocol layer should work with other AJAZZ / Stream Dock devices that speak the same HID protocol,
-but nothing outside the AKP153E is verified: expect to adjust key counts, image sizes and quirks.
+but nothing outside the AKP153E is verified: expect to adjust key counts, image sizes and quirks. See [docs/design/devices.md](docs/design/devices.md) for the device specification table, verification status, and how to add support for new models.
 
 Windows 10/11 x64 only for now.
 
