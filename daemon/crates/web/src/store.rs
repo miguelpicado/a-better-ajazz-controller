@@ -122,6 +122,35 @@ pub fn parse_json(bytes: &[u8]) -> Option<Value> {
     serde_json::from_str(s.trim_start_matches('\u{feff}')).ok()
 }
 
+/// Cells (`"col,row"` keys of `Actions`) whose action differs between `old` and `new`, including
+/// added and removed ones.
+fn changed_cells(old: Option<&Value>, new: &Value) -> Vec<(u8, u8)> {
+    let acts = |v: Option<&Value>| v.and_then(|v| v.get("Actions")?.as_object().cloned());
+    let (old, new) = (acts(old).unwrap_or_default(), acts(Some(new)).unwrap_or_default());
+    let mut keys: Vec<&String> = old.keys().chain(new.keys()).collect();
+    keys.sort();
+    keys.dedup();
+    keys.into_iter()
+        .filter(|k| old.get(*k) != new.get(*k))
+        .filter_map(|k| {
+            let (c, r) = k.split_once(',')?;
+            Some((c.parse().ok()?, r.parse().ok()?))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod changed_cells_tests {
+    use super::*;
+
+    #[test]
+    fn reports_edited_added_and_removed_cells_only() {
+        let old = json!({"Actions": {"0,0": {"a": 1}, "1,0": {"a": 1}, "2,0": {"a": 1}}});
+        let new = json!({"Actions": {"0,0": {"a": 2}, "1,0": {"a": 1}, "3,1": {"a": 1}}});
+        assert_eq!(changed_cells(Some(&old), &new), vec![(0, 0), (2, 0), (3, 1)]);
+    }
+}
+
 /// Keys sorted at every level. Explicit because another crate in the workspace enables serde_json's
 /// `preserve_order`, which makes the map keep insertion order instead of sorting.
 fn sorted(v: &Value) -> Value {
@@ -591,7 +620,12 @@ impl Store for FsStore {
     fn put_scene(&self, id: &str, doc: &Value) -> Result<()> {
         let p = self.manifest_path(id)?;
         fs::create_dir_all(p.parent().unwrap())?;
-        Ok(atomic_write(&p, &to_pretty(doc), true)?)
+        let old = fs::read(&p).ok().and_then(|b| parse_json(&b));
+        atomic_write(&p, &to_pretty(doc), true)?;
+        if let Some(bridge) = &self.inspector {
+            bridge.saved(id, &changed_cells(old.as_ref(), doc));
+        }
+        Ok(())
     }
 
     fn set_order(&self, ids: &[String]) -> Result<()> {
@@ -683,6 +717,9 @@ impl Store for FsStore {
                 .ok_or_else(|| Error::new(400, "brightness must be 0..100"))?;
             st.insert("brightness".into(), json!(b));
             self.save_state(st)?;
+            if let Some(bridge) = &self.inspector {
+                bridge.brightness(b as u8);
+            }
         }
         self.device()
     }

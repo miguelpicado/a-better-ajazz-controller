@@ -33,6 +33,10 @@ pub use staged::stage_package;
 pub trait InspectorBridge: Send + Sync {
     /// Issues a single-use token for the action on `scene` at cell `key` (`"column,row"`).
     fn open(&self, scene: &str, key: &str) -> Result<InspectorSession, String>;
+    /// The editor saved `scene`; `cells` are the cells whose action changed (hot reload on the deck).
+    fn saved(&self, _scene: &str, _cells: &[(u8, u8)]) {}
+    /// The editor's brightness slider set `pct` (0..100).
+    fn brightness(&self, _pct: u8) {}
 }
 
 pub struct InspectorSession {

@@ -64,6 +64,16 @@ No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `ed
 
 - Caché `(svg,px)→imagen` en el hilo builtin: rasterizado 4–5 ms → ~20 µs por acierto.
 - USB: ~5 ms por paquete de 512 B (~30 ms por tecla, JPEG ~3 KB); el JPEG cuesta <1 ms.
+- Re-plug USB probado: `run` detecta la desconexión, reintenta cada 2 s y repinta las 17 teclas
+  en ~585 ms al volver el dispositivo.
+- `edit` dentro de `run` probado: guardar una tecla (mover/cambiar) la repinta en caliente; el slider de
+  brillo se aplica al instante, al arrancar (`state.json`) y tras cada reconexión. Antes ninguno de los
+  dos estaba cableado (`Runtime::reload` solo lo llamaba un test): ahora `FsStore::put_scene` y
+  `set_device` avisan por `InspectorBridge::saved`/`brightness`.
+- El `Title`/`ShowTitle` del manifiesto no se dibuja en `run` (solo el `setTitle` de plugins);
+  decisión del usuario: no hace falta.
+- `crates/web/tests/real_folders.rs` compara con el perfil real del usuario y falla desde que se
+  reordenaron las teclas; es frágil por diseño (actualizarlo o quitarlo).
 - Sin medir: reposo real (ningún agente trabajando) y 4 agentes tras la caché; depende de
   que los agentes de Orca estén parados, no se puede forzar desde aquí.
 

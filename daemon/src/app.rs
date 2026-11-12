@@ -25,7 +25,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU64, AtomicU8, Ordering},
         mpsc, Arc, Mutex,
     },
     thread,
@@ -33,6 +33,17 @@ use std::{
 };
 
 pub const BATCH_GAP_MS: u64 = 125;
+
+/// Brightness (0..100) the editor set or `state.json` holds; 255 = unknown, leave the device as is.
+/// Re-sent on every (re)connect because the device forgets it when unplugged.
+static BRIGHTNESS: AtomicU8 = AtomicU8::new(255);
+
+fn send_brightness(dock: &mut impl DockWriter) -> Result<(), String> {
+    match BRIGHTNESS.load(Ordering::Relaxed) {
+        255 => Ok(()),
+        pct => dock.send(&brightness(dock.report_n(), pct)),
+    }
+}
 
 /// Minimum time between paint batches (all pending keys go out together). The firmware misses key
 /// presses while busy with images, so paint traffic must leave idle gaps. Default is 125 ms (checked on
@@ -256,6 +267,8 @@ struct Paint {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReloadCmd {
     Cell { scene: String, cell: (u8, u8) },
+    /// The editor's brightness slider moved (see [`BRIGHTNESS`]).
+    Brightness(u8),
 }
 
 #[derive(Debug)]
@@ -340,12 +353,17 @@ impl Runtime {
     }
 
     /// Tells the device loop that the editor saved a cell of `scene` (see [`ReloadCmd`]).
-    #[allow(dead_code)] // crates/web's mutation hook sends these once its merge lands
     fn reload(&self, scene: &str, cell: (u8, u8)) {
         let _ = self.reload_tx.send(ReloadCmd::Cell {
             scene: scene.to_string(),
             cell,
         });
+        self.wake();
+    }
+
+    fn set_brightness(&self, pct: u8) {
+        BRIGHTNESS.store(pct, Ordering::Relaxed);
+        let _ = self.reload_tx.send(ReloadCmd::Brightness(pct));
         self.wake();
     }
 
@@ -715,6 +733,16 @@ impl orcadeck_web::InspectorBridge for RunInspector {
             port,
             context,
         })
+    }
+
+    fn saved(&self, scene: &str, cells: &[(u8, u8)]) {
+        for &cell in cells {
+            self.rt.reload(scene, cell);
+        }
+    }
+
+    fn brightness(&self, pct: u8) {
+        self.rt.set_brightness(pct);
     }
 }
 
@@ -1209,6 +1237,14 @@ pub fn run(
 
     // Plugin host: only plugins the scene uses are launched.
     let data_root = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("OrcaDeck");
+    if let Some(pct) = std::fs::read(data_root.join("state.json"))
+        .ok()
+        .and_then(|b| orcadeck_web::store::parse_json(&b))
+        .and_then(|s| s.get("brightness")?.as_u64())
+        .filter(|p| *p <= 100)
+    {
+        BRIGHTNESS.store(pct as u8, Ordering::Relaxed);
+    }
     let mut scenes = SceneSet::open(profile, plugins, &data_root, spec.manifest_id)?;
     let found = host::discover(&[plugins.to_path_buf()], Some(&data_root));
     let view: View = Arc::new(Mutex::new(ViewState::default()));
@@ -1620,7 +1656,11 @@ fn session_loop_threaded<W: DockWriter>(
         rt.tick();
         retire_due(rt, host, running, Instant::now());
 
-        while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
+        while let Ok(cmd) = reload.try_recv() {
+            let ReloadCmd::Cell { scene, cell } = cmd else {
+                send_brightness(dock)?;
+                continue;
+            };
             if let Some((key, img)) = reload_cell(
                 &scene,
                 cell,
@@ -1672,6 +1712,7 @@ fn session(
     let mut dock = Dock::open_with_n(&api, spec, n)?;
     dock.init(80)?;
     eprintln!("device ready, N = {}", dock.n);
+    send_brightness(&mut dock)?;
     let mut pending = view_paints(rt);
     let gap = batch_gap();
     let mut last_batch = Instant::now() - gap;
@@ -1705,7 +1746,11 @@ fn session(
             rt.tick();
             retire_due(rt, host, running, Instant::now());
             // Editor saves: repaint just that key, through the same pending batch as everything else.
-            while let Ok(ReloadCmd::Cell { scene, cell }) = reload.try_recv() {
+            while let Ok(cmd) = reload.try_recv() {
+                let ReloadCmd::Cell { scene, cell } = cmd else {
+                    send_brightness(&mut dock)?;
+                    continue;
+                };
                 if let Some((key, img)) = reload_cell(
                     &scene,
                     cell,
