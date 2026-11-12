@@ -126,6 +126,14 @@ pub fn image_px(key: u8) -> u32 {
     DEFAULT_DEVICE.image_px(key)
 }
 
+/// Pipeline images are kept at `WORK_SCALE` x the device size: the editor mirror shows them sharp and
+/// `key_jpeg` downsamples once for the device (better antialiasing than rasterising at 85 px).
+pub const WORK_SCALE: u32 = 2;
+
+pub fn work_px(key: u8) -> u32 {
+    DEFAULT_DEVICE.image_px(key) * WORK_SCALE
+}
+
 pub fn image_px_for(spec: &DeviceSpec, key: u8) -> u32 {
     spec.image_px(key)
 }

@@ -38,8 +38,8 @@ pub const BATCH_GAP_MS: u64 = 125;
 /// Re-sent on every (re)connect because the device forgets it when unplugged.
 static BRIGHTNESS: AtomicU8 = AtomicU8::new(255);
 
-/// Last JPEG sent to each key and the `MIRROR_GEN` it got, for the editor's live view. It holds
-/// bytes already encoded for the device, so mirroring costs one `Arc` clone per painted key.
+/// Last JPEG painted on each key (upright, full pipeline size) and the `MIRROR_GEN` it got, for the
+/// editor's live view.
 static MIRROR: LazyLock<Mutex<HashMap<u8, (u64, Arc<[u8]>)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static MIRROR_GEN: AtomicU64 = AtomicU64::new(0);
@@ -247,7 +247,7 @@ impl ViewState {
     /// Base image with the title bar drawn on it (black if the key has no image yet), always at key
     /// size: every consumer (`send`, reconnect repaint) feeds `key_jpeg`, which then skips its resize.
     fn effective(&self, key: u8) -> DynamicImage {
-        let px = image_px(key);
+        let px = work_px(key);
         let base = self
             .base
             .get(&key)
@@ -480,7 +480,7 @@ impl Runtime {
             return;
         }
         let ctx = key.context.clone();
-        let (ok, px) = (matches!(&out, host::Output::ShowOk(_)), image_px(k));
+        let (ok, px) = (matches!(&out, host::Output::ShowOk(_)), work_px(k));
         let mut v = self.view.lock().unwrap_or_else(|e| e.into_inner());
         let mut image = None;
         match out {
@@ -530,7 +530,7 @@ impl Runtime {
 
     /// Overlay now; the device loop restores the key after [`FEEDBACK_MS`] (no timer thread).
     fn feedback(&self, context: &str, key: u8, ok: bool, base: DynamicImage) {
-        self.send(key, compose_feedback(&base, ok, image_px(key)), context);
+        self.send(key, compose_feedback(&base, ok, work_px(key)), context);
         let deadline = Instant::now() + Duration::from_millis(FEEDBACK_MS);
         self.restores
             .lock()
@@ -549,7 +549,7 @@ impl Runtime {
         if self.retired(context) || gen < self.gen.load(Ordering::SeqCst) {
             return;
         }
-        let img = render::fit_px(img, image_px(key));
+        let img = render::fit_px(img, work_px(key));
         self.view
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -916,7 +916,7 @@ fn place_scene(
             .image_of(a, plugins)
             .and_then(|path| load_img(&path).ok())
         {
-            view.base.insert(key, render::fit_px(img, image_px(key)));
+            view.base.insert(key, render::fit_px(img, work_px(key)));
         }
         view.states.insert(
             key,
@@ -1196,7 +1196,7 @@ fn reload_cell(
         .and_then(|a| scene.image_of(a, plugins))
         .and_then(|path| load_img(&path).ok())
     {
-        v.base.insert(key, render::fit_px(img, image_px(key)));
+        v.base.insert(key, render::fit_px(img, work_px(key)));
     }
     let states = action
         .map(|a| {
@@ -1364,7 +1364,7 @@ pub fn run(
                     let Some(&k) = ctx_key.get(&ctx) else {
                         continue;
                     };
-                    if let Some(img) = cached_raster(&mut rasters, svg, image_px(k)) {
+                    if let Some(img) = cached_raster(&mut rasters, svg, work_px(k)) {
                         builtin.paint_at(my_gen, &ctx, k, img);
                     }
                 }
@@ -1622,7 +1622,7 @@ fn process_paints<W: DockWriter>(
                 let j = render::key_jpeg(&img, key);
                 jpeg_us += tj.elapsed().as_micros();
                 bytes += j.len();
-                mirror_put(key, &j);
+                mirror_put(key, &render::mirror_jpeg(&img));
                 dock.set_key(key, &j)?;
             }
             dock.flush()?;
@@ -1968,7 +1968,7 @@ mod tests {
     fn feedback_restores_after_its_deadline() {
         let dir = tmp("feedback");
         let (rt, rx) = runtime(&dir);
-        let base = white(KEY_PX);
+        let base = white(work_px(1));
         rt.view.lock().unwrap().base.insert(1, base.clone());
         let t0 = Instant::now();
         rt.feedback("", 1, true, base.clone());
@@ -2191,20 +2191,20 @@ mod tests {
             let v = rt.view.lock().unwrap();
             assert_eq!(
                 (v.base[&1].width(), v.base[&1].height()),
-                (KEY_PX, KEY_PX),
-                "main key stored at 85"
+                (work_px(1), work_px(1)),
+                "main key stored at work size"
             );
             assert_eq!(
                 (v.base[&16].width(), v.base[&16].height()),
-                (SIDE_PX, SIDE_PX),
-                "side key stored at 80"
+                (work_px(16), work_px(16)),
+                "side key stored at work size"
             );
         }
         for p in [rx.try_recv().unwrap(), rx.try_recv().unwrap()] {
             assert_eq!(
                 (p.img.width(), p.img.height()),
-                (image_px(p.key), image_px(p.key)),
-                "paint already at key size"
+                (work_px(p.key), work_px(p.key)),
+                "paint already at work size"
             );
         }
 
@@ -3177,15 +3177,15 @@ mod tests {
             ..Default::default()
         };
 
-        let img1 = white(KEY_PX);
+        let img1 = white(work_px(1));
         let img2 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
-            KEY_PX,
-            KEY_PX,
+            work_px(1),
+            work_px(1),
             image::Rgb([255, 0, 0]),
         ));
         let img3 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
-            KEY_PX,
-            KEY_PX,
+            work_px(1),
+            work_px(1),
             image::Rgb([0, 255, 0]),
         ));
 

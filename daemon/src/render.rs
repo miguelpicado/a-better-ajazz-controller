@@ -1,4 +1,4 @@
-//! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 75 down by 4).
+//! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 92 down by 4).
 #[allow(unused_imports)]
 use crate::proto::{image_px, DeviceSpec, DEFAULT_DEVICE, MAX_JPEG};
 use image::{imageops, DynamicImage, ImageEncoder};
@@ -16,6 +16,26 @@ pub fn fit_px(img: DynamicImage, px: u32) -> DynamicImage {
     }
 }
 
+fn start_quality() -> i32 {
+    static Q: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
+    *Q.get_or_init(|| {
+        std::env::var("ORCADECK_JPEG_Q")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .map_or(92, |q: i32| q.clamp(1, 100))
+    })
+}
+
+/// Editor mirror of a key: the pipeline image as-is (upright, full size), no device size limit.
+pub fn mirror_jpeg(img: &DynamicImage) -> Vec<u8> {
+    let rgb = img.to_rgb8();
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 88)
+        .write_image(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+        .expect("jpeg encode");
+    out
+}
+
 pub fn key_jpeg(img: &DynamicImage, key: u8) -> Vec<u8> {
     key_jpeg_spec(DEFAULT_DEVICE, img, key)
 }
@@ -30,9 +50,9 @@ pub fn key_jpeg_spec(spec: &DeviceSpec, img: &DynamicImage, key: u8) -> Vec<u8> 
         &scaled
     };
     let rgb = imageops::rotate270(&img.to_rgb8());
-    // q75, not 100: at ~7 KB per key a batch of animated keys kept the device busy ~40 % of the time and it
-    // missed presses; flat UI graphics look fine at 75 and are ~3x smaller.
-    let mut q: i32 = 75;
+    // Start quality (default 92) steps down until the frame fits `max_jpeg`. Lower = smaller = less USB time:
+    // at q75 a 4-key animation kept the device ~40 % busy and presses were missed. `ORCADECK_JPEG_Q` tunes it.
+    let mut q: i32 = start_quality();
     loop {
         let mut out = Vec::new();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, q.max(1) as u8)
@@ -85,10 +105,13 @@ mod tests {
     #[test]
     fn already_key_sized_images_skip_the_resize() {
         let px = image_px(1);
-        let img = noisy(px);
+        // Smooth, so it fits `max_jpeg` at the start quality and the quality loop does not kick in.
+        let img = DynamicImage::ImageRgb8(image::RgbImage::from_fn(px, px, |x, y| {
+            image::Rgb([(x * 2) as u8, (y * 2) as u8, 128])
+        }));
         let rotated = imageops::rotate270(&img.to_rgb8());
         let mut expected = Vec::new();
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut expected, 75)
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut expected, start_quality() as u8)
             .write_image(rotated.as_raw(), px, px, image::ExtendedColorType::Rgb8)
             .unwrap();
         assert_eq!(
