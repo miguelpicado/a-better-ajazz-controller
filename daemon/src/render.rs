@@ -1,4 +1,4 @@
-//! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 92 down by 4).
+//! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 85 down by 4).
 #[allow(unused_imports)]
 use crate::proto::{image_px, DeviceSpec, DEFAULT_DEVICE, MAX_JPEG};
 use image::{imageops, DynamicImage, ImageEncoder};
@@ -22,7 +22,7 @@ fn start_quality() -> i32 {
         std::env::var("ORCADECK_JPEG_Q")
             .ok()
             .and_then(|v| v.trim().parse().ok())
-            .map_or(92, |q: i32| q.clamp(1, 100))
+            .map_or(85, |q: i32| q.clamp(1, 100))
     })
 }
 
@@ -50,7 +50,7 @@ pub fn key_jpeg_spec(spec: &DeviceSpec, img: &DynamicImage, key: u8) -> Vec<u8> 
         &scaled
     };
     let rgb = imageops::rotate270(&img.to_rgb8());
-    // Start quality (default 92) steps down until the frame fits `max_jpeg`. Lower = smaller = less USB time:
+    // Start quality (default 85) steps down until the frame fits `max_jpeg`. Lower = smaller = less USB time:
     // at q75 a 4-key animation kept the device ~40 % busy and presses were missed. `ORCADECK_JPEG_Q` tunes it.
     let mut q: i32 = start_quality();
     loop {
