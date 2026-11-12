@@ -72,8 +72,7 @@ No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `ed
   `set_device` avisan por `InspectorBridge::saved`/`brightness`.
 - El `Title`/`ShowTitle` del manifiesto no se dibuja en `run` (solo el `setTitle` de plugins);
   decisión del usuario: no hace falta.
-- `crates/web/tests/real_folders.rs` compara con el perfil real del usuario y falla desde que se
-  reordenaron las teclas; es frágil por diseño (actualizarlo o quitarlo).
+- `crates/web/tests/real_folders.rs` (comparaba con el perfil real del usuario, frágil) eliminado.
 - Editor permanente (2026-11-12): acceso «OrcaDeck Editor» en el menú Inicio (`orcadeck-task.ps1 editor`,
   `conhost --headless`, sin ventana; PowerToys Run lo encuentra). El editor arranca en ~80 ms y termina solo
   ~5 s después de cerrar la pestaña: la página hace long-poll a `/api/live` y el servidor se cierra cuando

@@ -78,7 +78,6 @@ loopback y carpetas temporales.
 | `daemon/crates/host/tests/real_plugin.rs` | plugin Node real; solo corre con `ORCADOCK_PLUGIN` apuntando a la carpeta del plugin y `node` disponible (si no, se omite) |
 | `daemon/crates/plugman/tests/plugman.rs` | zips de fixture, manifests cifrados/planos, overlay, `force`/backup, límites, traversal |
 | `daemon/crates/web/tests/api.rs` | HTTP real en loopback: seguridad (token/Host/Origin), escenas, celdas, plugins, imágenes |
-| `daemon/crates/web/tests/real_folders.rs` | lectura de carpetas reales de Stream Dock; se **omite** si no existen |
 | `tools/e2e/` (Playwright) | E2E del editor con el `orcadeck.exe` release: arranque y token, edición de una celda, instalación/quitado de plugins, accesibilidad y errores de consola; sin hardware |
 | `tools/smoke/smoke.ps1` | smoke del binario release: `help`, `render` offline y `edit` standalone, con rutas temporales |
 

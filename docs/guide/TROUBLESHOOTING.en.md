@@ -153,7 +153,6 @@ Status: implemented with unit tests, **pending physical testing** with the keybo
 | `toolchain 'stable-x86_64-pc-windows-gnullvm' is not installed` | use `RUSTUP_TOOLCHAIN=gnullvm-local` on this machine; do not edit `rust-toolchain.toml` |
 | `error: failed to run custom build command` in `hidapi` | the llvm-mingw C compiler or `PATH` is missing; check the previous step |
 | `cargo test` cannot find `node` | the `real_plugin` test is skipped; it is not a failure |
-| `real_folders` tests skipped | there are no real Stream Dock profiles; this is expected |
 | `-1073741515` when running tests or the binary | `libunwind.dll` is missing; see §1 |
 
 Commands:

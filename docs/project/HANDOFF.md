@@ -1,4 +1,23 @@
-# HANDOFF (2026-11-11)
+# HANDOFF (2026-11-12)
+
+## Estado actual (2026-11-12): OrcaDeck ya sustituye a Stream Dock
+
+- Tarea programada `OrcaDeck` (al iniciar sesión, sin ventana, `QUOTA_DIR` fijado, log
+  `%LOCALAPPDATA%\OrcaDeck\orcadeck.log`) habilitada. `StreamDock` y su entrada Run, desactivadas.
+- La tarea ejecuta una COPIA en `%LOCALAPPDATA%\OrcaDeck\bin`. Tras recompilar, redesplegar:
+  `Stop-ScheduledTask OrcaDeck`; matar `orcadeck.exe`; `tools\autostart\orcadeck-task.ps1 install`;
+  `... enable`; `Start-ScheduledTask OrcaDeck` (`install` la deja deshabilitada y mata el proceso).
+- Editor: acceso «OrcaDeck Editor» en el menú Inicio (`orcadeck-task.ps1 editor`, sin ventana); se
+  cierra solo ~7 s tras cerrar la pestaña. Muestra en vivo el panel (JPEG de `run`, girado 90° con CSS).
+- Gate: todo verde con `cargo test --release --workspace` (`orca_pipe` es intermitente).
+- Pendiente: medir reposo real y 4 agentes (ver `STATUS.md`); `register`/`unregister` (toca el registro,
+  pedir OK); decidir si la tecla (4,2) de la escena Orca, que apunta directo a NetWork por id, se quita;
+  un `edit` matado con la pestaña abierta bloquea el siguiente hasta cerrarla (`serve_edit`, `app.rs`).
+- Lo de abajo es histórico: «sin probar en dispositivo» ya no aplica.
+
+---
+
+# (2026-11-11)
 
 Resumen vigente para retomar. Detalle: [`STATUS.md`](STATUS.md); pendientes ordenados:
 [`ROADMAP.md`](ROADMAP.md); arquitectura: [`../design/ARCHITECTURE.md`](../design/ARCHITECTURE.md).
