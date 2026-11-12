@@ -10,9 +10,20 @@
 - Editor: acceso «OrcaDeck Editor» en el menú Inicio (`orcadeck-task.ps1 editor`, sin ventana); se
   cierra solo ~7 s tras cerrar la pestaña. Muestra en vivo el panel (JPEG de `run`, girado 90° con CSS).
 - Gate: todo verde con `cargo test --release --workspace` (`orca_pipe` es intermitente).
-- Pendiente: medir reposo real y 4 agentes (ver `STATUS.md`); `register`/`unregister` (toca el registro,
-  pedir OK); decidir si la tecla (4,2) de la escena Orca, que apunta directo a NetWork por id, se quita;
-  un `edit` matado con la pestaña abierta bloquea el siguiente hasta cerrarla (`serve_edit`, `app.rs`).
+- Hecho 2026-11-12 (tarde): `register` ejecutado (HKCU; `orcadeck unregister` lo deshace). Imágenes del pipeline a 2×
+  (`WORK_SCALE` en `proto.rs`, 170 px; `key_jpeg` reduce una vez al tamaño del dispositivo) y espejo del editor a esa
+  resolución (JPEG q88, sin giro CSS). JPEG del dispositivo q85 (`ORCADECK_JPEG_Q`; q92 perdía fotogramas, q75 era el
+  valor original). `real_folders.rs` eliminado. `edit` escribe `%LOCALAPPDATA%\OrcaDeck\edit-timing.log`.
+- Editor «lento al abrir» (40-50 s desde PowerToys Run): NO es de OrcaDeck (`edit` tarda 14 ms hasta lanzar el
+  navegador). `ShellExecute` (hasta de `cmd.exe`) tarda ~21 s de forma intermitente; `CreateProcess` directo, <250 ms.
+  Causa sin identificar. El usuario va a probar una exclusión de Defender:
+  `Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\OrcaDeckin"` (deshacer: `Remove-MpPreference`). Resultado
+  pendiente: tras ~10 min sin usar, abrir el editor y comparar la hora de `edit start` del log con la de Enter.
+  Si no mejora: quitarla y capturar con Process Monitor/WPR.
+- Pendiente: CPU de `run` (52 s en ~8 min, ~11 % de un núcleo, tras el 2×) con y sin `WORK_SCALE`; reposo real y con
+  4 agentes; fps/pulsaciones con q85; tecla (4,2) de Orca se deja como está (decisión del usuario); un `edit` matado
+  con la pestaña abierta bloquea el siguiente hasta ~30 s (`serve_edit`, `app.rs`; el error no se ve con conhost
+  headless).
 - Lo de abajo es histórico: «sin probar en dispositivo» ya no aplica.
 
 ---
