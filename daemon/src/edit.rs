@@ -211,7 +211,28 @@ fn editor_store(paths: EditPaths) -> FsStore {
     }
 }
 
+/// Appends `<unix ms> +<ms since start> <what>` to `%LOCALAPPDATA%\OrcaDeck\edit-timing.log`, to find out where
+/// a slow editor open spends its time (launcher, pipe, browser). Best effort; never fails the editor.
+fn tlog(t0: std::time::Instant, what: &str) {
+    use std::io::Write;
+    let Some(dir) = std::env::var_os("LOCALAPPDATA") else {
+        return;
+    };
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(PathBuf::from(dir).join("OrcaDeck").join("edit-timing.log"))
+    {
+        let _ = writeln!(f, "{ms} +{}ms {what}", t0.elapsed().as_millis());
+    }
+}
+
 pub fn run(args: &[String]) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
+    tlog(t0, "edit start");
     let mut port: u16 = 0;
     let mut no_open = false;
 
@@ -245,7 +266,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     // A live `run` owns the HID device, the plugin host and the editor: serve from inside it and
     // wait here. Its web server exists only while this connection is open (Ctrl+C closes the pipe).
-    match ctl::request_edit(port) {
+    let reply = ctl::request_edit(port);
+    tlog(
+        t0,
+        match &reply {
+            Some(Ok(_)) => "run session ok",
+            Some(Err(_)) => "run refused the session",
+            None => "no run; standalone",
+        },
+    );
+    match reply {
         Some(Ok(session)) => {
             println!(
                 "OrcaDeck editor (dentro de orcadeck run): {}",
@@ -253,7 +283,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
             );
             println!("Presiona Ctrl+C para detener el servidor.");
             if !no_open {
-                if let Err(e) = open_browser(session.url()) {
+                let r = open_browser(session.url());
+                tlog(t0, if r.is_ok() { "browser spawned" } else { "browser spawn failed" });
+                if let Err(e) = r {
                     eprintln!(
                         "aviso: no se pudo abrir el navegador ({e}); abre {} a mano",
                         session.url()
@@ -261,6 +293,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 }
             }
             wait_session(session);
+            tlog(t0, "session closed");
             return Ok(());
         }
         Some(Err(e)) => return Err(format!("orcadeck run no pudo iniciar el editor: {e}")),
