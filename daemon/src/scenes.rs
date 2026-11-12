@@ -71,17 +71,26 @@ impl SceneSet {
             inspector: None,
         };
         let scenes = store.scenes().map_err(|e| e.msg)?;
-        let order = scenes
-            .iter()
-            .filter(|s| s.listed && s.device == device)
-            .map(|s| s.id.clone())
-            .collect();
         let current = profile
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or_default()
             .trim_end_matches(".sdProfile")
             .to_string();
+        // Next/previous skip scenes without a Scene Shift key (e.g. imported HotSpot scenes whose
+        // plugins do not run): there would be no key to come back with.
+        let order = scenes
+            .iter()
+            .filter(|s| s.listed && s.device == device)
+            .filter(|s| {
+                s.id == current
+                    || std::fs::read_to_string(
+                        profiles.join(format!("{}.sdProfile", s.id)).join("manifest.json"),
+                    )
+                    .is_ok_and(|m| m.contains(ROTATE)) // ponytail: substring, not a parsed Actions walk
+            })
+            .map(|s| s.id.clone())
+            .collect();
         if !scenes.iter().any(|s| s.current && s.id == current) {
             if let Err(e) = store.set_current(&current) {
                 eprintln!("scene {current}: state.json: {}", e.msg);
@@ -164,7 +173,9 @@ mod tests {
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(
                 dir.join("manifest.json"),
-                format!(r#"{{"Name":"{id}","DeviceUUID":"AKP153E","Actions":{{}}}}"#),
+                format!(
+                    r#"{{"Name":"{id}","DeviceUUID":"AKP153E","Actions":{{"0,0":{{"UUID":"{ROTATE}"}}}}}}"#
+                ),
             )
             .unwrap();
         }
@@ -236,6 +247,23 @@ mod tests {
             "wraps to the first"
         );
         assert_eq!(set.resolve(&SceneTarget::Previous).as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn scenes_without_a_scene_shift_key_are_skipped() {
+        let (profiles, data) = fixture("deadend");
+        // B (listed) has no rotate key: stepping from A must jump over it.
+        std::fs::write(
+            profiles.join("B.sdProfile").join("manifest.json"),
+            br#"{"Name":"B","DeviceUUID":"AKP153E","Actions":{}}"#,
+        )
+        .unwrap();
+        let set = open(&profiles, &data, "A");
+        assert_eq!(set.resolve(&SceneTarget::Next).as_deref(), Some("D"));
+        // Being on it (opened from the CLI or the editor) keeps it in the order.
+        let set = open(&profiles, &data, "B");
+        assert_eq!(set.resolve(&SceneTarget::Next).as_deref(), Some("D"));
+        assert_eq!(set.resolve(&SceneTarget::Previous).as_deref(), Some("A"));
     }
 
     #[test]
