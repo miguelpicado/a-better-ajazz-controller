@@ -21,7 +21,7 @@ Etiquetas:
 1. **Decisión de proceso**: Cuando `run` está en marcha, `edit` debe correr **DENTRO de `run` bajo demanda** (activado por el CLI `orcadeck edit`), con **fallback a proceso autónomo** cuando `run` está apagado.
 2. **Puerto 18618**: El `Host` de plugins ya posee `127.0.0.1:18618`; correr dentro de `run` elimina colisiones de puerto y permite que el PI conecte directamente con los plugins vivos.
 3. **Persistencia de Settings**: Reutilizar al 100 % `orcadeck_host::Host` (que ya implementa `open_inspector`, `registerPropertyInspector`, `didReceiveSettings`, `setSettings` y `sendToPlugin`), sin puentes artificiales.
-4. **Recarga en caliente**: Canal Rust local en memoria (`mpsc::Sender<SceneUpdate>`), repintando solo la tecla cambiada respetando `ORCADECK_GAP_MS` (400 ms), sin reiniciar `run` ni tocar el bus HID.
+4. **Recarga en caliente**: Canal Rust local en memoria (`mpsc::Sender<SceneUpdate>`), repintando solo la tecla cambiada respetando `ORCADECK_GAP_MS` (125 ms), sin reiniciar `run` ni tocar el bus HID.
 5. **Seguridad**: Iframe con `sandbox="allow-scripts allow-forms allow-same-origin"` sirviendo el HTML del PI desde `/api/plugins/<uuid>/pi/*`, token CSPRNG de un solo uso y lista blanca estricta de `Origin` en el WebSocket.
 
 ---

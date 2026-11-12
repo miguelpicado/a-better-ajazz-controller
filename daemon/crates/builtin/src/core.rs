@@ -272,11 +272,12 @@ const SANS: &str = r#"font-family="Segoe UI, Arial, sans-serif""#;
 const MONO: &str = r#"font-family="Consolas, Cascadia Mono, monospace""#;
 
 /// State icons drawn in a 24x24 box (Lucide-style strokes), placed in a dark disc.
+/// `frame` = phase in ms of the 2 s cycle (see `actions::frame`).
 pub fn icon(state: State, frame: u32) -> String {
     match state {
         State::Working => format!(
             r##"<circle cx="12" cy="12" r="8" fill="none" stroke="#f97316" stroke-opacity=".25" stroke-width="3"/><g transform="rotate({} 12 12)"><path d="M4 12a8 8 0 0 1 8-8" fill="none" stroke="#f97316" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="#f97316" stroke-width="3.2" stroke-linecap="round"/><circle cx="20" cy="12" r="2.2" fill="#fff"/></g>"##,
-            (frame % 8) * 45
+            (frame % 2000) * 9 / 50
         ),
         State::Question => r##"<g fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></g>"##.into(),
         State::Done => r##"<circle cx="12" cy="12" r="10" fill="#22c55e"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>"##.into(),
@@ -303,7 +304,7 @@ fn svg(body: &str) -> String {
 }
 
 /// Agent key. `None` = empty key. Bottom row: time in the current state (left, only for Question/Done),
-/// live workers badge (right). `blink` plus the "on" half of the cycle (frame / 2 even) draws a white ring.
+/// live workers badge (right). `blink` plus the "on" half of the cycle (frame / 500 even, i.e. 500 ms on/off) draws a white ring.
 pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) -> String {
     let Some(a) = agent else {
         return svg(
@@ -325,7 +326,7 @@ pub fn render_agent(agent: Option<&Agent>, frame: u32, now: i64, blink: bool) ->
     } else {
         17
     };
-    let on = blink && (frame / 2).is_multiple_of(2);
+    let on = blink && (frame / 500).is_multiple_of(2);
     let time = match a.state {
         State::Question | State::Done => a
             .since
@@ -611,7 +612,7 @@ pub fn render_quota(item: Option<&QuotaItem>, stale: bool, now: i64) -> String {
         .map(|t| {
             format!(
                 r##"<rect x="{}" y="{}" width="4" height="18" rx="2" fill="#fff"/>"##,
-                bar_x + bar_w * t - 2.0,
+                (bar_x + bar_w * t - 2.0).round(), // whole pixels: an f64 tail would repaint the key every tick
                 bar_y - 5.0
             )
         })

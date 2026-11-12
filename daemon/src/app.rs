@@ -32,11 +32,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const BATCH_GAP_MS: u64 = 250;
+pub const BATCH_GAP_MS: u64 = 125;
 
 /// Minimum time between paint batches (all pending keys go out together). The firmware misses key
-/// presses while busy with images, so paint traffic must leave idle gaps. Default is 250 ms (smooth 4 fps
-/// spinner); ORCADECK_GAP_MS=400 restores the conservative 400 ms gap if needed.
+/// presses while busy with images, so paint traffic must leave idle gaps. Default is 125 ms (checked on
+/// device with 4 animating keys, no lost presses); ORCADECK_GAP_MS=250 or 400 restores a safer gap.
 fn batch_gap() -> Duration {
     Duration::from_millis(
         std::env::var("ORCADECK_GAP_MS")
@@ -772,6 +772,9 @@ enum BuiltinMsg {
         old: Option<String>,
         new: Option<bi::Key>,
     },
+    /// A paint batch reached the device: tick now so the next spinner frame is rendered just
+    /// before it is sent (paced by the device, no frame is coalesced away).
+    Painted,
 }
 
 /// Builtin half of a scene switch: the registry stays on its thread, only its keys change.
@@ -1284,6 +1287,7 @@ pub fn run(
                             ctx_key.insert(ctx, key);
                         }
                     }
+                    Ok(BuiltinMsg::Painted) => {}
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 }
@@ -1487,7 +1491,9 @@ fn process_paints<W: DockWriter>(
         if !pending.is_empty() {
             let (started, count) = (Instant::now(), pending.len());
             let mut bytes = 0;
+            let mut keys = Vec::new();
             for (key, (img, _)) in pending.drain() {
+                keys.push(key);
                 let j = render::key_jpeg(&img, key);
                 bytes += j.len();
                 dock.set_key(key, &j)?;
@@ -1495,8 +1501,9 @@ fn process_paints<W: DockWriter>(
             dock.flush()?;
             *last_batch = Instant::now();
             if std::env::var_os("ORCADECK_TRACE").is_some() {
+                keys.sort_unstable();
                 eprintln!(
-                    "{:>6}ms painted {count} keys {bytes} B in {} ms",
+                    "{:>6}ms painted {count} keys {keys:?} {bytes} B in {} ms",
                     t0.elapsed().as_millis(),
                     started.elapsed().as_millis()
                 );
@@ -1583,7 +1590,11 @@ fn session_loop_threaded<W: DockWriter>(
             }
         }
 
+        let before = last_batch;
         process_paints(rx, rt, pending, &mut last_batch, gap, dock, t0)?;
+        if last_batch != before {
+            let _ = msg_tx.send(BuiltinMsg::Painted);
+        }
 
         if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
             dock.send(&heartbeat(dock.report_n()))?;
@@ -1663,7 +1674,11 @@ fn session(
                     pending.insert(key, (img, rt.gen.load(Ordering::Relaxed)));
                 }
             }
+            let before = last_batch;
             process_paints(rx, rt, &mut pending, &mut last_batch, gap, &mut dock, t0)?;
+            if last_batch != before {
+                let _ = msg_tx.send(BuiltinMsg::Painted);
+            }
             if hb.elapsed() >= Duration::from_secs(HEARTBEAT_SECS) {
                 dock.send(&heartbeat(dock.n))?;
                 hb = Instant::now();
@@ -2578,10 +2593,10 @@ mod tests {
     }
 
     #[test]
-    fn batch_gap_defaults_to_250_and_honours_env() {
+    fn batch_gap_defaults_to_125_and_honours_env() {
         std::env::remove_var("ORCADECK_GAP_MS");
         assert_eq!(batch_gap(), Duration::from_millis(BATCH_GAP_MS));
-        assert_eq!(BATCH_GAP_MS, 250);
+        assert_eq!(BATCH_GAP_MS, 125);
 
         std::env::set_var("ORCADECK_GAP_MS", "400");
         assert_eq!(batch_gap(), Duration::from_millis(400));

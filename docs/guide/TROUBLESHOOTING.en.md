@@ -83,7 +83,7 @@ This is a known firmware problem on the AKP153E v1, not an app problem.
   gave zero presses in 80 s.
 - Each image costs a fixed 25–30 ms of HID writing, even if it is small.
 - `run` mitigates it with batches (all pending keys together) and a gap of 250 ms
-  (`ORCADECK_GAP_MS`; `ORCADECK_GAP_MS=400` restores the conservative value), plus JPEG q75.
+  (`ORCADECK_GAP_MS`; `ORCADECK_GAP_MS=400` restores a conservative value; the default is 125 ms), plus JPEG q75.
 - If presses are still lost, **raise** the gap, do not lower it:
   ```powershell
   $env:ORCADECK_GAP_MS=500

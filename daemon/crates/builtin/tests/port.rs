@@ -106,7 +106,7 @@ fn test_js_ok() {
     assert!(img.contains("⚙1"));
     assert!(img.contains(r#"stroke-width="7""#), "blink ring on frame 0");
     assert!(
-        !render_agent(Some(&b[1]), 2, 0, true).contains(r#"stroke-width="7""#),
+        !render_agent(Some(&b[1]), 500, 0, true).contains(r#"stroke-width="7""#),
         "off half"
     );
 
@@ -202,8 +202,8 @@ fn quota_card_details() {
             && svg.contains("sem 5%")
             && svg.contains("↺ lun 22:10")
     );
-    // 2 h left of a 5 h window -> marker at 16 + 118 * 0.4 - 2 (plus the 73 ms).
-    assert!(svg.contains(r#"<rect x="61.20"#), "{svg}");
+    // 2 h left of a 5 h window -> marker at 16 + 118 * 0.4 - 2 = 61.2, rounded to a whole pixel.
+    assert!(svg.contains(r#"<rect x="61" y="#), "{svg}");
 }
 
 #[test]
@@ -385,8 +385,8 @@ fn raster_agent_key_85_and_side_cell_80() {
 #[test]
 fn cadence_constants_match_perf_audit_and_owner_requirements() {
     assert_eq!(
-        SPIN_MS, 250,
-        "SPIN_MS must be 250 ms (4 fps, one revolution in 2 s)"
+        SPIN_MS, 1000,
+        "SPIN_MS is the 1 s fallback wait while animating (paint acks pace the frames)"
     );
     assert_eq!(POLL_MS, 2000, "POLL_MS must be 2000 ms (2 s)");
     assert_eq!(WORKERS_MS, 30_000, "WORKERS_MS must be 30_000 ms (30 s)");
@@ -395,22 +395,13 @@ fn cadence_constants_match_perf_audit_and_owner_requirements() {
 
 #[test]
 fn working_spinner_rotation_and_frame_cadence() {
-    // Frame advances every 250 ms (SPIN_MS) and wraps modulo 8 (one revolution in 2000 ms).
+    // Frame is the phase in ms of a 2000 ms revolution, 50 ms resolution.
     assert_eq!(frame(0), 0);
-    assert_eq!(frame(100), 0);
-    assert_eq!(frame(249), 0);
-    assert_eq!(frame(250), 1);
-    assert_eq!(frame(499), 1);
-    assert_eq!(frame(500), 2);
-    assert_eq!(frame(749), 2);
-    assert_eq!(frame(750), 3);
-    assert_eq!(frame(1000), 4);
-    assert_eq!(frame(1250), 5);
-    assert_eq!(frame(1500), 6);
-    assert_eq!(frame(1750), 7);
-    assert_eq!(frame(1999), 7);
+    assert_eq!(frame(100), 100);
+    assert_eq!(frame(149), 100);
+    assert_eq!(frame(1999), 1950);
     assert_eq!(frame(2000), 0);
-    assert_eq!(frame(2250), 1);
+    assert_eq!(frame(2250), 250);
 
     // Consecutive frames 0..7 render different SVGs (both in core::icon and render_agent).
     let working = Agent {
@@ -425,15 +416,15 @@ fn working_spinner_rotation_and_frame_cadence() {
         workers: 0,
     };
 
-    for f in 0..8 {
-        let next_f = (f + 1) % 8;
+    for i in 0..8u32 {
+        let (f, next_f) = (i * 250, (i * 250 + 250) % 2000);
         let icon_curr = icon(State::Working, f);
         let icon_next = icon(State::Working, next_f);
         assert_ne!(
             icon_curr, icon_next,
             "icon must change between frame {f} and {next_f}"
         );
-        assert!(icon_curr.contains(&format!("rotate({} 12 12)", f * 45)));
+        assert!(icon_curr.contains(&format!("rotate({} 12 12)", i * 45)));
 
         let svg_curr = render_agent(Some(&working), f, 5000, false);
         let svg_next = render_agent(Some(&working), next_f, 5000, false);
@@ -460,18 +451,15 @@ fn question_done_white_ring_alternation() {
         };
 
         // When blink is true:
-        // Frames 0 and 1: ON (frame / 2 % 2 == 0)
-        // Frames 2 and 3: OFF (frame / 2 % 2 == 1)
-        // Frames 4 and 5: ON
-        // Frames 6 and 7: OFF
-        for f in [0u32, 1, 4, 5] {
+        // Phase in ms: 0-499 ON, 500-999 OFF, 1000-1499 ON, 1500-1999 OFF.
+        for f in [0u32, 250, 1000, 1250] {
             let svg = render_agent(Some(&agent), f, 2000, true);
             assert!(
                 svg.contains(r#"stroke-width="7""#),
                 "state {state:?} frame {f} must have white ring"
             );
         }
-        for f in [2u32, 3, 6, 7] {
+        for f in [500u32, 750, 1500, 1750] {
             let svg = render_agent(Some(&agent), f, 2000, true);
             assert!(
                 !svg.contains(r#"stroke-width="7""#),
@@ -480,7 +468,7 @@ fn question_done_white_ring_alternation() {
         }
 
         // When blink is false: white ring never appears regardless of frame.
-        for f in 0..8 {
+        for f in (0..2000).step_by(250) {
             let svg = render_agent(Some(&agent), f, 2000, false);
             assert!(
                 !svg.contains(r#"stroke-width="7""#),
@@ -490,8 +478,8 @@ fn question_done_white_ring_alternation() {
     }
 
     // Blinking window durations.
-    assert_eq!(orcadeck_builtin::blink_ms(State::Question), Some(60_000));
-    assert_eq!(orcadeck_builtin::blink_ms(State::Done), Some(20_000));
+    assert_eq!(orcadeck_builtin::blink_ms(State::Question), Some(300_000));
+    assert_eq!(orcadeck_builtin::blink_ms(State::Done), Some(300_000));
     assert_eq!(orcadeck_builtin::blink_ms(State::Working), None);
     assert_eq!(orcadeck_builtin::blink_ms(State::Idle), None);
     assert_eq!(orcadeck_builtin::blink_ms(State::Error), None);
@@ -721,7 +709,7 @@ fn registry_next_timeout_cadence() {
     assert!(reg.appear(key("agent", "c1", 0)));
 
     let t0 = 1_000_000;
-    // 1. Working agent visible: cadence is SPIN_MS (250 ms)
+    // 1. Working agent visible: fallback wait is SPIN_MS (1000 ms)
     reg.tick(t0);
     assert_eq!(
         reg.next_timeout(t0),

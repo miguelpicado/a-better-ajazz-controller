@@ -137,7 +137,7 @@ Medido con el dispositivo (ver [HANDOFF](../project/HANDOFF.md)):
   cero pulsaciones en 80 s, sin línea amarilla local.
 - El arreglo es doble: **lotes** (todas las teclas pendientes juntas, para dejar huecos libres) y
   **JPEG q75** (~3 veces menos bytes que q100; el texto y las formas planas se ven bien).
-- `ORCADECK_GAP_MS` (400 por defecto) fija el mínimo entre lotes. Se lee al abrir cada sesión del
+- `ORCADECK_GAP_MS` (125 por defecto) fija el mínimo entre lotes. Se lee al abrir cada sesión del
   dispositivo. **No se baja**: si se pierden pulsaciones, se sube.
 - Un cambio de escena pinta todas las teclas afectadas en un lote; una pulsación inmediata puede
   esperar hasta el siguiente hueco.

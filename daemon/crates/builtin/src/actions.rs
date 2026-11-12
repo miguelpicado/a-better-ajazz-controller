@@ -1,5 +1,5 @@
 //! Built-in actions and their registry. The daemon calls `Registry::appear/disappear` as scenes
-//! load, `tick` every ~250 ms (paint what it returns) and `key_down` on a press.
+//! load, `tick` after each paint batch while animating (paint what it returns) and `key_down` on a press.
 use crate::core::{self, Agent, Counts, QuotaItem};
 use crate::orca::Orca;
 use serde_json::{json, Value};
@@ -7,8 +7,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub const POLL_MS: i64 = 2000;
-/// Spinner/blink frame length (4 fps); AKP153E loses presses if painted without pause.
-pub const SPIN_MS: i64 = 250;
+/// Longest wait while a key animates. The real cadence is paced by the device: the daemon ticks
+/// again right after each paint batch is written (`BuiltinMsg::Painted`), so every rendered frame is
+/// shown once. AKP153E loses presses if painted without pause (see `BATCH_GAP_MS`).
+pub const SPIN_MS: i64 = 1000;
 pub const QUOTA_MS: i64 = 60_000;
 /// quota-status.json older than this: quota keys dim (orca-dock-rs not running).
 pub const QUOTA_STALE_MS: i64 = 10 * 60_000;
@@ -21,8 +23,8 @@ const WAKE_FOR_MS: i64 = 45_000;
 /// How long an agent key blinks after turning done / waiting.
 pub fn blink_ms(s: core::State) -> Option<i64> {
     match s {
-        core::State::Done => Some(20_000),
-        core::State::Question => Some(60_000),
+        core::State::Done => Some(300_000),
+        core::State::Question => Some(300_000),
         _ => None,
     }
 }
@@ -241,8 +243,10 @@ pub trait BuiltinAction: Send {
     }
 }
 
+/// Animation phase in ms within a 2 s cycle. Only 50 ms resolution (9 degrees, dedupes early wake-ups): the device paints at an uneven ~3-4 fps,
+/// so a continuous angle keeps the spinner uniform whichever instant a frame is rendered.
 pub fn frame(now: i64) -> u32 {
-    (now.div_euclid(SPIN_MS) % 8) as u32
+    (now.rem_euclid(2000) / 50 * 50) as u32
 }
 
 /// One main Orca agent per key; press = focus its pane.
@@ -523,7 +527,7 @@ impl Registry {
 
 /// Pure helper to compute the wait timeout in milliseconds for the builtin loop.
 ///
-/// - If `working_or_blinking`: base interval is `SPIN_MS` (250 ms).
+/// - If `working_or_blinking`: base interval is `SPIN_MS` (1 s fallback; paint acks wake it sooner).
 /// - If `has_timer`: base interval is 1000 ms (1 s).
 /// - Otherwise (idle): base interval is `slow_cadence_ms` (e.g. `POLL_MS` = 2000 ms).
 ///
@@ -579,7 +583,7 @@ mod tests {
 
     #[test]
     fn next_wait_ms_deadline_helper() {
-        // 1. Visible working or blinking key wakes at SPIN_MS (250 ms)
+        // 1. Visible working or blinking key wakes at SPIN_MS (1000 ms fallback)
         assert_eq!(next_wait_ms(true, false, 2000, 2000), SPIN_MS as u64);
         assert_eq!(next_wait_ms(true, true, 2000, 2000), SPIN_MS as u64);
 

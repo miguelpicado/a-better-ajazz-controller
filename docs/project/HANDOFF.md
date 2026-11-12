@@ -40,6 +40,16 @@ bloqueante, `builtin` por plazos, quitar `latest`) esperar a medir `run` con el 
 
 Todo lo anterior está **sin probar en dispositivo**. Espejo público: https://github.com/miguelpicado/a-better-ajazz-controller (se actualiza con `node tools/publish-public.mjs`, nunca con `git push` directo; los binarios de firmware de AJAZZ son solo locales).
 
+## Probado en dispositivo el 2026-11-12 (AKP153E, perfil Orca)
+
+`run` pinta, anima y no pierde pulsaciones con 4 teclas animando. Cambios derivados de la prueba:
+aviso (aro) de 5 min en done/pregunta; spinner con fase continua (50 ms de resolución) y
+`BuiltinMsg::Painted` tras cada lote (cada fotograma se renderiza justo antes de enviarse);
+`BATCH_GAP_MS` 125; marcador de cuota redondeado a píxel (antes repintaba 5 teclas por tick).
+El USB escribe ~5 ms por paquete de 512 B (~30 ms por tecla): ~4 fps reales con 4 teclas.
+El AKP153E no acepta GIF (`M_V` se descarta); no se flashea. Pendiente: reordenar teclas con la UI;
+`orca_pipe` se colgó una vez 12 min (intermitente, no reproducido); resto de la lista de pruebas.
+
 ## Lista de pruebas con el dispositivo (siguiente sesión)
 
 Con Stream Dock parado (`schtasks /end /tn StreamDock`) y `QUOTA_DIR` definido:

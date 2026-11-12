@@ -107,7 +107,7 @@ impl SceneSet {
 - `session` pasa a recibir `&mut by_key`, `&mut latest`, `&mut SceneSet`, `&mut running`, `&mpsc::Sender<SceneCmd>`,
   `&[host::Plugin]` y `&HashSet<&'static str>` de built-ins. En `Target::Scene`, llama a `switch_scene`, mete los pares
   en `pending` y sigue; si falla, log y sigue. El switch ocurre en el hilo HID (sin hilo nuevo).
-- Pintado: un solo lote con `ORCADECK_GAP_MS` (400 ms por defecto), solo claves de `old ∪ new`, sin `CLE` ni `STP`
+- Pintado: un solo lote con `ORCADECK_GAP_MS` (125 ms por defecto), solo claves de `old ∪ new`, sin `CLE` ni `STP`
   extra. El firmware pierde pulsaciones mientras pinta: mantener la pausa, no bajarla. `latest` permite repintar la
   escena nueva tras reconectar.
 - Plugins: `willDisappear` a los contextos viejos y `willAppear` a los nuevos, como en `plugin-host-protocol.md` §routing.
