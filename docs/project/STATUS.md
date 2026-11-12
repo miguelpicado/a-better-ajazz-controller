@@ -54,6 +54,30 @@ No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `ed
   ni `panic="unwind"`.
 - Plan ordenado en [`ROADMAP.md`](ROADMAP.md) (filas 14–16).
 
+## Medido con dispositivo (2026-11-12, AKP153E, perfil Orca, `run`)
+
+| Situación | CPU (% de un núcleo) | RSS | Hilos / handles |
+|---|---|---|---|
+| 4 agentes animando, antes de la caché de rasterizado | 8,7 | 49–58 MB | 4–5 / 106 estables |
+| 2 teclas animando (1 y 13), con caché | 2,6 (ventana de 60 s) | 39,7 MB | 6 / 108 |
+| Proceso recién lanzado | — | 13–40 MB | — |
+
+- Caché `(svg,px)→imagen` en el hilo builtin: rasterizado 4–5 ms → ~20 µs por acierto.
+- USB: ~5 ms por paquete de 512 B (~30 ms por tecla, JPEG ~3 KB); el JPEG cuesta <1 ms.
+- Sin medir: reposo real (ningún agente trabajando) y 4 agentes tras la caché; depende de
+  que los agentes de Orca estén parados, no se puede forzar desde aquí.
+
+## Decisiones de la sesión 2026-11-12
+
+- Scene Shift siguiente/anterior salta escenas sin tecla `profile.rotate` (NetWork no la tiene y
+  sus plugins `.html` no se ejecutan).
+- Las pinturas tardías de builtin tras cambiar de escena se descartan por generación
+  (`Runtime::paint_at`).
+- Spinner: fase continua a 100 ms (20 ángulos); `BuiltinMsg::Painted` dispara el siguiente
+  fotograma tras cada lote escrito; `SPIN_MS` = 1000 es solo espera de respaldo.
+- `BATCH_GAP_MS` = 125; aro de aviso de done/pregunta = 5 min.
+- El AKP153E rev. 1 no acepta GIF: el firmware solo recibe JPEG por tecla.
+
 ## Pendiente con dispositivo y OK del usuario
 
 1. Parar Stream Dock con `schtasks /end /tn StreamDock`.

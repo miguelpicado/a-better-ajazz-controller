@@ -50,6 +50,12 @@ El USB escribe ~5 ms por paquete de 512 B (~30 ms por tecla): ~4 fps reales con 
 El AKP153E no acepta GIF (`M_V` se descarta); no se flashea. Pendiente: reordenar teclas con la UI;
 `orca_pipe` se colgó una vez 12 min (intermitente, no reproducido); resto de la lista de pruebas.
 
+Después (misma sesión): Scene Shift salta escenas sin tecla `profile.rotate`; pinturas tardías de
+builtin se descartan por generación (`Runtime::paint_at`); spinner a 100 ms de resolución (20 ángulos);
+caché de rasterizado (160 entradas, 4–5 ms → ~20 µs); `ORCADECK_TRACE=1` imprime teclas, bytes, ms y
+tiempos de JPEG/raster por lote; `ORCADECK_GAP_MS` cambia el hueco. Medidas en [`STATUS.md`](STATUS.md).
+Pendiente de decisión del usuario: la tecla (4,2) de la escena Orca apunta directo a NetWork por id.
+
 ## Lista de pruebas con el dispositivo (siguiente sesión)
 
 Con Stream Dock parado (`schtasks /end /tn StreamDock`) y `QUOTA_DIR` definido:
