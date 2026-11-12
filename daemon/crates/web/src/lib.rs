@@ -35,8 +35,23 @@ pub trait InspectorBridge: Send + Sync {
     fn open(&self, scene: &str, key: &str) -> Result<InspectorSession, String>;
     /// The editor saved `scene`; `cells` are the cells whose action changed (hot reload on the deck).
     fn saved(&self, _scene: &str, _cells: &[(u8, u8)]) {}
+    /// What the deck shows: keys painted after `since` (a `Mirror::gen` from an earlier call).
+    fn mirror(&self, _since: u64) -> Mirror {
+        Mirror::default()
+    }
     /// The editor's brightness slider set `pct` (0..100).
     fn brightness(&self, _pct: u8) {}
+}
+
+/// Frames the deck shows, for the editor's live view.
+#[derive(Default)]
+pub struct Mirror {
+    /// Bumps whenever a key is painted; pass it back as `since`.
+    pub gen: u64,
+    /// Scene on the deck.
+    pub scene: String,
+    /// `("col,row", data: URL)` of the keys painted after `since`.
+    pub cells: Vec<(String, String)>,
 }
 
 pub struct InspectorSession {
@@ -82,10 +97,14 @@ pub fn new_id(upper: bool) -> String {
     s
 }
 
+/// No `/api/live` request for this long means the editor tab was closed.
+const IDLE: Duration = Duration::from_secs(5);
+
 pub struct Server {
     pub addr: SocketAddr,
     token: String,
     stop: Arc<AtomicBool>,
+    ctx: Arc<api::Ctx>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -101,16 +120,18 @@ impl Server {
             token: token.clone(),
             port: addr.port(),
             lock: Mutex::new(()),
+            last_poll: Mutex::new(None),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
+        let served = ctx.clone();
         let thread = thread::spawn(move || {
             for conn in listener.incoming() {
                 if flag.load(Ordering::SeqCst) {
                     break;
                 }
                 let Ok(conn) = conn else { continue };
-                let ctx = ctx.clone();
+                let ctx = served.clone();
                 thread::spawn(move || serve(&ctx, conn));
             }
         });
@@ -118,6 +139,7 @@ impl Server {
             addr,
             token,
             stop,
+            ctx,
             thread: Some(thread),
         })
     }
@@ -133,6 +155,21 @@ impl Server {
             self.addr.port(),
             self.token
         )
+    }
+
+    /// Blocks until the page's tab is gone: it polled `/api/live` at least once and has not for
+    /// [`IDLE`]. A page that never shows up ends the wait after `give_up`; `cancel` ends it at once.
+    pub fn wait_idle(&self, give_up: Duration, cancel: impl Fn() -> bool) {
+        let t0 = std::time::Instant::now();
+        while !cancel() {
+            thread::sleep(Duration::from_millis(500));
+            let last = *self.ctx.last_poll.lock().unwrap_or_else(|e| e.into_inner());
+            match last {
+                Some(t) if t.elapsed() > IDLE => return,
+                None if t0.elapsed() > give_up => return,
+                _ => {}
+            }
+        }
     }
 
     pub fn stop(mut self) {

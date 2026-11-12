@@ -7,6 +7,7 @@ use std::{
         Arc,
     },
     thread,
+    time::Duration,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +145,25 @@ fn wait_for_ctrl_c() {
     }
 }
 
+/// Waits until `run` closes the session (the editor tab was closed) or Ctrl+C.
+fn wait_session(mut session: ctl::Session) {
+    thread::spawn(move || {
+        session.wait_close();
+        STOPPED.store(true, Ordering::SeqCst);
+        if let Some(t) = WAITER.get() {
+            t.unpark();
+        }
+    });
+    wait_for_ctrl_c();
+}
+
+/// Waits until the editor tab stops polling, a page that never appears for `give_up`, or Ctrl+C.
+fn wait_editor(server: &Server, no_open: bool) {
+    ctrl_c::set_handler();
+    let give_up = Duration::from_secs(if no_open { 24 * 3600 } else { 30 });
+    server.wait_idle(give_up, is_stopped);
+}
+
 /// The only URLs the editor opens: loopback http with a plain query. The URL may come from the control
 /// pipe, so nothing else (quotes, spaces, other hosts) ever reaches `cmd`.
 fn is_editor_url(url: &str) -> bool {
@@ -240,9 +260,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     );
                 }
             }
-            wait_for_ctrl_c();
-            println!("\nDeteniendo el editor...");
-            drop(session);
+            wait_session(session);
             return Ok(());
         }
         Some(Err(e)) => return Err(format!("orcadeck run no pudo iniciar el editor: {e}")),
@@ -265,9 +283,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
 
-    wait_for_ctrl_c();
-
-    println!("\nDeteniendo el editor...");
+    wait_editor(&server, no_open);
     server.stop();
     Ok(())
 }
@@ -289,9 +305,7 @@ pub fn run_install(raw: &str) -> Result<(), String> {
                 session.url()
             );
         }
-        wait_for_ctrl_c();
-        println!("\nDeteniendo el editor...");
-        drop(session);
+        wait_session(session);
         return Ok(());
     }
 
@@ -306,8 +320,7 @@ pub fn run_install(raw: &str) -> Result<(), String> {
     if let Err(e) = open_browser(&url) {
         eprintln!("aviso: no se pudo abrir el navegador ({e}); abre {url} a mano");
     }
-    wait_for_ctrl_c();
-    println!("\nDeteniendo el editor...");
+    wait_editor(&server, false);
     server.stop();
     Ok(())
 }

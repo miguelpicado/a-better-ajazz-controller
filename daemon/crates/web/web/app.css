@@ -235,3 +235,5 @@ pre.json { font: 12px/1.5 var(--mono); background: var(--raise); border: 1px sol
   .library { border-right: 0; max-height: 40vh; }
   .stage { padding: 14px 16px; }
 }
+/* The deck gets its key JPEGs pre-rotated (the panel is mounted sideways); undo that for the live view. */
+.cell img.live { transform: rotate(90deg); }

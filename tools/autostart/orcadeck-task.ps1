@@ -2,7 +2,7 @@
 #
 #   .\orcadeck-task.ps1 install     copy orcadeck.exe + libunwind.dll to %LOCALAPPDATA%\OrcaDeck\bin, register task DISABLED
 #   .\orcadeck-task.ps1 enable      enable the logon trigger (do this only once Stream Dock's own task is disabled)
-#   .\orcadeck-task.ps1 editor      Desktop shortcut that opens the editor (attaches to the running `run`)
+#   .\orcadeck-task.ps1 editor      Start Menu shortcut "OrcaDeck Editor": windowless, closes with its browser tab
 #   .\orcadeck-task.ps1 disable | uninstall | status
 #
 # Stream Dock and OrcaDeck use the same HID device and port 18618: never run both. Disabling Stream Dock's
@@ -42,12 +42,14 @@ switch ($Action) {
         "installed (disabled). bin: $bin"
     }
     'editor' {
-        # Visible console on purpose: closing it stops the editor server (it only lives while attached).
-        $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'OrcaDeck editor.lnk'
+        # Start Menu entry (PowerToys Run finds it). conhost --headless: no console window at all.
+        # The editor exits on its own a few seconds after its browser tab is closed.
+        $lnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\OrcaDeck Editor.lnk'
         $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
-        $sc.TargetPath = Join-Path $bin 'orcadeck.exe'
-        $sc.Arguments = 'edit'
+        $sc.TargetPath = Join-Path $env:SystemRoot 'System32\conhost.exe'
+        $sc.Arguments = "--headless `"$bin\orcadeck.exe`" edit"
         $sc.WorkingDirectory = $bin
+        $sc.IconLocation = Join-Path $bin 'orcadeck.exe'
         $sc.Save()
         "created $lnk"
     }

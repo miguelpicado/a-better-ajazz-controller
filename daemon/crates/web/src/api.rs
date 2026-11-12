@@ -2,7 +2,11 @@
 use crate::http::{pct_decode, Request, Response};
 use crate::store::{safe_id, Error, Plugin, Result, Store};
 use serde_json::{json, Map, Value};
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+    time::{Duration, Instant},
+};
 
 const INDEX: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
@@ -19,9 +23,19 @@ pub struct Ctx {
     pub port: u16,
     /// ponytail: one lock for every read-modify-write; per-scene locks if it ever matters.
     pub lock: Mutex<()>,
+    /// Last time the page asked for live frames. The page re-polls back to back while its tab is
+    /// open, so a stale value means the tab is gone (see `Server::wait_idle`).
+    pub last_poll: Mutex<Option<Instant>>,
 }
 
+/// How long one `/api/live` request waits for a new frame before answering empty.
+const LIVE_POLL: Duration = Duration::from_secs(2);
+
 impl Ctx {
+    fn touch(&self) {
+        *self.last_poll.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+    }
+
     fn cookie_name(&self) -> String {
         format!("orcadeck_{}", self.port)
     }
@@ -221,6 +235,22 @@ fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
         }
         ("DELETE", ["plugins", uuid]) => ok(store.plugin_remove(uuid)?),
         ("GET", ["image"]) => image(store, req),
+        ("GET", ["live"]) => {
+            let since = req.query_param("since").and_then(|s| s.parse().ok()).unwrap_or(0);
+            ctx.touch();
+            let deadline = Instant::now() + LIVE_POLL;
+            // ponytail: 100 ms sleep loop, only while a page is polling; a condvar if that ever shows up.
+            let m = loop {
+                let m = store.inspector().map(|b| b.mirror(since)).unwrap_or_default();
+                if m.gen != since || Instant::now() >= deadline {
+                    break m;
+                }
+                thread::sleep(Duration::from_millis(100));
+            };
+            ctx.touch();
+            let cells: Map<String, Value> = m.cells.into_iter().map(|(k, v)| (k, Value::String(v))).collect();
+            ok(json!({ "gen": m.gen, "scene": m.scene, "cells": cells }))
+        }
         ("GET", ["device"]) => ok(store.device()?),
         ("PUT", ["device"]) => ok(store.set_device(&body(req)?)?),
         _ => Err(Error::new(404, "no such endpoint")),

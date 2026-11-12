@@ -502,6 +502,11 @@ pub(crate) mod imp {
         pub fn url(&self) -> &str {
             &self.url
         }
+
+        /// Blocks until `run` ends the session (its editor tab closed).
+        pub fn wait_close(&mut self) {
+            self._conn.wait_close();
+        }
     }
 
     /// Connects to `name` and sends one request line. `None`: no live `run` (standalone fallback).
@@ -611,6 +616,7 @@ mod imp {
         pub fn url(&self) -> &str {
             ""
         }
+        pub fn wait_close(&mut self) {}
     }
     pub fn request(_name: &str, _port: u16) -> Option<Result<Session, String>> {
         None

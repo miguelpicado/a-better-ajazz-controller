@@ -26,7 +26,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, AtomicU8, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc, Arc, LazyLock, Mutex,
     },
     thread,
     time::{Duration, Instant},
@@ -37,6 +37,28 @@ pub const BATCH_GAP_MS: u64 = 125;
 /// Brightness (0..100) the editor set or `state.json` holds; 255 = unknown, leave the device as is.
 /// Re-sent on every (re)connect because the device forgets it when unplugged.
 static BRIGHTNESS: AtomicU8 = AtomicU8::new(255);
+
+/// Last JPEG sent to each key and the `MIRROR_GEN` it got, for the editor's live view. It holds
+/// bytes already encoded for the device, so mirroring costs one `Arc` clone per painted key.
+static MIRROR: LazyLock<Mutex<HashMap<u8, (u64, Arc<[u8]>)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static MIRROR_GEN: AtomicU64 = AtomicU64::new(0);
+
+fn mirror_put(key: u8, jpeg: &[u8]) {
+    let gen = MIRROR_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+    MIRROR
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(key, (gen, jpeg.into()));
+}
+
+/// `"col,row"` of a key index (inverse of `key_index`).
+fn key_cell(key: u8) -> Option<String> {
+    (0..=5u8)
+        .flat_map(|c| (0..=2u8).map(move |r| (c, r)))
+        .find(|&(c, r)| key_index(c, r) == Some(key))
+        .map(|(c, r)| format!("{c},{r}"))
+}
 
 fn send_brightness(dock: &mut impl DockWriter) -> Result<(), String> {
     match BRIGHTNESS.load(Ordering::Relaxed) {
@@ -744,6 +766,24 @@ impl orcadeck_web::InspectorBridge for RunInspector {
     fn brightness(&self, pct: u8) {
         self.rt.set_brightness(pct);
     }
+
+    fn mirror(&self, since: u64) -> orcadeck_web::Mirror {
+        use base64::engine::general_purpose::STANDARD;
+        let gen = MIRROR_GEN.load(Ordering::Relaxed);
+        if gen == since {
+            return orcadeck_web::Mirror { gen, ..Default::default() };
+        }
+        let cells = MIRROR
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|(_, (g, _))| *g > since)
+            .filter_map(|(k, (_, j))| {
+                Some((key_cell(*k)?, format!("data:image/jpeg;base64,{}", STANDARD.encode(j))))
+            })
+            .collect();
+        orcadeck_web::Mirror { gen, scene: current_scene(&self.rt), cells }
+    }
 }
 
 /// `%APPDATA%\OrcaDeck\globals\<plugin>.json`, or `None` for an id unsafe as a file name.
@@ -1211,7 +1251,9 @@ fn serve_edit(
             // The PI connects to the plugin host from the editor page, whose port is only known now.
             host.allow_origin(format!("http://127.0.0.1:{}", server.addr.port()));
             conn.write_line(&format!("OK {}", server.url()));
-            conn.wait_close();
+            // The editor lives while its tab polls; closing the tab ends it and closes the pipe, which
+            // makes `edit` exit. ponytail: an `edit` killed with its tab open leaves it up until the tab closes.
+            server.wait_idle(Duration::from_secs(30), || false);
             server.stop();
         }
         Err(e) => conn.write_line(&format!("ERR {e}")),
@@ -1580,6 +1622,7 @@ fn process_paints<W: DockWriter>(
                 let j = render::key_jpeg(&img, key);
                 jpeg_us += tj.elapsed().as_micros();
                 bytes += j.len();
+                mirror_put(key, &j);
                 dock.set_key(key, &j)?;
             }
             dock.flush()?;

@@ -173,6 +173,37 @@ function renderDeck(landed) {
   }
 }
 
+// ---------- live view: what the deck shows now ----------
+const LIVE = { gen: 0, scene: null, cells: {} };
+const liveSrc = (key) => (LIVE.scene && LIVE.scene === S.id ? LIVE.cells[key] : null);
+
+function paintLive(key) {
+  const el = $(`.cell[data-key="${key}"]`), src = liveSrc(key);
+  if (!el || el.classList.contains('empty') || !src) return;
+  let i = $('img.live', el);
+  if (!i) { el.replaceChildren(); i = h('img', { class: 'live', alt: '' }); el.append(i); }
+  i.src = src;
+}
+
+// Long poll: each request also tells the daemon this tab is open; when the tab closes the polling
+// stops and the daemon shuts the editor down.
+async function liveLoop() {
+  for (;;) {
+    try {
+      const r = await fetch('/api/live?since=' + LIVE.gen);
+      if (!r.ok) throw new Error(String(r.status));
+      const j = await r.json();
+      const switched = !!j.scene && j.scene !== LIVE.scene;
+      if (switched || j.gen < LIVE.gen) LIVE.cells = {};
+      LIVE.gen = j.gen;
+      if (j.scene) LIVE.scene = j.scene;
+      Object.assign(LIVE.cells, j.cells);
+      if (switched && S.scene) renderDeck();
+      else for (const k of Object.keys(j.cells)) paintLive(k);
+    } catch { await new Promise((ok) => setTimeout(ok, 2000)); }
+  }
+}
+
 function cell(key) {
   const a = (S.scene.Actions || {})[key];
   const el = h('button', {
@@ -182,8 +213,10 @@ function cell(key) {
   });
   if (a) {
     const st = stateOf(a);
-    el.append(img(cellImg(a), '', a.Name || a.UUID.split('.').pop(), 'fallback'));
-    if (st.Title && st.ShowTitle !== false) {
+    const live = liveSrc(key);
+    if (live) el.append(h('img', { src: live, alt: '', class: 'live' }));
+    else el.append(img(cellImg(a), '', a.Name || a.UUID.split('.').pop(), 'fallback'));
+    if (!live && st.Title && st.ShowTitle !== false) {
       const span = h('span', { class: 't ' + (st.TitleAlignment || 'bottom') }, st.Title);
       if (st.TitleColor) span.style.color = st.TitleColor;
       const fs = st.FontSize || st.FSize;
@@ -701,3 +734,4 @@ window.addEventListener('beforeunload', (e) => { if (S.dirty) e.preventDefault()
     if (stagedToken) { showView('plugins'); await openStaged(stagedToken); }
   } catch (e) { fail(e); }
 })();
+liveLoop();

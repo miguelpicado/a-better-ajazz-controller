@@ -74,6 +74,12 @@ No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `ed
   decisión del usuario: no hace falta.
 - `crates/web/tests/real_folders.rs` compara con el perfil real del usuario y falla desde que se
   reordenaron las teclas; es frágil por diseño (actualizarlo o quitarlo).
+- Editor permanente (2026-11-12): acceso «OrcaDeck Editor» en el menú Inicio (`orcadeck-task.ps1 editor`,
+  `conhost --headless`, sin ventana; PowerToys Run lo encuentra). El editor arranca en ~80 ms y termina solo
+  ~5 s después de cerrar la pestaña: la página hace long-poll a `/api/live` y el servidor se cierra cuando
+  deja de recibirlo (`Server::wait_idle`; 30 s si la pestaña nunca llega). Ese mismo `/api/live` entrega al
+  editor los JPEG que `run` envía al dispositivo (`InspectorBridge::mirror`), así que la rejilla muestra en
+  tiempo real lo mismo que el panel; la UI los gira 90° (el panel recibe las imágenes giradas 270°).
 - Sin medir: reposo real (ningún agente trabajando) y 4 agentes tras la caché; depende de
   que los agentes de Orca estén parados, no se puede forzar desde aquí.
 
