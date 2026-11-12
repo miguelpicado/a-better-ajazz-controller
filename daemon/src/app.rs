@@ -477,7 +477,13 @@ impl Runtime {
 
     /// Builtin images go through the same channel and view as plugin images.
     fn paint(&self, context: &str, key: u8, img: DynamicImage) {
-        if self.retired(context) {
+        self.paint_at(self.gen.load(Ordering::Relaxed), context, key, img);
+    }
+
+    /// `paint` for a producer that rendered under scene generation `gen`: after a scene switch its
+    /// late images must not reach the view or the device (they would show an old key on the new scene).
+    fn paint_at(&self, gen: u64, context: &str, key: u8, img: DynamicImage) {
+        if self.retired(context) || gen < self.gen.load(Ordering::SeqCst) {
             return;
         }
         let img = render::fit_px(img, image_px(key));
@@ -1242,6 +1248,9 @@ pub fn run(
         .name("builtin".into())
         .spawn(move || {
             let mut ctx_key: HashMap<String, u8> = HashMap::new();
+            // Scene generation of the registry's keys: advances only when its Replace is handled, so an
+            // old-scene tick racing a switch paints with a stale generation and is dropped.
+            let mut my_gen = builtin.gen.load(Ordering::SeqCst);
             loop {
                 let now = bi::now_ms();
                 for (ctx, svg) in registry.tick(now) {
@@ -1249,7 +1258,7 @@ pub fn run(
                         continue;
                     };
                     if let Some(img) = svg_image(&svg, image_px(k)) {
-                        builtin.paint(&ctx, k, img);
+                        builtin.paint_at(my_gen, &ctx, k, img);
                     }
                 }
                 let timeout = registry.next_timeout(bi::now_ms());
@@ -1275,6 +1284,7 @@ pub fn run(
                             registry.appear(key);
                         }
                         ctx_key = ctx_keys;
+                        my_gen = builtin.gen.load(Ordering::SeqCst);
                     }
                     Ok(BuiltinMsg::Cell { key, old, new }) => {
                         if let Some(old) = old {
@@ -2590,6 +2600,19 @@ mod tests {
         assert!(hid_reader_mode(), "case-insensitive THREAD is ON");
 
         std::env::remove_var("ORCADECK_HID_READER");
+    }
+
+    #[test]
+    fn stale_generation_paint_is_dropped_before_view_and_device() {
+        let dir = tmp("stale-paint");
+        let (rt, rx) = runtime(&dir);
+        rt.gen.fetch_add(1, Ordering::SeqCst); // a scene switch happened
+        rt.paint_at(0, "old", 3, white(KEY_PX));
+        assert!(rx.try_recv().is_err(), "nothing is sent");
+        assert!(!rt.view.lock().unwrap().base.contains_key(&3), "view untouched");
+        rt.paint_at(1, "new", 3, white(KEY_PX));
+        assert!(rx.try_recv().is_ok());
+        assert!(rt.view.lock().unwrap().base.contains_key(&3));
     }
 
     #[test]
