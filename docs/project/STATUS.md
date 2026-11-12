@@ -80,6 +80,7 @@ No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `ed
   editor los JPEG que `run` envía al dispositivo (`InspectorBridge::mirror`), así que la rejilla muestra en
   tiempo real lo mismo que el panel; la UI los gira 90° (el panel recibe las imágenes giradas 270°).
 - Calidad (2026-11-12): imágenes del pipeline a 2× (`WORK_SCALE`, 170 px) y JPEG del dispositivo q85 (probado q92: perdía fotogramas; antes q75; `ORCADECK_JPEG_Q` lo cambia sin recompilar). El espejo del editor usa la imagen 2× (q88, sin giro). Vigilar pulsaciones perdidas y fps con 4 teclas animando: los fotogramas pesan más por USB.
+- Editor lento al abrir (2026-11-12): NO es de OrcaDeck. `edit` tarda 14 ms hasta lanzar el navegador (`%LOCALAPPDATA%\OrcaDeck\edit-timing.log`). `ShellExecute` (acceso directo, `orcadeck.exe` o `cmd.exe` firmado) tarda ~21 s a veces (no siempre; no reproducido tras 330 s de inactividad en la última prueba) y justo después ~50 ms; `CreateProcess` directo (conhost/orcadeck) siempre <250 ms. Causa sin identificar (no AppXSvc, no Defender, no el .lnk). Siguiente: capturar una apertura lenta con Process Monitor/WPR (requiere admin) o probar una exclusión de Defender para `%LOCALAPPDATA%\OrcaDeckin`.
 - Sin medir: reposo real (ningún agente trabajando) y 4 agentes tras la caché; depende de
   que los agentes de Orca estén parados, no se puede forzar desde aquí.
 
