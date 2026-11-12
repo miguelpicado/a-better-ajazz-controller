@@ -395,13 +395,13 @@ fn cadence_constants_match_perf_audit_and_owner_requirements() {
 
 #[test]
 fn working_spinner_rotation_and_frame_cadence() {
-    // Frame is the phase in ms of a 2000 ms revolution, 50 ms resolution.
+    // Frame is the phase in ms of a 2000 ms revolution, 100 ms resolution.
     assert_eq!(frame(0), 0);
     assert_eq!(frame(100), 100);
-    assert_eq!(frame(149), 100);
-    assert_eq!(frame(1999), 1950);
+    assert_eq!(frame(199), 100);
+    assert_eq!(frame(1999), 1900);
     assert_eq!(frame(2000), 0);
-    assert_eq!(frame(2250), 250);
+    assert_eq!(frame(2250), 200);
 
     // Consecutive frames 0..7 render different SVGs (both in core::icon and render_agent).
     let working = Agent {

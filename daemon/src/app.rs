@@ -76,6 +76,29 @@ fn svg_image(svg: &str, px: u32) -> Option<DynamicImage> {
     image::RgbaImage::from_raw(px, px, rgba).map(DynamicImage::ImageRgba8)
 }
 
+/// Max cached rasters of builtin keys (~29 KB each). Rasterizing an SVG costs ~4 ms, 15x the JPEG
+/// encode, and a spinner repeats the same 20 frames every 2 s, so only the first revolution pays.
+const RASTER_CACHE: usize = 160;
+
+/// `svg_image` memoized by (svg, px). ponytail: cleared when full; an LRU only matters if the
+/// per-second timer texts of many question/done keys keep evicting the spinner frames.
+fn cached_raster(
+    cache: &mut HashMap<(String, u32), DynamicImage>,
+    svg: String,
+    px: u32,
+) -> Option<DynamicImage> {
+    let key = (svg, px);
+    if let Some(img) = cache.get(&key) {
+        return Some(img.clone());
+    }
+    let img = svg_image(&key.0, px)?;
+    if cache.len() >= RASTER_CACHE {
+        cache.clear();
+    }
+    cache.insert(key, img.clone());
+    Some(img)
+}
+
 /// `data:image/...;base64,...` or percent-encoded SVG, as plugins send in `setImage`.
 fn decode_uri(uri: &str, px: u32) -> Option<DynamicImage> {
     let (meta, data) = uri.strip_prefix("data:")?.split_once(',')?;
@@ -1251,15 +1274,27 @@ pub fn run(
             // Scene generation of the registry's keys: advances only when its Replace is handled, so an
             // old-scene tick racing a switch paints with a stale generation and is dropped.
             let mut my_gen = builtin.gen.load(Ordering::SeqCst);
+            let mut rasters: HashMap<(String, u32), DynamicImage> = HashMap::new();
             loop {
                 let now = bi::now_ms();
-                for (ctx, svg) in registry.tick(now) {
+                let tt = Instant::now();
+                let painted = registry.tick(now);
+                let tick_us = tt.elapsed().as_micros();
+                let tr = Instant::now();
+                let n = painted.len();
+                for (ctx, svg) in painted {
                     let Some(&k) = ctx_key.get(&ctx) else {
                         continue;
                     };
-                    if let Some(img) = svg_image(&svg, image_px(k)) {
+                    if let Some(img) = cached_raster(&mut rasters, svg, image_px(k)) {
                         builtin.paint_at(my_gen, &ctx, k, img);
                     }
+                }
+                if n > 0 && std::env::var_os("ORCADECK_TRACE").is_some() {
+                    eprintln!(
+                        "builtin tick {tick_us} us, raster {n} svgs {} us",
+                        tr.elapsed().as_micros()
+                    );
                 }
                 let timeout = registry.next_timeout(bi::now_ms());
                 match msg_rx.recv_timeout(timeout) {
@@ -1502,9 +1537,12 @@ fn process_paints<W: DockWriter>(
             let (started, count) = (Instant::now(), pending.len());
             let mut bytes = 0;
             let mut keys = Vec::new();
+            let mut jpeg_us = 0u128;
             for (key, (img, _)) in pending.drain() {
                 keys.push(key);
+                let tj = Instant::now();
                 let j = render::key_jpeg(&img, key);
+                jpeg_us += tj.elapsed().as_micros();
                 bytes += j.len();
                 dock.set_key(key, &j)?;
             }
@@ -1513,7 +1551,7 @@ fn process_paints<W: DockWriter>(
             if std::env::var_os("ORCADECK_TRACE").is_some() {
                 keys.sort_unstable();
                 eprintln!(
-                    "{:>6}ms painted {count} keys {keys:?} {bytes} B in {} ms",
+                    "{:>6}ms painted {count} keys {keys:?} {bytes} B in {} ms (jpeg {jpeg_us} us)",
                     t0.elapsed().as_millis(),
                     started.elapsed().as_millis()
                 );
@@ -2600,6 +2638,22 @@ mod tests {
         assert!(hid_reader_mode(), "case-insensitive THREAD is ON");
 
         std::env::remove_var("ORCADECK_HID_READER");
+    }
+
+    #[test]
+    fn cached_raster_reuses_and_bounds_the_cache() {
+        let svg = |c: &str| {
+            format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144"><rect width="144" height="144" fill="{c}"/></svg>"#)
+        };
+        let mut cache = HashMap::new();
+        let a = cached_raster(&mut cache, svg("#f00"), 72).unwrap();
+        let b = cached_raster(&mut cache, svg("#f00"), 72).unwrap();
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        assert_eq!(cache.len(), 1, "second call hits");
+        for i in 0..RASTER_CACHE + 5 {
+            cached_raster(&mut cache, svg(&format!("#{i:06x}")), 72).unwrap();
+        }
+        assert!(cache.len() <= RASTER_CACHE, "bounded: {}", cache.len());
     }
 
     #[test]

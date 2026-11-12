@@ -243,10 +243,10 @@ pub trait BuiltinAction: Send {
     }
 }
 
-/// Animation phase in ms within a 2 s cycle. Only 50 ms resolution (9 degrees, dedupes early wake-ups): the device paints at an uneven ~3-4 fps,
+/// Animation phase in ms within a 2 s cycle. Only 100 ms resolution (18 degrees: dedupes early wake-ups and keeps the raster cache small): the device paints at an uneven ~3-4 fps,
 /// so a continuous angle keeps the spinner uniform whichever instant a frame is rendered.
 pub fn frame(now: i64) -> u32 {
-    (now.rem_euclid(2000) / 50 * 50) as u32
+    (now.rem_euclid(2000) / 100 * 100) as u32
 }
 
 /// One main Orca agent per key; press = focus its pane.
