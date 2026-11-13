@@ -24,6 +24,22 @@
   4 agentes; fps/pulsaciones con q85; tecla (4,2) de Orca se deja como está (decisión del usuario); un `edit` matado
   con la pestaña abierta bloquea el siguiente hasta ~30 s (`serve_edit`, `app.rs`; el error no se ve con conhost
   headless).
+- Hecho 2026-11-13: acciones builtin de sistema (`crates/builtin/src/sys.rs`) con los UUID de HotSpot
+  (`com.hotspot.stream.{cpu,memory,PhysicalDisk,NetWork,cpu.temperature,Cpu_Clock,Cpu_Package_Power,Gpu_*}`) y de
+  `com.krabs.windowsgizmos.{Lock,Reboot,Shutdown,TaskManager}` + nuevo `com.miguelpicado.orcadock.logoff` (añadido al
+  manifest del plugin Node para el editor). CPU/RAM/disco C:/red vía Win32; GPU vía `nvml.dll`; temp/reloj/potencia de CPU
+  solo con HWiNFO64 y «Shared Memory Support» (sin él: «N/D»). Apagar/reiniciar/cerrar sesión piden 2.ª pulsación (4 s).
+  Pendiente: probar en dispositivo; la página 2 de Monitorización (hora/tiempo HotSpot) no está implementada; sin
+  clippy/rustfmt instalados en el toolchain gnullvm (CI sí corre clippy).
+- Hecho 2026-11-13 (después): teclas rediseñadas (barra grande con texto dentro, naranja en atención, tecla roja en
+  peligro; umbrales en las llamadas a `level(...)` de `sys.rs`). Plugin HotSpot «System Performance Monitor» movido a
+  `%APPDATA%\HotSpot\StreamDock\plugins-removed-20261109\`; las teclas son de `com.miguelpicado.orcadock.*`
+  (`cpu`, `cpu_temp`, `cpu_clock`, `cpu_power`, `ram`, `disk`, `net`, `gpu_*`, `lock`, `logoff`, `restart`, `shutdown`,
+  `taskmgr`; los UUID HotSpot/krabs siguen como alias). Escenas Monitorización/Tablero/Orca migradas (copias en
+  `%LOCALAPPDATA%\OrcaDeck\*.bak.json`). Panel lateral: `panel_time|panel_cpu|panel_gpu`, dos mini-teclas apiladas por
+  celda (5,0..5,2 de Monitorización). Pendiente: probar en dispositivo; idea: patrón de prueba para ver si las 3 celdas
+  laterales forman una pantalla continua.
+- Defender: con la carpeta excluida el cambio de escena y la carga de imágenes van mucho más rápido (confirmado por el usuario).
 - Lo de abajo es histórico: «sin probar en dispositivo» ya no aplica.
 
 ---

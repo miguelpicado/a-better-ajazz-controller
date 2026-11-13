@@ -10,6 +10,7 @@ pub mod actions;
 pub mod core;
 pub mod orca;
 pub mod raster;
+pub mod sys;
 
 pub use actions::{
     blink_ms, frame, next_wait_ms, now_ms, BuiltinAction, Ctx, Deck, Feedback, Key, Registry,

@@ -2,6 +2,7 @@
 //! load, `tick` after each paint batch while animating (paint what it returns) and `key_down` on a press.
 use crate::core::{self, Agent, Counts, QuotaItem};
 use crate::orca::Orca;
+use crate::sys;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -51,6 +52,8 @@ pub struct Deck {
     pub quota_stale: bool,
     /// Last failure of a poll, cleared by the next success. The daemon may log it.
     pub last_error: Option<String>,
+    /// System monitor readings, sampled only while a monitor key is visible.
+    pub sys: sys::Sys,
     repos: Vec<Value>,
     workers: Vec<Value>,
     runs: Vec<Value>,
@@ -73,6 +76,7 @@ impl Deck {
             quota: Vec::new(),
             quota_stale: false,
             last_error: None,
+            sys: sys::Sys::default(),
             repos: Vec::new(),
             workers: Vec::new(),
             runs: Vec::new(),
@@ -382,12 +386,13 @@ pub struct Registry {
 impl Registry {
     /// Registry with the four Orca Deck actions.
     pub fn new(deck: Deck) -> Self {
-        let list: Vec<Box<dyn BuiltinAction>> = vec![
+        let mut list: Vec<Box<dyn BuiltinAction>> = vec![
             Box::new(AgentAction::default()),
             Box::new(QuotaAction::default()),
             Box::new(ClockAction),
             Box::new(SummaryAction),
         ];
+        list.extend(sys::actions());
         Registry {
             deck,
             actions: list.into_iter().map(|a| (a.uuid(), a)).collect(),

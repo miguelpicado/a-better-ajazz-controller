@@ -268,7 +268,7 @@ fn ink(hex: &str) -> &'static str {
     }
 }
 
-const SANS: &str = r#"font-family="Segoe UI, Arial, sans-serif""#;
+pub(crate) const SANS: &str = r#"font-family="Segoe UI, Arial, sans-serif""#;
 const MONO: &str = r#"font-family="Consolas, Cascadia Mono, monospace""#;
 
 /// State icons drawn in a 24x24 box (Lucide-style strokes), placed in a dark disc.
@@ -297,7 +297,7 @@ pub fn ago(ms: i64) -> String {
     }
 }
 
-fn svg(body: &str) -> String {
+pub(crate) fn svg(body: &str) -> String {
     format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">{body}</svg>"#
     )
