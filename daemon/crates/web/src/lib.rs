@@ -41,6 +41,14 @@ pub trait InspectorBridge: Send + Sync {
     }
     /// The editor's brightness slider set `pct` (0..100).
     fn brightness(&self, _pct: u8) {}
+    /// Calibration state of the DRA render path (experimental); `None` = not available (no daemon).
+    fn calibration(&self) -> Option<serde_json::Value> {
+        None
+    }
+    /// Applies one calibration command (`on`, `enabled`, `select`, `adjust`, `set`, `reset`, `save`).
+    fn calibrate(&self, _cmd: &serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("calibration is not available".into())
+    }
 }
 
 /// Frames the deck shows, for the editor's live view.

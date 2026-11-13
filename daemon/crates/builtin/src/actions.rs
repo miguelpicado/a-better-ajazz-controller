@@ -54,6 +54,8 @@ pub struct Deck {
     pub last_error: Option<String>,
     /// System monitor readings, sampled only while a monitor key is visible.
     pub sys: sys::Sys,
+    /// Size/mode the `panel_strip` bar is rendered for; the daemon sets it from its DRA calibration.
+    pub strip: crate::strip::StripCfg,
     repos: Vec<Value>,
     workers: Vec<Value>,
     runs: Vec<Value>,
@@ -77,6 +79,7 @@ impl Deck {
             quota_stale: false,
             last_error: None,
             sys: sys::Sys::default(),
+            strip: Default::default(),
             repos: Vec::new(),
             workers: Vec::new(),
             runs: Vec::new(),

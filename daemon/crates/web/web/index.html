@@ -14,6 +14,7 @@
   <nav class="views" aria-label="Vista">
     <button type="button" data-view="keys" aria-pressed="true">Teclas</button>
     <button type="button" data-view="plugins" aria-pressed="false">Plugins</button>
+    <button type="button" data-view="calib" aria-pressed="false">Calibración</button>
   </nav>
   <div class="device-ctl">
     <span id="dev-status" class="dot" title="Estado del dispositivo"></span>
@@ -66,6 +67,15 @@
     <ul id="plist" class="plist"></ul>
   </section>
   <aside class="inspector" id="pdetail" aria-label="Detalle del plugin"></aside>
+</main>
+
+<main id="calib-view" class="calib" hidden>
+  <section class="calib-box" aria-label="Calibración de teclas (experimental)">
+    <h1>Calibración de teclas <small>experimental · modo DRA</small></h1>
+    <p class="sub">Activa la calibración, pulsa una tecla del dispositivo (o elígela aquí) y mueve el cuadrado con las flechas del teclado (Mayús = 5 px) o con los botones. Los valores son píxeles del panel y se guardan al salir.</p>
+    <p id="cstatus" class="status" role="status" aria-live="polite"></p>
+    <div id="calib-ui"></div>
+  </section>
 </main>
 
 <div id="locked" class="locked" hidden>

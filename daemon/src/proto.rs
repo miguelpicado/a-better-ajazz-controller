@@ -191,6 +191,92 @@ pub fn image_packets(n: usize, key: u8, jpeg: &[u8]) -> Vec<Vec<u8>> {
     out
 }
 
+// ---- DRA (experimental, docs/research/hid/side-panel-lcd.md §5.4, docs/research/hid/dra-render-notes.md) ----
+// Firmware `DRA` state 3 draws a JPEG live on the front buffer at PANEL coordinates (480x854 portrait,
+// device view = panel rotated 90 deg). Not clipped like BAT. STP would erase it: never mix with BAT/STP.
+
+pub const PANEL_W: u16 = 480;
+pub const PANEL_H: u16 = 854;
+/// libjpeg heap in the firmware (29948 B) decodes at most ~384 px of width (4:4:4); 480 fails.
+pub const DRA_MAX_W: u16 = 384;
+/// DRA data buffer is 80 KB with no bounds check; stay well under.
+pub const DRA_MAX_JPEG: usize = 60 * 1024;
+pub const DRA_TILE_PX: u16 = 98;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rect {
+    pub x: u16,
+    pub y: u16,
+    pub w: u16,
+    pub h: u16,
+}
+
+/// BAT cell of keys 1..=15 in panel coordinates: (x, y, size).
+pub fn bat_cell(key: u8) -> Option<(u16, u16, u16)> {
+    const X: [u16; 3] = [49, 198, 347];
+    const Y: [u16; 5] = [146, 294, 442, 590, 738];
+    let i = key.checked_sub(1)? as usize;
+    (i < 15).then(|| (X[i % 3], Y[i / 3], 85))
+}
+
+/// Rect of a `w`x`h` block centred on (cx, cy) shifted by `off`, clamped to the panel.
+pub fn centred_rect(cx: i32, cy: i32, w: u16, h: u16, off: (i16, i16)) -> Rect {
+    let w = w.clamp(1, DRA_MAX_W);
+    let h = h.clamp(1, PANEL_H);
+    let x = (cx - w as i32 / 2 + off.0 as i32).clamp(0, (PANEL_W - w) as i32);
+    let y = (cy - h as i32 / 2 + off.1 as i32).clamp(0, (PANEL_H - h) as i32);
+    Rect { x: x as u16, y: y as u16, w, h }
+}
+
+/// DRA tile of a key 1..=15: `tile` px square centred on the BAT tile centre, plus `off` (panel dx, dy), clamped.
+pub fn dra_tile(key: u8, tile: u16, off: (i16, i16)) -> Option<Rect> {
+    dra_key_rect(key, tile, tile, off)
+}
+
+/// Like [`dra_tile`] with separate panel width and height (calibration).
+pub fn dra_key_rect(key: u8, w: u16, h: u16, off: (i16, i16)) -> Option<Rect> {
+    let (x, y, s) = bat_cell(key)?;
+    let c = |v: u16| v as i32 + s as i32 / 2;
+    Some(centred_rect(c(x), c(y), w, h, off))
+}
+
+/// `"key:dx,dy;key:dx,dy"` (panel pixels), e.g. `"1:-4,0;15:0,6"`. Bad entries are ignored.
+pub fn parse_offsets(s: &str) -> std::collections::HashMap<u8, (i16, i16)> {
+    s.split(';')
+        .filter_map(|e| {
+            let (k, v) = e.split_once(':')?;
+            let (dx, dy) = v.split_once(',')?;
+            Some((k.trim().parse().ok()?, (dx.trim().parse().ok()?, dy.trim().parse().ok()?)))
+        })
+        .collect()
+}
+
+/// DRA state-3 header + JPEG chunks (each exactly `n` bytes). JPEG must be baseline 4:4:4 (not checked here).
+pub fn dra_packets(n: usize, r: Rect, jpeg: &[u8]) -> Result<Vec<Vec<u8>>, String> {
+    if n < 0x15 {
+        return Err(format!("report size {n} too small for DRA"));
+    }
+    if r.w == 0 || r.h == 0 || r.w > DRA_MAX_W {
+        return Err(format!("DRA width {} outside 1..={DRA_MAX_W}", r.w));
+    }
+    if jpeg.is_empty() || jpeg.len() > DRA_MAX_JPEG {
+        return Err(format!("DRA jpeg {} B outside 1..={DRA_MAX_JPEG}", jpeg.len()));
+    }
+    let mut hdr = crt(n, "DRA", &[]);
+    hdr[9..12].copy_from_slice(&(jpeg.len() as u32).to_be_bytes()[1..]);
+    hdr[0x0c] = 0; // key 0 = state 3 (live, front buffer)
+    for (o, v) in [(0x0d, r.w), (0x0f, r.h), (0x11, r.x), (0x13, r.y)] {
+        hdr[o..o + 2].copy_from_slice(&v.to_be_bytes());
+    }
+    let mut out = vec![hdr];
+    for c in jpeg.chunks(n) {
+        let mut p = vec![0u8; n];
+        p[..c.len()].copy_from_slice(c);
+        out.push(p);
+    }
+    Ok(out)
+}
+
 pub fn wire(payload: &[u8]) -> Vec<u8> {
     let mut w = Vec::with_capacity(payload.len() + 1);
     w.push(0);
@@ -299,6 +385,66 @@ mod tests {
         assert!(pk.iter().all(|p| p.len() == 512));
         assert_eq!(pk[3][276], 0); // zero padded tail
         assert_eq!(pk[3][275], 7);
+    }
+
+    #[test]
+    fn dra_tile_centres_on_bat_cell_and_clamps() {
+        // key 1: BAT (49,146) 85 -> centre (91,188); 98 px tile -> (42,139)
+        assert_eq!(dra_tile(1, 98, (0, 0)), Some(Rect { x: 42, y: 139, w: 98, h: 98 }));
+        // key 8 (i=7): x 198, y 442 -> centre (240,484)
+        assert_eq!(dra_tile(8, 98, (0, 0)), Some(Rect { x: 191, y: 435, w: 98, h: 98 }));
+        assert_eq!(dra_tile(8, 98, (-3, 5)), Some(Rect { x: 188, y: 440, w: 98, h: 98 }));
+        // offset pushes past the panel edge -> clamped
+        assert_eq!(dra_tile(1, 98, (-500, -500)), Some(Rect { x: 0, y: 0, w: 98, h: 98 }));
+        let r = dra_tile(15, 98, (500, 500)).unwrap();
+        assert_eq!((r.x + r.w, r.y + r.h), (PANEL_W, PANEL_H));
+        // oversized tile clamps to the DRA width limit
+        assert_eq!(dra_tile(5, 480, (0, 0)).unwrap().w, DRA_MAX_W);
+        // keys 0 and 16+ have no BAT cell
+        assert_eq!(dra_key_rect(1, 60, 98, (0, 0)), Some(Rect { x: 61, y: 139, w: 60, h: 98 }));
+        assert_eq!(dra_tile(0, 98, (0, 0)), None);
+        assert_eq!(dra_tile(16, 98, (0, 0)), None);
+        // every key tile stays inside the panel
+        for k in 1..=15 {
+            let r = dra_tile(k, 98, (0, 0)).unwrap();
+            assert!(r.x + r.w <= PANEL_W && r.y + r.h <= PANEL_H);
+        }
+    }
+
+    #[test]
+    fn offsets_parse_ignores_garbage() {
+        let m = parse_offsets("1:-4,0; 15:0,6;x:1,1;3:2");
+        assert_eq!(m.len(), 2);
+        assert_eq!(m[&1], (-4, 0));
+        assert_eq!(m[&15], (0, 6));
+    }
+
+    #[test]
+    fn dra_header_bytes() {
+        let jpeg = vec![9u8; 1300];
+        let r = Rect { x: 0x0123, y: 0x0345, w: 98, h: 99 };
+        let pk = dra_packets(512, r, &jpeg).unwrap();
+        assert_eq!(pk.len(), 1 + 3);
+        assert!(pk.iter().all(|p| p.len() == 512));
+        let h = &pk[0];
+        assert_eq!(&h[..8], b"CRT\0\0DRA");
+        assert_eq!(&h[9..12], &[0x00, 0x05, 0x14]); // 1300 BE24
+        assert_eq!(h[0x0c], 0);
+        assert_eq!(&h[0x0d..0x15], &[0, 98, 0, 99, 0x01, 0x23, 0x03, 0x45]);
+        assert_eq!(pk[3][275], 9);
+        assert_eq!(pk[3][276], 0);
+    }
+
+    #[test]
+    fn dra_rejects_unsafe_inputs() {
+        let r = Rect { x: 0, y: 0, w: 98, h: 98 };
+        assert!(dra_packets(512, Rect { w: 385, ..r }, &[1]).is_err());
+        assert!(dra_packets(512, Rect { w: 0, ..r }, &[1]).is_err());
+        assert!(dra_packets(512, r, &[]).is_err());
+        assert!(dra_packets(512, r, &vec![0; DRA_MAX_JPEG + 1]).is_err());
+        assert!(dra_packets(512, r, &vec![0; DRA_MAX_JPEG]).is_ok());
+        assert!(dra_packets(16, r, &[1]).is_err());
+        assert!(dra_packets(512, Rect { w: 384, ..r }, &[1]).is_ok());
     }
 
     #[test]

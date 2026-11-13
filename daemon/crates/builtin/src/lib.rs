@@ -10,6 +10,7 @@ pub mod actions;
 pub mod core;
 pub mod orca;
 pub mod raster;
+pub mod strip;
 pub mod sys;
 
 pub use actions::{
@@ -17,3 +18,4 @@ pub use actions::{
     POLL_MS, QUOTA_MS, SPIN_MS, WORKERS_MS,
 };
 pub use orca::{Orca, PipeOrca};
+pub use strip::{cell_rows, strip_dims, StripCfg};

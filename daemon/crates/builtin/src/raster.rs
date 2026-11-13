@@ -15,14 +15,19 @@ fn fonts() -> Arc<usvg::fontdb::Database> {
 
 /// Renders `svg` scaled to `px` x `px` and returns straight (non-premultiplied) RGBA, row-major.
 pub fn svg_to_rgba(svg: &str, px: u32) -> Result<Vec<u8>, String> {
+    svg_to_rgba_wh(svg, px, px)
+}
+
+/// Like [`svg_to_rgba`] for a `w` x `h` target (the side-panel strip is not square).
+pub fn svg_to_rgba_wh(svg: &str, w: u32, h: u32) -> Result<Vec<u8>, String> {
     let opt = usvg::Options {
         fontdb: fonts(),
         ..Default::default()
     };
     let tree = usvg::Tree::from_str(svg, &opt).map_err(|e| e.to_string())?;
-    let mut pixmap = tiny_skia::Pixmap::new(px, px).ok_or("bad size")?;
+    let mut pixmap = tiny_skia::Pixmap::new(w, h).ok_or("bad size")?;
     let size = tree.size();
-    let t = tiny_skia::Transform::from_scale(px as f32 / size.width(), px as f32 / size.height());
+    let t = tiny_skia::Transform::from_scale(w as f32 / size.width(), h as f32 / size.height());
     resvg::render(&tree, t, &mut pixmap.as_mut());
     Ok(pixmap
         .pixels()

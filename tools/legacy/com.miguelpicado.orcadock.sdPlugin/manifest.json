@@ -54,6 +54,14 @@
       "States": [{ "Image": "imgs/action", "ShowTitle": false }]
     },
     {
+      "UUID": "com.miguelpicado.orcadock.panel_strip",
+      "Name": "Side bar (time, CPU, RAM, GPU)",
+      "Tooltip": "Experimental. Whole side panel as one bar. Place it at the top side cell (5,0); the other two stay blank.",
+      "Icon": "imgs/action",
+      "Controllers": ["Information", "Keypad"],
+      "States": [{ "Image": "imgs/action", "ShowTitle": false }]
+    },
+    {
       "UUID": "com.miguelpicado.orcadock.quota",
       "Name": "AI quota",
       "Tooltip": "Fills itself with the next account from quota-status.json. Press to refresh.",

@@ -108,6 +108,8 @@ no configuration file for them.
 | `ORCADECK_DATA` | `%APPDATA%\OrcaDeck` | `state.json` and overlays **for `edit` only**. `run` always uses `%APPDATA%\OrcaDeck`. | [`edit.rs`](../../daemon/src/edit.rs) |
 | `ORCADECK_BUILTIN_PLUGINS` | empty; Stream Dock `plugins` folders are added if they exist | Extra read-only plugin roots for `edit`, separated by `;`. | [`edit.rs`](../../daemon/src/edit.rs) |
 | `ORCADECK_GAP_MS` | `250` | Minimum milliseconds between paint batches. Read when each device session is opened. **Do not lower it.** | [`app.rs`](../../daemon/src/app.rs) |
+| action `com.miguelpicado.orcadock.panel_strip` | _(scene)_ | **Experimental.** Side panel as ONE bar (time/date, CPU, RAM, GPU). Put it at cell (5,0): with `ORCADECK_DRA=1` it is drawn whole (across = `h` of calibration slot 16, length 378); without DRA it is sliced into the 3 cells of 80 px. See [`dra-render-notes.md`](../research/hid/dra-render-notes.md). | [`strip.rs`](../../daemon/crates/builtin/src/strip.rs) |
+| `ORCADECK_DRA` | _(unset)_ | **Experimental.** `1` = paint with `DRA` (live rectangles, no BAT/STP) instead of BAT. All changed keys in one pass. See [`dra-render-notes.md`](../research/hid/dra-render-notes.md). Also: `ORCADECK_DRA_GAP_MS` (50, pause between DRA), `ORCADECK_CALIBRATION` (path of `calibration.json`; default `%LOCALAPPDATA%\OrcaDeck\calibration.json`), `ORCADECK_CALIB_GAP_MS` (150), `ORCADECK_DRA_TILE_PX` (98, max 384), `ORCADECK_DRA_SIDE_PX` (80), `ORCADECK_DRA_OFFSETS` (`key:dx,dy;…` in panel pixels). | [`app.rs`](../../daemon/src/app.rs) |
 | `ORCADECK_TRACE` | off (any value enables it) | Writes each HID input and each batch duration to stderr. | [`app.rs`](../../daemon/src/app.rs) |
 | `ORCADECK_CMD` | off | `watch` experiment hook: `VERB:0a=01,0b=00` (offsets and values in hexadecimal). Sends a `CRT` and continues. | [`main.rs`](../../daemon/src/main.rs) |
 | `ORCADECK_SCENE` | off | With `ORCADECK_CMD`: after the command, sends `LIG`, `CLE`, the images of that profile (with `STP` per key) and `CONNECT`. | [`main.rs`](../../daemon/src/main.rs) |
@@ -299,3 +301,5 @@ schtasks /change /tn StreamDock /disable
   explicit user order and a recovery plan.
 - **Do not run Stream Dock and OrcaDeck at the same time.**
 - Do not delete or move the large files in the repository root: they belong to the user.
+
+**Per-key calibration (experimental, needs DRA mode).** With OrcaDeck running (`ORCADECK_DRA=1`), open the editor → *Calibración* tab → "Calibración activa". Press a key on the device (or pick it in the tab): a test pattern is drawn (white border, diagonals, number, red mark top-left). Move with the arrows (Shift = 5 px) or the buttons, adjust w/h, then switch calibration off: it is saved to `calibration.json` and applied at startup. With "Usar DRA calibrado al arrancar" ticked, `ORCADECK_DRA=1` is not needed. Details and untested assumptions: [`dra-render-notes.md`](../research/hid/dra-render-notes.md).

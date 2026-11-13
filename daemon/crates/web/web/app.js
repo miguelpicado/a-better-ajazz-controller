@@ -681,11 +681,87 @@ function renderPackage(p) {
   ]);
 }
 
+// ---------- calibration (experimental DRA mode; see docs/research/hid/dra-render-notes.md) ----------
+// Arrow -> PANEL delta. The panel is the device view rotated 90 deg, so device right = panel -y, device down = panel +x.
+// ASSUMPTION (unverified on hardware): if an arrow moves the wrong way, flip the signs here.
+const CAL_ARROWS = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, 1], ArrowRight: [0, -1] };
+const CAL = { st: null, queue: Promise.resolve(), lock: true, timer: null };
+
+function calSend(cmd) {
+  CAL.queue = CAL.queue.then(() => api('POST', 'calibration', cmd)).then(
+    (st) => { CAL.st = st; renderCal(); $('#cstatus').textContent = ''; $('#cstatus').classList.remove('err'); },
+    (e) => { $('#cstatus').textContent = e.message; $('#cstatus').classList.add('err'); });
+  return CAL.queue;
+}
+const calCur = () => (CAL.st && CAL.st.selected ? CAL.st.keys[CAL.st.selected - 1] : null);
+function calMove(dx, dy, shift) {
+  const k = shift ? 5 : 1;
+  if (calCur()) calSend({ adjust: { dx: dx * k, dy: dy * k } });
+}
+// w/h buttons; with the lock on, a w step moves w and h together (square tiles stay square)
+function calSize(f, d, shift) {
+  const c = calCur(), k = d * (shift ? 5 : 1);
+  if (!c) return;
+  calSend({ adjust: f === 'w' && CAL.lock && c.key <= 15 ? { w: k, h: k } : { [f]: k } });
+}
+
+function renderCal() {
+  const st = CAL.st, root = $('#calib-ui');
+  if (!st) return;
+  const c = calCur(), on = st.on;
+  const keep = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.f; // keep focus while typing
+  const num = (f) => h('label', {}, f, h('input', { type: 'number', 'data-f': f, value: c ? c[f] : '', disabled: !c || (f === 'w' && c.key > 15),
+    onchange: (e) => calSend({ set: { [f]: Number(e.target.value) } }) }));
+  const pad = (label, [dx, dy]) => h('button', { type: 'button', disabled: !c, 'aria-label': label, onclick: (e) => calMove(dx, dy, e.shiftKey) }, label);
+  const sz = (label, f, d) => h('button', { type: 'button', disabled: !c || (f === 'w' && c.key > 15), onclick: (e) => calSize(f, d, e.shiftKey) }, label);
+  fill(root, [
+    h('div', { class: 'cal-row' },
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: on, disabled: !st.dra && !on, onchange: (e) => calSend({ on: e.target.checked }) }), 'Calibración activa'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.enabled, onchange: (e) => calSend({ enabled: e.target.checked }) }), 'Usar DRA calibrado al arrancar'),
+      h('span', { class: 'cal-save' + (st.saved ? '' : ' dirty') }, st.saved ? 'Guardado' : 'Cambios sin guardar'),
+      h('button', { type: 'button', onclick: () => calSend({ save: true }) }, 'Guardar ahora')),
+    !st.dra && h('p', { class: 'status err' }, 'El modo DRA está apagado: arranca OrcaDeck con ORCADECK_DRA=1 para calibrar (o marca «Usar DRA…» y reinicia).'),
+    h('div', { class: 'cal-keys', role: 'group', 'aria-label': 'Tecla a calibrar' },
+      st.keys.map((k) => h('button', { type: 'button', class: k.custom ? 'custom' : '', 'aria-pressed': st.selected === k.key ? 'true' : 'false', disabled: !on,
+        title: k.key > 15 ? 'Panel lateral (16-18 comparten ajuste)' : `Tecla ${k.key}`, onclick: () => calSend({ select: k.key }) }, k.key))),
+    h('p', { class: 'sub' }, on ? (c ? `Tecla ${c.key} seleccionada. Pulsa otra tecla del dispositivo para cambiar.` : 'Pulsa una tecla del dispositivo o elige una arriba.') : 'Activa la calibración para empezar.'),
+    h('div', { class: 'cal-row' },
+      h('div', { class: 'cal-pad', 'aria-label': 'Mover' }, h('span'), pad('↑', CAL_ARROWS.ArrowUp), h('span'), pad('←', CAL_ARROWS.ArrowLeft), h('span'), pad('→', CAL_ARROWS.ArrowRight), h('span'), pad('↓', CAL_ARROWS.ArrowDown), h('span')),
+      h('div', { class: 'cal-size', 'aria-label': 'Tamaño' },
+        h('div', { class: 'cal-row' }, sz('w −', 'w', -1), sz('w +', 'w', 1), sz('h −', 'h', -1), sz('h +', 'h', 1)),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: CAL.lock, onchange: (e) => { CAL.lock = e.target.checked; } }), 'Bloquear proporción (los botones w mueven w y h)'))),
+    h('div', { class: 'cal-nums' }, num('dx'), num('dy'), num('w'), num('h')),
+    h('div', { class: 'cal-row' },
+      h('button', { type: 'button', disabled: !c, onclick: () => calSend({ reset: c.key }) }, 'Restablecer tecla'),
+      h('button', { type: 'button', disabled: !on, onclick: () => { if (confirm('¿Restablecer todas las teclas?')) calSend({ reset: 'all' }); } }, 'Restablecer todas')),
+  ]);
+  if (keep) { const i = $(`input[data-f="${keep}"]`, root); if (i) i.focus(); }
+}
+
+async function calPoll() {
+  if ($('#calib-view').hidden) return;
+  const msg = $('#cstatus');
+  try {
+    const st = await api('GET', 'calibration');
+    const typing = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.f;
+    if (!typing && JSON.stringify(st) !== JSON.stringify(CAL.st)) { CAL.st = st; renderCal(); }
+    msg.textContent = ''; msg.classList.remove('err');
+  } catch (e) { msg.textContent = e.status === 501 ? 'La calibración solo funciona con OrcaDeck en marcha (run).' : e.message; msg.classList.add('err'); }
+}
+document.addEventListener('keydown', (e) => {
+  if ($('#calib-view').hidden || !CAL_ARROWS[e.key] || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  e.preventDefault();
+  calMove(...CAL_ARROWS[e.key], e.shiftKey);
+});
+
 // ---------- chrome: views, theme, device ----------
 function showView(v) {
   for (const o of document.querySelectorAll('.views button')) o.setAttribute('aria-pressed', o.dataset.view === v ? 'true' : 'false');
   $('#keys-view').hidden = v !== 'keys';
   $('#plugins-view').hidden = v !== 'plugins';
+  $('#calib-view').hidden = v !== 'calib';
+  clearInterval(CAL.timer);
+  if (v === 'calib') { calPoll(); CAL.timer = setInterval(calPoll, 700); }
   if (v === 'plugins' && !S.plugins) loadPlugins().catch(fail);
 }
 for (const b of document.querySelectorAll('.views button')) {

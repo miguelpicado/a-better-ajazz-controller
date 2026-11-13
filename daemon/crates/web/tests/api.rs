@@ -1,5 +1,5 @@
 //! End-to-end tests over a real loopback socket against `FsStore` on a temp dir.
-use orcadeck_web::{FsStore, Server};
+use orcadeck_web::{FsStore, InspectorBridge, Server};
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -930,6 +930,76 @@ fn staged_package_is_token_addressed_and_single_use() {
         404
     );
 
+    s.stop();
+    let _ = fs::remove_dir_all(&t);
+}
+
+/// Records the calibration commands it gets and answers with a canned state.
+#[derive(Default)]
+struct CalBridge(std::sync::Mutex<Vec<Value>>);
+
+impl InspectorBridge for CalBridge {
+    fn open(&self, _: &str, _: &str) -> Result<orcadeck_web::InspectorSession, String> {
+        Err("unused".into())
+    }
+    fn calibration(&self) -> Option<Value> {
+        Some(json!({ "dra": true, "on": false, "selected": 0, "enabled": false, "saved": true, "keys": [] }))
+    }
+    fn calibrate(&self, cmd: &Value) -> Result<Value, String> {
+        if cmd.get("on") == Some(&json!(true)) && cmd.get("select") == Some(&json!(18)) {
+            return Err("calibration needs DRA mode".into());
+        }
+        self.0.lock().unwrap().push(cmd.clone());
+        Ok(json!({ "echo": cmd }))
+    }
+}
+
+#[test]
+fn calibration_endpoints() {
+    let t = fixture("calibration");
+    // no daemon bridge: 501 on both verbs
+    let s = start(&t);
+    assert_eq!(call(&s, "GET", "/api/calibration", None).status, 501);
+    assert_eq!(call(&s, "POST", "/api/calibration", Some(json!({ "on": true }))).status, 501);
+    s.stop();
+
+    let bridge = Arc::new(CalBridge::default());
+    let store = FsStore {
+        profiles: t.join("profiles"),
+        plugins: t.join("plugins"),
+        builtin_plugins: vec![],
+        data: t.join("data"),
+        legacy_config: None,
+        downloads: None,
+        inspector: Some(bridge.clone()),
+    };
+    let s = Server::start(Arc::new(store), 0).unwrap();
+    let g = call(&s, "GET", "/api/calibration", None);
+    assert_eq!((g.status, g.json()["dra"].clone()), (200, json!(true)));
+    // no token: refused like every other endpoint
+    assert_eq!(
+        raw(&s, &format!("GET /api/calibration HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n\r\n", s.addr.port())).status,
+        401
+    );
+
+    let cmd = json!({ "on": true, "select": 3, "adjust": { "dx": 5, "dy": -1, "w": 2 } });
+    let r = call(&s, "POST", "/api/calibration", Some(cmd.clone()));
+    assert_eq!((r.status, r.json()["echo"].clone()), (200, cmd));
+    for ok in [json!({ "reset": "all" }), json!({ "reset": 4 }), json!({ "set": { "key": 2, "dx": 0, "h": 90 } }),
+               json!({ "save": true, "enabled": true }), json!({})] {
+        assert_eq!(call(&s, "POST", "/api/calibration", Some(ok.clone())).status, 200, "{ok}");
+    }
+    assert_eq!(bridge.0.lock().unwrap().len(), 6);
+    for bad in [json!([]), json!({ "on": "yes" }), json!({ "select": 0 }), json!({ "select": 19 }), json!({ "reset": "some" }),
+                json!({ "reset": 19 }), json!({ "adjust": { "dx": 5000 } }), json!({ "adjust": { "key": 20 } }),
+                json!({ "adjust": { "color": 1 } }), json!({ "set": 3 }), json!({ "mystery": 1 })] {
+        assert_eq!(call(&s, "POST", "/api/calibration", Some(bad.clone())).status, 400, "{bad}");
+    }
+    assert_eq!(bridge.0.lock().unwrap().len(), 6, "invalid commands never reach the daemon");
+    // the daemon refusing (DRA off, mode off) is a 409 with its reason
+    let r = call(&s, "POST", "/api/calibration", Some(json!({ "on": true, "select": 18 })));
+    assert_eq!(r.status, 409);
+    assert!(String::from_utf8_lossy(&r.body).contains("DRA"));
     s.stop();
     let _ = fs::remove_dir_all(&t);
 }

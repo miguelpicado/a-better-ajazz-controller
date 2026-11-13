@@ -441,7 +441,7 @@ pub fn render_summary(c: &Counts) -> String {
         )
     };
     svg(&format!(
-        r##"<rect width="144" height="144" fill="#000"/>{}{}{}"##,
+        r##"<rect width="144" height="144" fill="#000"/><rect x="1" y="1" width="142" height="142" rx="13" fill="#141414"/>{}{}{}"##,
         row(40, "#f97316", "activos", c.working),
         row(84, "#60a5fa", "espera", c.question),
         row(128, "#22c55e", "hechos", c.done)

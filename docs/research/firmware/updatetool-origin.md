@@ -188,3 +188,43 @@ Script de solo observación: `docs/research/firmware/work/frida_observe_update.j
   lectura, que haga `hid_enumerate` de `EEEF:2929`, para confirmar en la próxima entrada al bootloader;
   (c) si se decide flashear, usar la herramienta oficial con `backup/AKP153E.bin` primero, como ensayo de
   "reflasheo idéntico" (CRC `0xC065`), y solo después la imagen parcheada.
+
+## 10. Ensayo de reflasheo idéntico (2026-11-13, OBSERVED)
+
+Previo: herramienta SHA-256 `f02eb5b7…` (la documentada), `backup/AKP153E.bin` idéntico a la copia instalada (`15e03f5b…`),
+OrcaDeck parado, `orcadeck hidwatch` registrando. Comando: `FirmwareUpgradeTool.exe 768 4112 backup\AKP153E.bin <icono>`.
+
+| t (hidwatch) | Evento |
+|---|---|
+| 87,8 s | `0300:1010` desaparece (el firmware recibe `APP`+`NEW` y reinicia) |
+| 91,7 s | `0300:1010` **vuelve** (mismo VID/PID de la app, producto `35549`). **Nunca aparece `EEEF:2929`** |
+| — | La herramienta no detecta el dispositivo: pide reintentar y desenchufar/enchufar (el usuario lo hizo; 102–106 s) |
+
+Resultado: **no se flasheó nada**. Tras reenchufar quedó en la splash (OrcaDeck parado), enumera como `0300:1010` serie
+`355499441494` y, con OrcaDeck relanzado, teclas y pulsaciones normales (el firmware sigue siendo `V2.293S.00.003`).
+
+Lectura (INFERRED): con esta unidad `APP`+`NEW` provoca el reinicio, pero el bootloader **no entra en modo `EEEF:2929`**
+(o lo hace por menos que el intervalo de 100 ms de `hidwatch` y por menos que los 3 s de sondeo de la herramienta). El
+aviso `0x21436587` que escribe la app en `0x0807E010` no deja la unidad en bootloader: arranca otra vez la app. Por tanto
+la ruta de flasheo por `FirmwareUpgradeTool` **no está demostrada en este hardware**, y el «respaldo» que se buscaba
+(reflasheo del original) **no existe todavía**. No repetir sin un plan nuevo (ver abajo).
+
+Siguientes pasos posibles, de menor a mayor riesgo: (1) `hidwatch` con sondeo más fino (≤ 10 ms) mientras se manda
+`APP`+`NEW` desde un clon propio, para ver si `EEEF:2929` aparece brevemente; (2) comprobar si el bootloader reconoce otro
+disparador (pulsar una tecla al enchufar, otra palabra de `CRT`), mirando el firmware y la herramienta (`0x14000D9D0`);
+(3) abrir la unidad y localizar SWD/BOOT (`firmware-feasibility.md` §6). Sin una de ellas, **no flashear parches**.
+
+## 11. Reflasheo idéntico: ÉXITO (2026-11-13, OBSERVED)
+
+`orcadeck bootwatch 25` (envía `CRT\0\0APPNEW`, enumera HID sin pausa; 944 sondeos en 25 s): `0300:1010` desaparece y
+**`EEEF:2929` aparece a los 519 ms y permanece** (`USB\VID_EEEF&PID_2929\TEST_1.0`). Con la unidad ya en bootloader se lanzó
+`FirmwareUpgradeTool.exe 768 4112 backup\AKP153E.bin <icono>` (exit 0, ventana «Updating successfully!!!»). Después la
+unidad volvió como `0300:1010` (serie `355499441494`); el usuario tuvo que **desenchufar y volver a enchufar** para que
+arrancara (splash) y OrcaDeck la recargó con teclas y pulsaciones normales.
+
+- El fallo de §10 fue de sincronización (el bootloader sí entra; con la herramienta sola no lo cazó). Procedimiento fiable:
+  `bootwatch` primero (la unidad queda en `EEEF:2929`), luego la herramienta.
+- Probado: la ruta de flasheo escribe `AKP153E.bin` y deja una unidad funcional. Imagen idéntica (`15e03f5b…`), CRC `0xC065`.
+- Tras flashear hay que **reenchufar el USB** una vez.
+- Sigue sin verificarse: bootloader no volcado, SWD, y qué pasa con una imagen que no arranca (con la unidad en
+  `EEEF:2929` se puede reintentar el flasheo; no probado con una imagen mala).

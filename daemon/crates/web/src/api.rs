@@ -251,10 +251,65 @@ fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
             let cells: Map<String, Value> = m.cells.into_iter().map(|(k, v)| (k, Value::String(v))).collect();
             ok(json!({ "gen": m.gen, "scene": m.scene, "cells": cells }))
         }
+        ("GET", ["calibration"]) => ok(calibration_bridge(store)?.calibration().ok_or_else(no_calibration)?),
+        ("POST", ["calibration"]) => {
+            let cmd = body(req)?;
+            validate_calibration(&cmd).map_err(|e| Error::new(400, e))?;
+            // the daemon refuses what it cannot do right now (mode off, DRA off, no path): 409
+            ok(calibration_bridge(store)?.calibrate(&cmd).map_err(|e| Error::new(409, e))?)
+        }
         ("GET", ["device"]) => ok(store.device()?),
         ("PUT", ["device"]) => ok(store.set_device(&body(req)?)?),
         _ => Err(Error::new(404, "no such endpoint")),
     }
+}
+
+fn no_calibration() -> Error {
+    Error::new(501, "el daemon no está en marcha: no hay calibración en vivo")
+}
+
+fn calibration_bridge(store: &dyn Store) -> Result<&dyn crate::InspectorBridge> {
+    store.inspector().ok_or_else(no_calibration)
+}
+
+/// Shape check of `POST /api/calibration`: any of `on`/`enabled`/`save` (bool), `select` (1..=18),
+/// `adjust`/`set` ({key?, dx, dy, w, h} ints, |v| <= 1000) and `reset` ("all" or 1..=18).
+fn validate_calibration(cmd: &Value) -> std::result::Result<(), String> {
+    const FIELDS: [&str; 7] = ["on", "enabled", "save", "select", "adjust", "set", "reset"];
+    let o = cmd.as_object().ok_or("expected an object")?;
+    if let Some(k) = o.keys().find(|k| !FIELDS.contains(&k.as_str())) {
+        return Err(format!("unknown field {k:?}"));
+    }
+    let key_ok = |v: &Value| v.as_u64().is_some_and(|k| (1..=18).contains(&k));
+    for k in ["on", "enabled", "save"] {
+        if o.get(k).is_some_and(|v| !v.is_boolean()) {
+            return Err(format!("{k} must be a boolean"));
+        }
+    }
+    if o.get("select").is_some_and(|v| !key_ok(v)) {
+        return Err("select must be a key 1..18".into());
+    }
+    match o.get("reset") {
+        None => {}
+        Some(Value::String(s)) if s == "all" => {}
+        Some(v) if key_ok(v) => {}
+        _ => return Err("reset must be \"all\" or a key 1..18".into()),
+    }
+    for k in ["adjust", "set"] {
+        let Some(a) = o.get(k) else { continue };
+        let a = a.as_object().ok_or(format!("{k} must be an object"))?;
+        for (f, v) in a {
+            let good = match f.as_str() {
+                "key" => key_ok(v),
+                "dx" | "dy" | "w" | "h" => v.as_i64().is_some_and(|n| n.abs() <= 1000),
+                _ => return Err(format!("{k}: unknown field {f:?}")),
+            };
+            if !good {
+                return Err(format!("{k}.{f} out of range"));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn save(store: &dyn Store, id: &str, doc: &Value) -> Result<()> {

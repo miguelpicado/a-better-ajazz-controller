@@ -96,6 +96,7 @@ pub fn actions() -> Vec<Box<dyn BuiltinAction>> {
     for (uuid, panel) in PANELS {
         v.push(Box::new(PanelAction { uuid, panel }));
     }
+    v.push(Box::new(crate::strip::StripAction));
     for (uuid, power) in POWERS {
         v.push(Box::new(PowerAction {
             uuid,
@@ -245,14 +246,14 @@ pub fn parse_hwinfo(b: &[u8]) -> Hw {
 // ---- rendering ----------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Level {
+pub(crate) enum Level {
     Ok,
     Warn,
     Danger,
 }
 
 /// Bar turns orange from `warn` and the whole key red from `danger` (fractions of the full scale).
-fn level(frac: f64, warn: f64, danger: f64) -> Level {
+pub(crate) fn level(frac: f64, warn: f64, danger: f64) -> Level {
     if frac >= danger {
         Level::Danger
     } else if frac >= warn {

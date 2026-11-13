@@ -8,7 +8,7 @@
 //! two sends (overlay, then the current image ~600 ms later), never a direct device write.
 //! The AKP153E reports a press only on release, so a press is delivered as a click (down + up).
 use crate::{
-    ctl, load_img,
+    calib, ctl, load_img,
     profile::{self, Scene},
     proto::*,
     render,
@@ -78,6 +78,168 @@ fn batch_gap() -> Duration {
             .unwrap_or(BATCH_GAP_MS),
     )
 }
+/// Experimental DRA render path (docs/research/hid/dra-render-notes.md). `ORCADECK_DRA=1` opts in; default off.
+struct Dra {
+    gap: Duration,
+    side: u16,
+}
+
+fn dra_cfg() -> Option<&'static Dra> {
+    static C: LazyLock<Option<Dra>> = LazyLock::new(|| {
+        let env = |k: &str| std::env::var(k).ok();
+        let num = |k: &str, d: u64| env(k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
+        // ORCADECK_DRA=1 or `"enabled": true` in calibration.json. Per-key size/offset live in `calib`
+        // (file entry, else ORCADECK_DRA_TILE_PX / ORCADECK_DRA_OFFSETS).
+        (env("ORCADECK_DRA").as_deref() == Some("1") || calib::file_enabled()).then(|| Dra {
+            gap: Duration::from_millis(num("ORCADECK_DRA_GAP_MS", 50)),
+            side: num("ORCADECK_DRA_SIDE_PX", 80).clamp(1, 200) as u16,
+        })
+    });
+    C.as_ref()
+}
+
+/// The `panel_strip` bar (device orientation, 2x) while the scene has it at (5,0); set by the builtin thread, read
+/// by the DRA path, which then draws the whole side strip from this one image instead of three cells.
+static STRIP: Mutex<Option<DynamicImage>> = Mutex::new(None);
+
+fn strip_set(img: Option<DynamicImage>) -> Option<DynamicImage> {
+    std::mem::replace(&mut *STRIP.lock().unwrap_or_else(|e| e.into_inner()), img)
+}
+
+fn strip_get() -> Option<DynamicImage> {
+    STRIP.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Canvas the bar is rendered for: 378 px long, `h` px across from the DRA strip calibration (slot 16);
+/// BAT (DRA off) gets the cell-aligned 378 x 80 layout. The slot's `w` is ignored, like for the cell strip.
+fn strip_cfg() -> bi::StripCfg {
+    match dra_cfg() {
+        None => bi::StripCfg::default(),
+        Some(_) => bi::StripCfg { w: 378, h: calib::with(|s| s.eff(16)).h.min(200), bat: false },
+    }
+}
+
+/// Paints a rendered `panel_strip`: the whole image goes to the DRA slot, and the three cell slices go through the
+/// normal key path (they ARE the picture in BAT mode, and in DRA mode they only mark keys 16..18 as changed).
+/// Cells (5,1),(5,2) are not painted when a builtin of the scene owns them.
+fn paint_strip(rt: &Runtime, gen: u64, ctx: &str, key: u8, img: DynamicImage, owned: &HashMap<String, u8>) {
+    if key != 16 {
+        rt.paint_at(gen, ctx, key, img); // placed elsewhere: squashed into the key, nothing smarter
+        return;
+    }
+    let cells = render::strip_slices(&img);
+    strip_set(Some(img));
+    for (i, cell) in cells.into_iter().enumerate() {
+        let c = format!("5,{i}");
+        if i == 0 {
+            rt.paint_at(gen, ctx, key, cell);
+        } else if !owned.contains_key(&c) {
+            rt.paint_at(gen, &c, 16 + i as u8, cell);
+        }
+    }
+}
+
+/// Calibration mode: the keys whose pattern/content changed go into `pending` (the selected one as a test
+/// pattern, the others as content), so the normal DRA path draws them, at most once per calibration gap.
+fn calib_sync(rt: &Runtime, pending: &mut HashMap<u8, (DynamicImage, u64)>) {
+    let (keys, sel) = calib::with(|s| (s.take_dirty(), s.selected()));
+    let gen = rt.gen.load(Ordering::Relaxed);
+    for k in keys {
+        let img = match sel {
+            Some(sel) if sel == k => {
+                let c = calib::with(|s| s.eff(k));
+                if k >= 16 {
+                    render::calib_pattern(k, c.h as u32, 80)
+                } else {
+                    render::calib_pattern(k, c.h as u32, c.w as u32)
+                }
+            }
+            _ => rt.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k),
+        };
+        pending.insert(k, (img, gen));
+    }
+}
+
+/// DRA mode paints ALL pending keys (and the side strip) in one pass, `ORCADECK_DRA_GAP_MS` (default 50) apart
+/// (hardware: 15 tiles 50 ms apart all drew); the caller then applies the usual batch gap once. Unchanged keys are
+/// never pending, so one changed key costs one DRA. No BAT, no STP (STP erases DRA content).
+/// `ORCADECK_TRACE` logs each pass (number of DRA, elapsed ms) like the BAT batch.
+fn paint_dra<W: DockWriter>(
+    cfg: &Dra,
+    rt: &Runtime,
+    pending: &mut HashMap<u8, (DynamicImage, u64)>,
+    dock: &mut W,
+) -> Result<(), String> {
+    let t = Instant::now();
+    let mut n = 0;
+    while !pending.is_empty() {
+        if n > 0 {
+            thread::sleep(cfg.gap);
+        }
+        paint_dra_one(cfg, rt, pending, dock)?;
+        n += 1;
+    }
+    if std::env::var_os("ORCADECK_TRACE").is_some() {
+        eprintln!("DRA pass: {n} draws in {} ms (gap {} ms)", t.elapsed().as_millis(), cfg.gap.as_millis());
+    }
+    Ok(())
+}
+
+/// One DRA: the lowest pending key, or the whole side strip.
+fn paint_dra_one<W: DockWriter>(
+    cfg: &Dra,
+    rt: &Runtime,
+    pending: &mut HashMap<u8, (DynamicImage, u64)>,
+    dock: &mut W,
+) -> Result<(), String> {
+    let Some(&key) = pending.keys().min() else { return Ok(()) };
+    if key <= 15 {
+        let (img, _) = pending.remove(&key).expect("key just found");
+        mirror_put(key, &render::mirror_jpeg(&img));
+        let c = calib::with(|s| s.eff(key));
+        let r = dra_key_rect(key, c.w, c.h, (c.dx, c.dy)).ok_or("no DRA tile")?;
+        return dock.draw(r, &render::dra_rect_jpeg(&img, r.w, r.h));
+    }
+    // `panel_strip` at (5,0): the whole strip from its one image (cells are ignored), unless a side key is being calibrated.
+    let strip = strip_get().filter(|_| calib::with(|s| s.selected()).is_none_or(|k| k < 16));
+    if let Some(strip) = strip {
+        for k in 16..=18u8 {
+            if let Some((img, _)) = pending.remove(&k) {
+                mirror_put(k, &render::mirror_jpeg(&img));
+            }
+        }
+        let c = calib::with(|s| s.eff(16));
+        for (i, (r, j)) in render::dra_strip_jpegs(&strip, c.h.min(200), (c.dx, c.dy)).iter().enumerate() {
+            if i > 0 {
+                thread::sleep(cfg.gap);
+            }
+            dock.draw(*r, j)?;
+        }
+        return Ok(());
+    }
+    let imgs: Vec<DynamicImage> = (16..=18u8)
+        .map(|k| {
+            if let Some((img, _)) = pending.remove(&k) {
+                mirror_put(k, &render::mirror_jpeg(&img));
+                img
+            } else {
+                rt.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k)
+            }
+        })
+        .collect();
+    pending.retain(|k, _| *k <= 15);
+    let c = calib::with(|s| s.eff(16));
+    let side = if c.h == cfg.side { cfg.side } else { c.h.min(200) };
+    let pieces = render::dra_side_jpegs([Some(&imgs[0]), Some(&imgs[1]), Some(&imgs[2])], side, (c.dx, c.dy));
+    for (i, (r, j)) in pieces.iter().enumerate() {
+        if i > 0 {
+            thread::sleep(cfg.gap); // ponytail: only if a strip ever needs >1 piece (not with 3 cells)
+        }
+        dock.draw(*r, j)?;
+    }
+    Ok(())
+}
+
 const DEVICE: &str = DEFAULT_DEVICE.manifest_id;
 
 fn pct_decode(s: &str) -> Vec<u8> {
@@ -767,6 +929,16 @@ impl orcadeck_web::InspectorBridge for RunInspector {
         self.rt.set_brightness(pct);
     }
 
+    fn calibration(&self) -> Option<Value> {
+        Some(calib::with(|s| s.json(dra_cfg().is_some())))
+    }
+
+    fn calibrate(&self, cmd: &Value) -> Result<Value, String> {
+        let r = calib::with(|s| calib::apply(s, cmd, dra_cfg().is_some()));
+        self.rt.wake();
+        r
+    }
+
     fn mirror(&self, since: u64) -> orcadeck_web::Mirror {
         use base64::engine::general_purpose::STANDARD;
         let gen = MIRROR_GEN.load(Ordering::Relaxed);
@@ -1356,6 +1528,7 @@ pub fn run(
             loop {
                 let now = bi::now_ms();
                 let tt = Instant::now();
+                registry.deck.strip = strip_cfg();
                 let painted = registry.tick(now);
                 let tick_us = tt.elapsed().as_micros();
                 let tr = Instant::now();
@@ -1364,6 +1537,12 @@ pub fn run(
                     let Some(&k) = ctx_key.get(&ctx) else {
                         continue;
                     };
+                    if let Some((dw, dh)) = bi::strip_dims(&svg) {
+                        if let Some(img) = render::strip_image(&svg, dw, dh) {
+                            paint_strip(&builtin, my_gen, &ctx, k, img, &ctx_key);
+                        }
+                        continue;
+                    }
                     if let Some(img) = cached_raster(&mut rasters, svg, work_px(k)) {
                         builtin.paint_at(my_gen, &ctx, k, img);
                     }
@@ -1398,8 +1577,19 @@ pub fn run(
                         }
                         ctx_key = ctx_keys;
                         my_gen = builtin.gen.load(Ordering::SeqCst);
+                        strip_set(None); // re-set by the next tick if the new scene has the bar
                     }
                     Ok(BuiltinMsg::Cell { key, old, new }) => {
+                        if key == 16 && strip_set(None).is_some() {
+                            // the bar left (5,0): its slices must not linger in (5,1),(5,2)
+                            for (i, k) in [(1u8, 17u8), (2, 18)] {
+                                let c = format!("5,{i}");
+                                if !ctx_key.contains_key(&c) {
+                                    let px = work_px(k);
+                                    builtin.paint_at(my_gen, &c, k, DynamicImage::new_rgb8(px, px));
+                                }
+                            }
+                        }
                         if let Some(old) = old {
                             registry.disappear(&old);
                             ctx_key.remove(&old);
@@ -1484,6 +1674,13 @@ pub trait DockWriter {
     fn send(&mut self, payload: &[u8]) -> Result<(), String>;
     fn set_key(&mut self, key: u8, jpeg: &[u8]) -> Result<(), String>;
     fn flush(&mut self) -> Result<(), String>;
+    /// DRA state-3 draw (experimental); default goes through `send`.
+    fn draw(&mut self, r: Rect, jpeg: &[u8]) -> Result<(), String> {
+        for p in dra_packets(self.report_n(), r, jpeg)? {
+            self.send(&p)?;
+        }
+        Ok(())
+    }
 }
 
 impl DockWriter for Dock {
@@ -1520,6 +1717,7 @@ fn compute_next_wake(
     now: Instant,
 ) -> Instant {
     let mut wake = hb + Duration::from_secs(HEARTBEAT_SECS);
+    let gap = if dra_cfg().is_some() && calib::with(|s| s.on()) { calib::gap() } else { gap };
     if !pending.is_empty() {
         wake = wake.min(last_batch + gap);
     }
@@ -1567,6 +1765,11 @@ fn handle_input_packet<W: DockWriter>(
     }
     match parse_input(buf) {
         Input::Handshake => dock.send(&handshake_reply(dock.report_n()))?,
+        // calibration mode: the press only selects the key, no action runs
+        Input::Key { key, .. }
+            if (1..=15).contains(&key)
+                && dra_cfg().is_some()
+                && calib::with(|s| s.on() && s.select(key).is_ok()) => {}
         Input::Key { key, .. } if (1..=15).contains(&key) => match by_key.get(&key).cloned() {
             Some(Target::Builtin(ctx)) => {
                 let _ = msg_tx.send(BuiltinMsg::Press(ctx));
@@ -1602,8 +1805,15 @@ fn process_paints<W: DockWriter>(
     dock: &mut W,
     t0: Instant,
 ) -> Result<(), String> {
+    let calibrating = dra_cfg().is_some() && calib::with(|s| s.on());
+    let gap = if calibrating { calib::gap() } else { gap };
+    if calibrating || dra_cfg().is_some() {
+        calib_sync(rt, pending);
+    }
+    let selected = calib::with(|s| s.selected());
     while let Ok(p) = rx.try_recv() {
-        if p.gen < rt.gen.load(Ordering::Relaxed) || rt.retired(&p.ctx) {
+        // the key under calibration keeps its test pattern
+        if p.gen < rt.gen.load(Ordering::Relaxed) || rt.retired(&p.ctx) || selected == Some(p.key) {
             continue;
         }
         pending.insert(p.key, (p.img, p.gen));
@@ -1611,7 +1821,10 @@ fn process_paints<W: DockWriter>(
     if !pending.is_empty() && last_batch.elapsed() >= gap {
         let gen = rt.gen.load(Ordering::Relaxed);
         pending.retain(|_, (_, g)| *g >= gen);
-        if !pending.is_empty() {
+        if let (false, Some(cfg)) = (pending.is_empty(), dra_cfg()) {
+            paint_dra(cfg, rt, pending, dock)?;
+            *last_batch = Instant::now();
+        } else if !pending.is_empty() {
             let (started, count) = (Instant::now(), pending.len());
             let mut bytes = 0;
             let mut keys = Vec::new();
@@ -1757,7 +1970,7 @@ fn session(
     eprintln!("device ready, N = {}", dock.n);
     send_brightness(&mut dock)?;
     let mut pending = view_paints(rt);
-    let gap = batch_gap();
+    let gap = dra_cfg().map_or_else(batch_gap, |c| c.gap.max(batch_gap()));
     let mut last_batch = Instant::now() - gap;
     let mut hb = Instant::now();
     let t0 = Instant::now();

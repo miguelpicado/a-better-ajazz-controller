@@ -1,4 +1,5 @@
 mod app;
+mod calib;
 mod ctl;
 mod edit;
 mod profile;
@@ -204,6 +205,99 @@ fn run(args: &[String]) -> Result<(), String> {
             for (k, j) in &jp {
                 d.set_key(*k, j)?;
             }
+            d.flush()
+        }
+        // research: firmware `DRA` (hid-protocol.md, REA 2026-11-13): JPEG drawn at panel x,y (480x854, portrait,
+        // unrotated). `dra <jpeg> <x> <y> <w> <h> [key]`; key 0 = state 3 (full-screen window). Does not init.
+        Some("dra") => {
+            let usage = "dra <jpeg> <x> <y> <w> <h> [key]";
+            let jpeg = std::fs::read(a(1).ok_or(usage)?).map_err(|e| e.to_string())?;
+            let v = |i: usize| -> Result<u16, String> {
+                a(i).and_then(|s| s.parse().ok()).ok_or_else(|| usage.to_string())
+            };
+            let (x, y, w, h) = (v(2)?, v(3)?, v(4)?, v(5)?);
+            let key = a(6).and_then(|s| s.parse().ok()).unwrap_or(0u8);
+            let api = HidApi::new().map_err(|e| e.to_string())?;
+            let d = Dock::open_with_n(&api, select_device()?, n_env)?;
+            // key != 0 (state 4) is not supported by dra_packets: it only builds state-3 headers
+            if key != 0 {
+                return Err("dra: only key 0 (state 3) is supported".into());
+            }
+            for p in dra_packets(d.n, Rect { x, y, w, h }, &jpeg)? {
+                d.send(&p)?;
+            }
+            if a(7) == Some("stp") {
+                d.flush()?;
+            }
+            Ok(())
+        }
+        // research: solid-colour DRA rectangle (panel coords) to probe positions. `drapaint <x> <y> <w> <h> <r,g,b>`
+        Some("drapaint") => {
+            let usage = "drapaint <x> <y> <w> <h> <r,g,b>";
+            let v = |i: usize| -> Result<u16, String> {
+                a(i).and_then(|s| s.parse().ok()).ok_or_else(|| usage.to_string())
+            };
+            let (x, y, w, h) = (v(1)?, v(2)?, v(3)?, v(4)?);
+            let c: Vec<u8> = a(5).ok_or(usage)?.split(',').filter_map(|s| s.parse().ok()).collect();
+            let [r, g, b] = c[..] else { return Err(usage.into()) };
+            let img = image::RgbImage::from_pixel(w as u32, h as u32, image::Rgb([r, g, b]));
+            let mut jpeg = Vec::new();
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 90)
+                .encode_image(&img)
+                .map_err(|e| e.to_string())?;
+            let api = HidApi::new().map_err(|e| e.to_string())?;
+            let d = Dock::open_with_n(&api, select_device()?, n_env)?;
+            for p in dra_packets(d.n, Rect { x, y, w, h }, &jpeg)? {
+                d.send(&p)?;
+            }
+            Ok(())
+        }
+        // research (updatetool-origin.md §10): send `CRT\0\0APPNEW` (what FirmwareUpgradeTool does) and enumerate HID as
+        // fast as possible for `secs` (default 20), logging every VID:PID arrival/removal with ms timestamps, to catch
+        // a short-lived EEEF:2929 bootloader. `bootwatch noreset` only watches. Writes the update flag to flash.
+        Some("bootwatch") => {
+            let secs: u64 = a(1).and_then(|s| s.parse().ok()).unwrap_or(20);
+            let mut api = HidApi::new().map_err(|e| e.to_string())?;
+            if a(1) != Some("noreset") {
+                let d = Dock::open_with_n(&api, select_device()?, n_env)?;
+                d.send(&crt(d.n, "APP", &[(8, b'N'), (9, b'E'), (10, b'W')]))?;
+                println!("APP NEW sent");
+            }
+            let t0 = Instant::now();
+            let mut prev: std::collections::BTreeMap<(u16, u16), usize> = Default::default();
+            let mut polls = 0u32;
+            while t0.elapsed() < Duration::from_secs(if a(1) == Some("noreset") { 20 } else { secs }) {
+                api.refresh_devices().map_err(|e| e.to_string())?;
+                polls += 1;
+                let mut cur: std::collections::BTreeMap<(u16, u16), usize> = Default::default();
+                for d in api.device_list() {
+                    if matches!(d.vendor_id(), 0x0300 | 0xEEEF) {
+                        *cur.entry((d.vendor_id(), d.product_id())).or_default() += 1;
+                    }
+                }
+                if cur != prev {
+                    println!("{:>7}ms poll#{polls} {:04x?}", t0.elapsed().as_millis(), cur);
+                    prev = cur;
+                }
+            }
+            println!("polls: {polls} in {:?}", t0.elapsed());
+            Ok(())
+        }
+        // research: `CRT\0\0MOD` with [0x0a]=<byte> (firmware stores it at 0x20000050; DRA state 4 tests for 0x31)
+        Some("mod") => {
+            let m: u8 = a(1).and_then(|s| s.parse().ok()).ok_or("mod <byte>")?;
+            let api = HidApi::new().map_err(|e| e.to_string())?;
+            let d = Dock::open_with_n(&api, select_device()?, n_env)?;
+            d.send(&crt(d.n, "MOD", &[(0x0a, m)]))
+        }
+        // research: raw BAT of an arbitrary JPEG (any size) to one key, then STP. `bat <jpeg> <key>`
+        Some("bat") => {
+            let usage = "bat <jpeg> <key>";
+            let jpeg = std::fs::read(a(1).ok_or(usage)?).map_err(|e| e.to_string())?;
+            let key: u8 = a(2).and_then(|s| s.parse().ok()).ok_or(usage)?;
+            let api = HidApi::new().map_err(|e| e.to_string())?;
+            let d = Dock::open_with_n(&api, select_device()?, n_env)?;
+            d.set_key(key, &jpeg)?;
             d.flush()
         }
         Some("bright") => {
