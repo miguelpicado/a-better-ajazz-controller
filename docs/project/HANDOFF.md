@@ -37,8 +37,10 @@
   (`cpu`, `cpu_temp`, `cpu_clock`, `cpu_power`, `ram`, `disk`, `net`, `gpu_*`, `lock`, `logoff`, `restart`, `shutdown`,
   `taskmgr`; los UUID HotSpot/krabs siguen como alias). Escenas Monitorización/Tablero/Orca migradas (copias en
   `%LOCALAPPDATA%\OrcaDeck\*.bak.json`). Panel lateral: `panel_time|panel_cpu|panel_gpu`, dos mini-teclas apiladas por
-  celda (5,0..5,2 de Monitorización). Pendiente: probar en dispositivo; idea: patrón de prueba para ver si las 3 celdas
-  laterales forman una pantalla continua.
+  celda (5,0..5,2 de Monitorización). Panel lateral movido a la escena Orca (5,0..5,2); Monitorización sin celdas laterales (por decidir).
+  Probado 2026-11-13: las 3 celdas laterales dejan hueco físico; BAT con imagen alta (80x400) y DRA no dibujan nada en el
+  AKP153E (pantalla en negro; se recupera relanzando el daemon). Un panel continuo solo sería posible con el logo `LOG`
+  (escribe en flash): descartado sin plan de recuperación. Pendiente: probar en dispositivo.
 - Defender: con la carpeta excluida el cambio de escena y la carga de imágenes van mucho más rápido (confirmado por el usuario).
 - Lo de abajo es histórico: «sin probar en dispositivo» ya no aplica.
 
