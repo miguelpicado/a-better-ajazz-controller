@@ -53,7 +53,7 @@ Carpetas: [guide](guide/README.md) · [design](design/README.md) · [project](pr
 | [research/community/community-ideas.md](research/community/community-ideas.md) | ideas y repos de terceros (licencias y qué se puede reutilizar) |
 | [research/firmware/firmware-feasibility.md](research/firmware/firmware-feasibility.md) | viabilidad del parche de pulsar/soltar |
 | [research/firmware/firmware-v3-search.md](research/firmware/firmware-v3-search.md) | búsqueda de firmware V3 y alternativas de hardware |
-| [research/firmware/patch-emulation.md](research/firmware/patch-emulation.md) | emulación del parche v2 y veredicto (**no flashear**) |
+| [research/firmware/patch-emulation.md](research/firmware/patch-emulation.md) | emulación del parche v2 (histórico; el v3 está probado en hardware, ver [guide/FIRMWARE-PATCH.md](guide/FIRMWARE-PATCH.md)) |
 | [research/firmware/updatetool-analysis.md](research/firmware/updatetool-analysis.md) | análisis de las herramientas de actualización (superado en parte por `updatetool-origin.md`) |
 | [research/firmware/updatetool-origin.md](research/firmware/updatetool-origin.md) | corrección: `FirmwareUpgradeTool.exe` sí actualiza el AKP153E |
 | [research/firmware/old-builds-search.md](research/firmware/old-builds-search.md) | búsqueda de builds antiguas e instaladores |

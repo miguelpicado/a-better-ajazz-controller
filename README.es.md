@@ -10,6 +10,13 @@ El objetivo es la misma funcionalidad útil que la app oficial —y las teclas d
 del consumo: 0 % de CPU en reposo, memoria mínima, tráfico HID en lotes y la UI web levantada solo
 mientras se edita.
 
+## Qué aporta frente a la app oficial
+
+Todo gratis y de código abierto, con el hardware de serie:
+
+- **Modo de pintado DRA** (`ORCADECK_DRA=1`, experimental): teclas a **98×98 px** en vez de 85×85, con calibración por tecla en el editor, redibujado parcial (solo se envían las teclas que cambian) y el **panel lateral como una barra continua** (reloj, CPU, GPU, RAM, temperatura de CPU/GPU) en lugar de tres celdas sueltas. Ver [Uso §4b](docs/guide/USAGE.md).
+- **Parche de firmware pulsar/soltar**: el firmware de serie solo informa al soltar. El [parcheador](docs/guide/FIRMWARE-PATCH.md) hace que el AKP153E envíe un informe al **pulsar** y otro al **soltar**, y así el software tiene pulsación corta y larga reales. Lo flasheas tú desde tu propia copia del firmware; no se distribuye ningún binario de AJAZZ.
+
 ## Estado
 
 | Pieza | Estado |
@@ -20,7 +27,8 @@ mientras se edita.
 | Scene Shift (`profile.rotate`) | mergeado en `main` (`scenes.rs`); pendiente la prueba física en el dispositivo |
 | Instalación de plugins (`.streamDeckPlugin`, `.sdPlugin`) | funcionando desde `edit`, con escaneo de Descargas bajo demanda; reconstruye manifests cifrados sin descifrarlos |
 | Property Inspector en el editor | servidor y iframe integrados en `edit`; pendiente la prueba con plugins reales |
-| Parche de firmware pulsar/soltar | diseñado y emulado; **nunca flasheado** |
+| Parche de firmware pulsar/soltar | **flasheado y probado en una unidad** (firmware `V2.293S.00.003`): llegan informes de pulsar y de soltar; ver [FIRMWARE-PATCH](docs/guide/FIRMWARE-PATCH.md) |
+| Modo de pintado DRA (teclas 98×98, barra lateral continua) | experimental; en uso diario en una unidad |
 
 Detalle y pendientes: [ROADMAP](docs/project/ROADMAP.md) y [HANDOFF](docs/project/HANDOFF.md).
 
@@ -113,8 +121,7 @@ vendor/                 paquetes de terceros del usuario (gitignorado)
 
 ## Reglas
 
-- **No flashear el firmware** ni lanzar `FirmwareUpgradeTool.exe` con 4 argumentos: flashea al
-  instante. Tampoco enviar `CRT\0\0APP NEW`. Solo con orden explícita y plan de recuperación.
+- **Flashear el firmware es bajo tu responsabilidad**: `FirmwareUpgradeTool.exe` con 4 argumentos flashea al instante y `CRT\0\0APP NEW` pone la unidad en el bootloader. Sigue la guía [FIRMWARE-PATCH](docs/guide/FIRMWARE-PATCH.md) y conserva tu `AKP153E.bin` original.
 - **No ejecutar Stream Dock y OrcaDeck a la vez**: mismo HID y puerto 18618.
 - Los paquetes de terceros del usuario (zips, `.rar`, instalador y carpeta del driver) están en
   `vendor/`, fuera de git: no se tocan ni se commitean.
@@ -136,17 +143,7 @@ Los iconos del plugin Node (`tools/legacy/com.miguelpicado.orcadock.sdPlugin/img
 Proyecto independiente y no oficial, sin relación con AJAZZ, HotSpot, Elgato ni Orca. Software y herramientas de
 firmware se ofrecen **«tal cual», sin garantía alguna y bajo tu responsabilidad**: los autores **no se hacen
 responsables de daños** al dispositivo, al equipo, a los datos o a las cuentas. El firmware es **muy
-experimental**, solo está diseñado y emulado, **nunca se ha flasheado** y puede dejar el dispositivo inservible.
-No se distribuye firmware del fabricante: el parcheador trabaja sobre tu propio volcado.
-El software está diseñado exclusivamente para el AKP153E; el protocolo debería servir para otros AJAZZ, pero no
-está verificado. Detalle: [README.md](README.md) (English) y [docs/research/firmware/README.md](docs/research/firmware/README.md).
-
-## Aviso legal y firmware
-
-Proyecto independiente y no oficial, sin relación con AJAZZ, HotSpot, Elgato ni Orca. Software y herramientas de
-firmware se ofrecen **«tal cual», sin garantía alguna y bajo tu responsabilidad**: los autores **no se hacen
-responsables de daños** al dispositivo, al equipo, a los datos o a las cuentas. El firmware es **muy
-experimental**, solo está diseñado y emulado, **nunca se ha flasheado** y puede dejar el dispositivo inservible.
+experimental**: el parche de pulsar/soltar se ha probado en **una** unidad, pero flashear puede dejar el dispositivo inservible.
 No se distribuye firmware del fabricante: el parcheador trabaja sobre tu propio volcado.
 El software está diseñado exclusivamente para el AKP153E; el protocolo debería servir para otros AJAZZ, pero no
 está verificado. Detalle: [README.md](README.md) (English) y [docs/research/firmware/README.md](docs/research/firmware/README.md).
@@ -160,7 +157,3 @@ Procedencia: el código es propio. De los repositorios de la comunidad analizado
 ([`docs/research/community/`](docs/research/community/)) solo se usaron datos fácticos del protocolo
 (VID/PID, mapa de teclas, offsets); no se copió código de los licenciados con GPL-3.0, MPL-2.0 ni sin licencia.
 
-**Antes de hacer público el repositorio:** `docs/research/firmware/` contiene binarios de firmware del
-fabricante (`backup/AKP153E.bin`, `work/*.bin`), que no se pueden redistribuir con esta licencia. Hay que
-sacarlos del árbol y del historial (y de `docs/research/firmware/work/emu/` si dependen de ellos) o publicar
-sin historial previo.

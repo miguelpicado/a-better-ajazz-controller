@@ -26,7 +26,10 @@ the same *useful* functionality with almost no footprint:
 
 **Designed exclusively for, and only tested on, the AJAZZ AKP153E** (15 keys + side panel, firmware v1).
 
-Experimental DRA render mode (`ORCADECK_DRA=1`): keys drawn at 98×98 px with per-key calibration and a continuous side bar (clock, CPU, GPU, RAM, temperatures). See [Usage §4b](docs/guide/USAGE.en.md). Stock firmware, not patched.
+**What this adds over the official app** (all free and open source, stock hardware):
+
+- **DRA render mode** (`ORCADECK_DRA=1`, experimental): keys drawn at **98×98 px** instead of 85×85, with per-key calibration in the editor, partial redraws (only the keys that changed are sent) and the **side panel as one continuous bar** (clock, CPU, GPU, RAM, CPU/GPU temperature) instead of three separate cells. See [Usage §4b](docs/guide/USAGE.en.md).
+- **Press / release firmware patch**: stock firmware reports a key only on release. The [patcher](docs/guide/FIRMWARE-PATCH.en.md) makes the AKP153E send a report on **press** and another on **release**, so software gets real short/long press. You flash it yourself from your own firmware copy; no AJAZZ binary is distributed.
 The protocol layer should work with other AJAZZ / Stream Dock devices that speak the same HID protocol,
 but nothing outside the AKP153E is verified: expect to adjust key counts, image sizes and quirks. See [docs/design/devices.md](docs/design/devices.md) for the device specification table, verification status, and how to add support for new models.
 
@@ -42,7 +45,8 @@ Windows 10/11 x64 only for now.
 | Double-click install of `.streamDeckPlugin` / `.sdPlugin` (`orcadeck register`) | implemented; **not yet tested end-to-end on a real machine** |
 | Scene Shift (profile rotation) | implemented; **not yet tested on the device** |
 | Optional threaded HID reader (`ORCADECK_HID_READER=thread`) | implemented, off by default, **not yet tested on the device** |
-| Press/release firmware patch | designed and emulated only; **never flashed** |
+| Press/release firmware patch | **flashed and tested on one unit** (firmware `V2.293S.00.003`): press and release reports arrive; see [FIRMWARE-PATCH](docs/guide/FIRMWARE-PATCH.en.md) |
+| DRA render mode (98×98 keys, continuous side bar) | experimental; used daily on one unit |
 
 Roadmap and open items: [docs/project/ROADMAP.md](docs/project/ROADMAP.md).
 
@@ -72,6 +76,7 @@ Never run the official app and this one at the same time. Full usage and the `OR
 ## Documentation
 
 - [Usage](docs/guide/USAGE.en.md) — commands, `ORCADECK_*` variables, Scene Shift, plugins, autostart.
+- [Press/release firmware patch](docs/guide/FIRMWARE-PATCH.en.md) — how to patch and flash the AKP153E, how to go back.
 - [Troubleshooting](docs/guide/TROUBLESHOOTING.en.md) — common errors and diagnostics.
 - [Security policy](SECURITY.md) — supported versions, private reporting, security model.
 - [Contributing](CONTRIBUTING.md) — build, test gate, conventions, licensing.
@@ -86,11 +91,10 @@ events, which the stock v1 firmware lacks). Read [docs/research/firmware/README.
 
 - **No vendor firmware is distributed here.** The patcher takes *your own* firmware dump and writes a
   patched copy; AJAZZ's binaries are not included and must not be added to this repository.
-- The patch has been **designed and emulated only. It has never been flashed to hardware by the author.**
-- **Flashing can permanently brick your device.** Do not flash anything unless you accept that risk and have
-  a recovery plan (a second device is the only safe one). Never run the vendor's `FirmwareUpgradeTool.exe`
-  with four arguments, and never send `CRT\0\0APP NEW`.
-- The safe alternative for press/release is an AKP153E rev. 2 (PID `0x3010`), which emits it natively.
+- The press/release patch (v3) has been **flashed and tested on one unit** (firmware `V2.293S.00.003`), but that is a single device: results on other units or firmware versions are unknown.
+- **Flashing can permanently brick your device.** Do not flash unless you accept that risk. On the tested unit the bootloader (`EEEF:2929`) always accepted a new image, but that is observed, not guaranteed. Keep your original `AKP153E.bin`.
+- Step-by-step (patch, flash, go back to stock): [docs/guide/FIRMWARE-PATCH.en.md](docs/guide/FIRMWARE-PATCH.en.md).
+- An AKP153E rev. 2 (PID `0x3010`) emits press/release natively and needs no patch.
 
 ## Disclaimer
 
