@@ -145,8 +145,9 @@ muestra «N/D». En el editor, con `panel_strip` en (5,0) el panel lateral se ve
 **Tecla de resumen** (`com.miguelpicado.orcadock.summary`, «activos / espera / hechos»): al pulsarla enfoca el agente de Orca
 que lleva más tiempo en espera (el único, si solo hay uno); sin agentes en espera no hace nada.
 
-**Firmware.** No se parchea: el parche pulsar/soltar solo añadiría el cuadro amarillo de «tecla pulsada» y el parche de la barra
-continua ya no hace falta con DRA. Decisión del usuario, 2026-11-16 (ver `docs/research/firmware/README.md`).
+**Firmware pulsar/soltar (probado en hardware 2026-11-16).** Con el firmware original solo llega un informe al soltar (`state 0`). El parche v3 (`docs/research/firmware/work/make_patch_v3.py`, no se publica el binario) añade un informe al pulsar (`state 1`) y deja el de soltar igual; `run` lo detecta solo (`state 1` = pulsar, `0` = soltar; con el firmware original sigue tratando `0` como clic). Flasheo: `orcadeck bootwatch 25` (la unidad entra en `EEEF:2929`), luego `FirmwareUpgradeTool.exe 768 4112 <bin> <icono>` ejecutada desde su carpeta y con las rutas entre comillas, y reenchufar el USB. Ver `docs/research/firmware/`.
+
+**`STP` al arrancar.** El firmware solo reporta teclas tras su primer `STP` (flag en RAM, se pierde al reenchufar); `run` envía uno al abrir la sesión, antes de pintar.
 
 ## 5. `run` en detalle
 

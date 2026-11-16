@@ -5,14 +5,9 @@ salta al agente en espera más antiguo. Todo compilado e instalado (`%LOCALAPPDA
 en el dispositivo. Guía de uso: `docs/guide/USAGE.md` §4b. Las secciones de más abajo (2026-11-11/12/13) son históricas: lo que dicen
 sobre DRA sin dibujar o sobre el panel en 3 celdas está superado.
 
-## Firmware pulsar/soltar: en curso (2026-11-16, tarde)
-El usuario QUIERE detectar pulsar/soltar (y luego pulsación larga). Corrige la nota anterior de «no se parchea»: lo descartado es el parche de la tira (BAT), no el de pulsar/soltar.
-- Host: `app.rs` ya entiende state 1/0 (`key_phase`, `Phase`; test `key_phase_handles_stock_and_press_release_firmware`). Con el firmware original (solo state 0) se comporta como antes.
-- Flasheados hoy con éxito (herramienta «Updating successfully», reenchufe tras cada uno): v3, v1, parche identidad (`work/make_patch_identity.py`, 23 B, desvía al hueco y vuelve al original) y de nuevo el original. Lanzar la herramienta con su carpeta como directorio de trabajo y las rutas entre comillas; `bootwatch` desde la copia instalada (la de `target\release` no arranca sin `libunwind.dll`).
-- **Síntoma actual, con CUALQUIER imagen, incluido el original (hash 15e03f5b…) y con OrcaDeck corriendo como tarea programada:** al pulsar una tecla la pantalla se apaga, no llega ningún informe de tecla al host (traza `ORCADECK_TRACE` y `watch` sin líneas) y no se ejecuta la acción; al pulsar otra vez se enciende. Esta mañana (antes de flashear) las teclas funcionaban.
-- Por tanto NO está demostrado que v1/v3 fallen: la prueba está contaminada por una regresión del dispositivo/entorno posterior a los flasheos. Sospechas sin comprobar: palabras 5..9 del sector de configuración `0x0807E000` (el handler APP/NEW no las restaura; ver `bootloader-trigger.md`); estado de HID en Windows tras tantos reenumerados; el firmware pide `STP` (flag `0x2000010c`) para reportar teclas y el modo DRA no lo envía.
-- Siguiente paso sugerido: recuperar primero las pulsaciones con el original (probar enviar `STP` al arrancar, `orcadeck watch` con `ORCADECK_CMD=STP:`, reiniciar Windows/otro puerto USB, o comparar con el exe del commit `7c5f888`). Solo cuando el original entregue pulsaciones, volver a probar v3.
-- La unidad lleva ahora el firmware ORIGINAL.
+## Firmware pulsar/soltar: HECHO y probado (2026-11-16)
+La unidad lleva el parche v3: pulsar = `state 1`, soltar = `state 0`; el host lo maneja (`key_phase` en `app.rs`). La regresión de la tarde (pantalla apagada al pulsar, sin informes) era que el firmware solo reporta teclas tras un `STP` y el modo DRA no lo enviaba; ahora `run` lo envía al abrir la sesión (commit `8be9965`). Detalle, hash y procedimiento: `docs/research/firmware/README.md`. Para volver al original: `bootwatch` + herramienta con `docs/research/firmware/backup/AKP153E.bin` (+ reenchufe).
+- **Siguiente:** pulsación larga en el host (tiempo entre `state 1` y `state 0`); ahora no hay nada así en el repo.
 
 ## Compilar / instalar (esta máquina)
 ```powershell

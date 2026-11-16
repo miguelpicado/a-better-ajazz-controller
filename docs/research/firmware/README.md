@@ -12,11 +12,10 @@ publican: están en `.gitignore` y se conservan solo en el disco del autor. Los 
 (`make_patch*.py`, `emu/`) esperan encontrarlos en esas rutas; sin ellos solo se puede leer la documentación.
 Si hace falta reproducir el análisis, vuelca el firmware de tu propia unidad.
 
-## Decisión 2026-11-16 (matizada): no se parchea la tira; pulsar/soltar sigue en investigación
+## Resultado 2026-11-16: parche v3 validado en hardware
 
-El usuario descartó flashear. Con `DRA` (teclas 98×98 y barra lateral continua, ver `../hid/side-panel-lcd.md` §5.4-5.5) el
-resultado gráfico es el deseado, así que el parche de la tira (`AKP153E_sidestrip_NO_PROBADO.bin`) no hace falta. El parche
-pulsar/soltar (v3) solo aportaría el cuadro amarillo de «tecla pulsada»; no se considera necesario (teclas rápidas, sin pulsaciones
-perdidas, fps razonables). Todo el material de este directorio queda como investigación; la regla de no flashear sigue.
-Ruta de recuperación probada, si algún día se retoma: `bootwatch` → `EEEF:2929` → `FirmwareUpgradeTool.exe` con `backup/AKP153E.bin`
-(`updatetool-origin.md` §11).
+- **v3 (pulsar/soltar) funciona** en el AKP153E real (`V2.293S.00.003`): cada pulsación llega como `state 1` y luego `state 0` (6 pares limpios con `orcadeck watch`, sin pérdidas ni duplicados); OrcaDeck con v3 funciona con normalidad. La unidad lleva v3 ahora. Imagen: `work/AKP153E_pressrelease_v3_NO_PROBADO.bin` (el nombre quedó; ya está probada), SHA-256 `dd2fa325216ff8e09ab90fecc4ffbe543b4b752016ba6bc51fe396ed816a0df5`.
+- El parche de la tira (BAT) no hace falta con DRA y no se flashea.
+- **Lección (causa de un falso negativo ese día):** el firmware solo reporta teclas tras el primer `STP` (flag `0x2000010c` en RAM, se pierde al reenchufar). Con el modo DRA, que no envía `STP`, tras reenchufar no llega ninguna tecla y la pantalla se apaga al pulsar; esto afectó por igual al original, a v1, a v3 y al parche identidad (`make_patch_identity.py`), y se confundió con un fallo del parche. Arreglado en el host (`STP` al abrir la sesión).
+- Procedimiento de flasheo probado 5 veces ese día: ver `../../guide/USAGE.md` §4b. Si la herramienta se lanza sin su carpeta de trabajo o sin comillas en las rutas, se cierra en el 0 %.
+- Siguiente: pulsación larga en el host (medir el tiempo entre `state 1` y `state 0`). No requiere más firmware.

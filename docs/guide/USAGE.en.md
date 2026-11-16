@@ -141,8 +141,9 @@ panel as one tall cell.
 **Summary key** («activos / espera / hechos»): focuses the Orca agent that has waited longest (the only one if there is one);
 does nothing when none is waiting.
 
-**Firmware:** not patched (decision 2026-11-16): the press/release patch would only add the yellow «pressed» frame, and the
-side-strip patch is unnecessary with DRA. See `docs/research/firmware/README.md`.
+**Press/release firmware (hardware-tested 2026-11-16).** Stock firmware sends one report, on release (`state 0`). Patch v3 (`docs/research/firmware/work/make_patch_v3.py`; the binary is not published) adds a report on press (`state 1`) and leaves release unchanged; `run` detects it by itself (stock firmware: `0` is still a click). Flashing: `orcadeck bootwatch 25`, then `FirmwareUpgradeTool.exe 768 4112 <bin> <icon>` run from its own folder with quoted paths, then replug USB. See `docs/research/firmware/`.
+
+**`STP` at startup.** The firmware reports keys only after its first `STP` (RAM flag, lost on replug); `run` sends one when the session opens, before drawing.
 
 ## 5. `run` in detail
 
