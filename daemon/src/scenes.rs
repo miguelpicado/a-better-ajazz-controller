@@ -206,6 +206,7 @@ mod tests {
             state: 0,
             states: Vec::new(),
             settings,
+            long: None,
         };
         assert_eq!(target_of(&action("com.other", json!({}))), None);
         assert_eq!(

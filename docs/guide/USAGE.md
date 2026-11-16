@@ -206,6 +206,10 @@ Reinicia `run` si has añadido o quitado la tecla, y también si cambias el dest
 la escena actual: `run` no relee esa escena hasta que vuelve a entrar en ella. Si cambias el destino
 de otra escena, se lee al saltar a ella.
 
+### 6.1 Pulsación larga
+
+Cada tecla puede tener un segundo destino para la pulsación larga (editor, sección «Pulsación larga»): ir a una escena o una acción integrada. Se guarda como campo `Long` de la acción en el manifest. Umbral: 500 ms (`ORCADECK_LONG_MS`). Con destino largo, la acción corta se decide al soltar (o la larga a los 500 ms, sin esperar a soltar); sin destino largo, la corta actúa al pulsar como siempre. Los plugins no pueden ser destino largo. Requiere el firmware pulsar/soltar: con el original (solo `state 0`) no hay pulsación larga y la tecla actúa como corta.
+
 ## 7. Editor web: `edit`
 
 ```powershell

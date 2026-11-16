@@ -387,6 +387,7 @@ fn state_path(scene: &Scene, a: &profile::Action, plugins: &Path, state: usize) 
         state: 0,
         states: vec![profile::State { image }],
         settings: a.settings.clone(),
+        long: None,
     };
     scene.image_of(&probe, plugins)
 }
@@ -1040,6 +1041,11 @@ enum BuiltinMsg {
         old: Option<String>,
         new: Option<bi::Key>,
     },
+    /// A cell's long-press builtin changed (never painted, so `ctx_key` is untouched).
+    Long {
+        old: Option<String>,
+        new: Option<bi::Key>,
+    },
     /// A paint batch reached the device: tick now so the next spinner frame is rendered just
     /// before it is sent (paced by the device, no frame is coalesced away).
     Painted,
@@ -1079,10 +1085,15 @@ fn place_scene(
     let mut p = Placed::default();
     let mut view = ViewState::default();
     let mut appearing: Vec<((u8, u8), &profile::Action, &host::Plugin)> = Vec::new();
+    let mut long = HashMap::new();
     for ((c, r), a) in &scene.actions {
         let Some(key) = key_index(*c, *r) else {
             continue;
         };
+        if let Some((t, k)) = long_of(a, (*c, *r), builtins, manifest_id) {
+            long.insert(key, t);
+            p.builtin_keys.extend(k);
+        }
         if let Some(img) = scene
             .image_of(a, plugins)
             .and_then(|path| load_img(&path).ok())
@@ -1119,6 +1130,8 @@ fn place_scene(
             eprintln!("no handler for {} at {c},{r} ({})", a.uuid, a.name);
         }
     }
+    *LONG.lock().unwrap_or_else(|e| e.into_inner()) = long;
+    ARMED.lock().unwrap_or_else(|e| e.into_inner()).clear();
     // Publish the new view before the plugins appear: their first paint has to land in it.
     rt.set_manifest(scene.dir.join("manifest.json"));
     *rt.view.lock().unwrap_or_else(|e| e.into_inner()) = view;
@@ -1211,7 +1224,12 @@ fn switch_scene(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clear();
-    let mut old = Vec::new();
+    let mut old: Vec<String> = LONG
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .values()
+        .filter_map(|t| if let Target::Builtin(c) = t { Some(c.clone()) } else { None })
+        .collect();
     for t in by_key.values() {
         match t {
             Target::Builtin(ctx) => old.push(ctx.clone()),
@@ -1349,6 +1367,23 @@ fn reload_cell(
                 by_key.remove(&key);
             }
         }
+    }
+    let old_long = LONG.lock().unwrap_or_else(|e| e.into_inner()).remove(&key);
+    let new_long = action.and_then(|a| long_of(a, cell, builtins, manifest_id));
+    if let Some((t, _)) = &new_long {
+        LONG.lock().unwrap_or_else(|e| e.into_inner()).insert(key, t.clone());
+    }
+    ARMED.lock().unwrap_or_else(|e| e.into_inner()).remove(&key);
+    let old_long_ctx = match old_long {
+        Some(Target::Builtin(c)) => Some(c),
+        _ => None,
+    };
+    let new_long_key = new_long.and_then(|(_, k)| k);
+    if old_long_ctx.is_some() || new_long_key.is_some() {
+        let _ = msg_tx.send(BuiltinMsg::Long {
+            old: old_long_ctx,
+            new: new_long_key,
+        });
     }
     if old_builtin.is_some() || new_builtin.is_some() {
         let _ = msg_tx.send(BuiltinMsg::Cell {
@@ -1599,6 +1634,14 @@ pub fn run(
                             ctx_key.insert(ctx, key);
                         }
                     }
+                    Ok(BuiltinMsg::Long { old, new }) => {
+                        if let Some(old) = old {
+                            registry.disappear(&old);
+                        }
+                        if let Some(k) = new {
+                            registry.appear(k);
+                        }
+                    }
                     Ok(BuiltinMsg::Painted) => {}
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
@@ -1771,40 +1814,116 @@ fn handle_input_packet<W: DockWriter>(
             if fire && dra_cfg().is_some() && calib::with(|s| s.on() && s.select(key).is_ok()) {
                 return Ok(());
             }
-            match (by_key.get(&key).cloned(), phase) {
-                (_, Phase::Ignore) | (None, _) => {}
-                // plugins get the real edges when the firmware reports them
-                (Some(Target::Plugin(ctx)), Phase::Up) => {
-                    host.key(&ctx, false);
+            let now = Instant::now();
+            let short = by_key.get(&key).cloned();
+            let long = LONG.lock().unwrap_or_else(|e| e.into_inner()).get(&key).cloned();
+            let mut acts: Vec<(Target, Phase)> = Vec::new();
+            match (phase, long) {
+                (Phase::Ignore, _) => {}
+                // a key with a long destination decides on release (or when the timer fires)
+                (Phase::Down, Some(_)) => {
+                    ARMED.lock().unwrap_or_else(|e| e.into_inner()).insert(key, (now, false));
                 }
-                (Some(Target::Plugin(ctx)), Phase::Down) => {
-                    host.key(&ctx, true);
-                }
-                (Some(Target::Plugin(ctx)), Phase::Click) => {
-                    host.key(&ctx, true);
-                    host.key(&ctx, false);
-                }
-                // builtins and scene switches act on the press, never on the release
-                (_, Phase::Up) => {}
-                (Some(Target::Builtin(ctx)), _) => {
-                    let _ = msg_tx.send(BuiltinMsg::Press(ctx));
-                }
-                (Some(Target::Scene(target)), _) => {
-                    match switch_scene(
-                        scenes, &target, plugins, by_key, host, found, running, msg_tx, rt, builtins,
-                    ) {
-                        Ok(paints) => {
-                            let gen = rt.gen.load(Ordering::Relaxed);
-                            pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
-                        }
-                        Err(e) => eprintln!("scene: {e}"),
+                (Phase::Up, Some(l)) => {
+                    let r = release_press(
+                        &mut ARMED.lock().unwrap_or_else(|e| e.into_inner()),
+                        key,
+                        now,
+                        long_press(),
+                    );
+                    match r {
+                        Some(Press::Short) => acts.extend(short.map(|t| (t, Phase::Click))),
+                        Some(Press::Long) => acts.push((l, Phase::Click)),
+                        None => {}
                     }
                 }
+                (p, _) => acts.extend(short.map(|t| (t, p))),
+            }
+            for (t, p) in acts {
+                run_target(
+                    t, p, msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins, pending,
+                );
             }
         }
         _ => {}
     }
     Ok(())
+}
+
+/// Runs what a key means. Plugins get the real edges; builtins and scene switches act on the press only.
+#[allow(clippy::too_many_arguments)]
+fn run_target(
+    target: Target,
+    phase: Phase,
+    msg_tx: &mpsc::Sender<BuiltinMsg>,
+    host: &host::Host,
+    scenes: &mut SceneSet,
+    plugins: &Path,
+    by_key: &mut HashMap<u8, Target>,
+    found: &[host::Plugin],
+    running: &mut HashSet<String>,
+    rt: &Runtime,
+    builtins: &HashSet<&'static str>,
+    pending: &mut HashMap<u8, (DynamicImage, u64)>,
+) {
+    match (target, phase) {
+        (_, Phase::Ignore) => {}
+        (Target::Plugin(ctx), Phase::Up) => {
+            host.key(&ctx, false);
+        }
+        (Target::Plugin(ctx), Phase::Down) => {
+            host.key(&ctx, true);
+        }
+        (Target::Plugin(ctx), Phase::Click) => {
+            host.key(&ctx, true);
+            host.key(&ctx, false);
+        }
+        (_, Phase::Up) => {}
+        (Target::Builtin(ctx), _) => {
+            let _ = msg_tx.send(BuiltinMsg::Press(ctx));
+        }
+        (Target::Scene(target), _) => {
+            match switch_scene(
+                scenes, &target, plugins, by_key, host, found, running, msg_tx, rt, builtins,
+            ) {
+                Ok(paints) => {
+                    let gen = rt.gen.load(Ordering::Relaxed);
+                    pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
+                }
+                Err(e) => eprintln!("scene: {e}"),
+            }
+        }
+    }
+}
+
+/// Fires the long press of every key still down past the threshold. Called from the device loops.
+#[allow(clippy::too_many_arguments)]
+fn check_long(
+    msg_tx: &mpsc::Sender<BuiltinMsg>,
+    host: &host::Host,
+    scenes: &mut SceneSet,
+    plugins: &Path,
+    by_key: &mut HashMap<u8, Target>,
+    found: &[host::Plugin],
+    running: &mut HashSet<String>,
+    rt: &Runtime,
+    builtins: &HashSet<&'static str>,
+    pending: &mut HashMap<u8, (DynamicImage, u64)>,
+) {
+    let keys = due_long(
+        &mut ARMED.lock().unwrap_or_else(|e| e.into_inner()),
+        Instant::now(),
+        long_press(),
+    );
+    for key in keys {
+        let t = LONG.lock().unwrap_or_else(|e| e.into_inner()).get(&key).cloned();
+        if let Some(t) = t {
+            run_target(
+                t, Phase::Click, msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins,
+                pending,
+            );
+        }
+    }
 }
 
 /// What a key report means. The stock firmware only reports a release (state 0 = a click); the press/release
@@ -1815,6 +1934,94 @@ enum Phase {
     Down,
     Up,
     Ignore,
+}
+
+/// Long-press destination per key (scene switch or builtin), filled by `place_scene` / `reload_cell`.
+static LONG: LazyLock<Mutex<HashMap<u8, Target>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+/// Keys with a long-press destination that are down: (press time, long already fired).
+static ARMED: LazyLock<Mutex<HashMap<u8, (Instant, bool)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Long-press threshold: 500 ms, `ORCADECK_LONG_MS` overrides it.
+fn long_press() -> Duration {
+    static MS: LazyLock<u64> = LazyLock::new(|| {
+        std::env::var("ORCADECK_LONG_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(500)
+    });
+    Duration::from_millis(*MS)
+}
+
+#[derive(Debug, PartialEq)]
+enum Press {
+    Short,
+    Long,
+}
+
+/// Release of an armed key: long if the threshold passed (and the timer did not already fire it).
+fn release_press(
+    armed: &mut HashMap<u8, (Instant, bool)>,
+    key: u8,
+    now: Instant,
+    long: Duration,
+) -> Option<Press> {
+    match armed.remove(&key) {
+        None => Some(Press::Short),
+        Some((_, true)) => None,
+        Some((t, false)) if now.duration_since(t) >= long => Some(Press::Long),
+        Some(_) => Some(Press::Short),
+    }
+}
+
+/// Keys still down whose long press is due now; marks them fired.
+fn due_long(armed: &mut HashMap<u8, (Instant, bool)>, now: Instant, long: Duration) -> Vec<u8> {
+    let mut v = Vec::new();
+    for (k, (t, fired)) in armed.iter_mut() {
+        if !*fired && now.duration_since(*t) >= long {
+            *fired = true;
+            v.push(*k);
+        }
+    }
+    v
+}
+
+fn long_deadline() -> Option<Instant> {
+    let long = long_press();
+    ARMED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .values()
+        .filter(|(_, fired)| !fired)
+        .map(|(t, _)| *t + long)
+        .min()
+}
+
+/// Long-press destination of an action, plus the builtin registration it needs (context `c,r:L`,
+/// never painted: the short action owns the key's image).
+fn long_of(
+    a: &profile::Action,
+    cell: (u8, u8),
+    builtins: &HashSet<&'static str>,
+    manifest_id: &str,
+) -> Option<(Target, Option<bi::Key>)> {
+    let l = a.long.as_deref()?;
+    if let Some(t) = scenes::target_of(l) {
+        return Some((Target::Scene(t), None));
+    }
+    if builtins.contains(l.uuid.as_str()) {
+        let ctx = format!("{},{}:L", cell.0, cell.1);
+        let key = bi::Key {
+            uuid: l.uuid.clone(),
+            context: ctx.clone(),
+            device: manifest_id.into(),
+            row: cell.1 as u32,
+            col: cell.0 as u32,
+        };
+        return Some((Target::Builtin(ctx), Some(key)));
+    }
+    eprintln!("long press: unsupported action {} at {cell:?}", l.uuid);
+    None
 }
 
 /// Keys with a press seen and no release yet. A lost release must not block the key forever.
@@ -1916,7 +2123,10 @@ fn session_loop_threaded<W: DockWriter>(
 ) -> Result<(), String> {
     loop {
         let now = Instant::now();
-        let next_wake = compute_next_wake(pending, last_batch, gap, hb, rt, now);
+        let mut next_wake = compute_next_wake(pending, last_batch, gap, hb, rt, now);
+        if let Some(d) = long_deadline() {
+            next_wake = next_wake.min(d);
+        }
         let timeout = next_wake.saturating_duration_since(now);
 
         match event_rx.recv_timeout(timeout) {
@@ -1949,6 +2159,7 @@ fn session_loop_threaded<W: DockWriter>(
             }
         }
 
+        check_long(msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins, pending);
         rt.tick();
         retire_due(rt, host, running, Instant::now());
 
@@ -2042,6 +2253,7 @@ fn session(
                     t0,
                 )?;
             }
+            check_long(msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins, &mut pending);
             rt.tick();
             retire_due(rt, host, running, Instant::now());
             // Editor saves: repaint just that key, through the same pending batch as everything else.
@@ -2182,6 +2394,25 @@ mod tests {
     fn settings_at(path: &Path) -> Value {
         let doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         doc["Actions"]["2,1"]["Settings"].clone()
+    }
+
+    #[test]
+    fn long_press_decision() {
+        let (t, long) = (Instant::now(), Duration::from_millis(500));
+        let mut a = HashMap::new();
+        // quick release = short; unarmed release = short
+        a.insert(1u8, (t, false));
+        assert_eq!(release_press(&mut a, 1, t + Duration::from_millis(100), long), Some(Press::Short));
+        assert_eq!(release_press(&mut a, 1, t, long), Some(Press::Short));
+        // release after the threshold without the timer = long
+        a.insert(1, (t, false));
+        assert_eq!(release_press(&mut a, 1, t + long, long), Some(Press::Long));
+        // timer fires once, release then does nothing
+        a.insert(2, (t, false));
+        assert!(due_long(&mut a, t + Duration::from_millis(499), long).is_empty());
+        assert_eq!(due_long(&mut a, t + long, long), vec![2]);
+        assert!(due_long(&mut a, t + long * 2, long).is_empty());
+        assert_eq!(release_press(&mut a, 2, t + long * 3, long), None);
     }
 
     #[test]

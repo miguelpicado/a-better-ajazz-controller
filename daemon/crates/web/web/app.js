@@ -526,12 +526,32 @@ function actionInspector() {
     } catch (e) { fail(e); }
   });
 
+  // Long press (>= 500 ms): optional second destination, a scene switch or a built-in action.
+  const longVal = !d.Long ? '' : d.Long.UUID === ROTATE ? 'scene:' + (d.Long.Settings?.ProfileUUID || '') : 'act:' + d.Long.UUID;
+  const builtinActs = S.groups.filter((g) => g.uuid === 'com.miguelpicado.orcadock').flatMap((g) => g.actions);
+  const opt = (v, t) => h('option', { value: v, selected: longVal === v }, t);
+  const longSel = h('select', {
+    'aria-label': 'Pulsación larga',
+    onchange: (e) => {
+      const [k, v] = [e.target.value.split(':')[0], e.target.value.slice(e.target.value.indexOf(':') + 1)];
+      if (!e.target.value) delete d.Long;
+      else if (k === 'scene') d.Long = { UUID: ROTATE, Name: 'Scene Shift', Settings: { ProfileUUID: v, DeviceUUID: '' }, State: 0, States: [{}] };
+      else d.Long = { UUID: v, Settings: {}, State: 0, States: [{}] };
+      dirty();
+    },
+  }, opt('', 'Igual que la corta'), opt('scene:', 'Ir a la siguiente escena'),
+  S.scenes.map((s) => opt('scene:' + s.id, 'Ir a la escena ' + (s.name || s.id))),
+  builtinActs.length > 0 && h('optgroup', { label: 'Acción integrada' }, builtinActs.map((a) => opt('act:' + a.uuid, a.name || a.uuid))));
+  const longBox = [h('h3', null, 'Pulsación larga'), field('Al mantener pulsada la tecla (500 ms)', longSel),
+    h('p', { class: 'sub' }, 'Solo con el firmware de pulsar/soltar; con el original no hay pulsación larga.')];
+
   const preview = h('div', { class: 'preview' }, img(cellImg(d), '', ''));
   return [
     h('div', { class: 'insp-head' }, preview, h('div', null, h('h2', null, d.Name || info?.name || 'Acción'), h('p', { class: 'sub' }, info ? info.plugin : 'Plugin no instalado'))),
     h('p', { class: 'sub' }, `${cellLabel(S.sel)} · ${d.UUID}`),
     h('h3', null, 'Aspecto'), stateSel, stateBox,
     h('h3', null, 'Ajustes'), form,
+    ...longBox,
     h('details', null, h('summary', null, 'Ajustes en JSON'), json, jsonErr),
     h('div', { class: 'actions-bar' }, save, h('button', { type: 'button', class: 'btn danger', onclick: removeSel }, 'Quitar de la tecla')),
   ];

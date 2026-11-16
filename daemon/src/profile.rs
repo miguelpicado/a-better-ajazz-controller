@@ -24,6 +24,9 @@ pub struct Action {
     pub states: Vec<State>,
     #[serde(rename = "Settings", default)]
     pub settings: serde_json::Value,
+    /// Optional second destination for a long press (scene switch or builtin only).
+    #[serde(rename = "Long", default)]
+    pub long: Option<Box<Action>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -220,6 +223,7 @@ mod manifest_image_containment {
                 image: image.into(),
             }],
             settings: serde_json::Value::Null,
+            long: None,
         }
     }
 
