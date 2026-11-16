@@ -1918,6 +1918,10 @@ fn check_long(
         long_press(),
     );
     for key in keys {
+        // a scene switch fired by an earlier key clears ARMED: later keys belong to the old scene
+        if !ARMED.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&key) {
+            continue;
+        }
         let t = LONG.lock().unwrap_or_else(|e| e.into_inner()).get(&key).cloned();
         if let Some(t) = t {
             run_target(
@@ -1969,7 +1973,8 @@ fn release_press(
     long: Duration,
 ) -> Option<Press> {
     match armed.remove(&key) {
-        None => Some(Press::Short),
+        // not armed: the press was consumed (calibration, scene switch, editor save) or never seen
+        None => None,
         Some((_, true)) => None,
         Some((t, false)) if now.duration_since(t) >= long => Some(Press::Long),
         Some(_) => Some(Press::Short),
@@ -2426,10 +2431,12 @@ mod tests {
     fn long_press_decision() {
         let (t, long) = (Instant::now(), Duration::from_millis(500));
         let mut a = HashMap::new();
-        // quick release = short; unarmed release = short
+        // quick release = short; unarmed release = nothing
         a.insert(1u8, (t, false));
         assert_eq!(release_press(&mut a, 1, t + Duration::from_millis(100), long), Some(Press::Short));
-        assert_eq!(release_press(&mut a, 1, t, long), Some(Press::Short));
+        assert_eq!(release_press(&mut a, 1, t, long), None);
+        // release of a key that was never armed (or was cleared) does nothing
+        assert_eq!(release_press(&mut a, 9, t, long), None);
         // release after the threshold without the timer = long
         a.insert(1, (t, false));
         assert_eq!(release_press(&mut a, 1, t + long, long), Some(Press::Long));
