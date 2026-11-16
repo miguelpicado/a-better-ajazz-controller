@@ -1,6 +1,7 @@
 //! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 85 down by 4).
-#[allow(unused_imports)]
-use crate::proto::{image_px, DeviceSpec, DEFAULT_DEVICE, MAX_JPEG};
+use crate::proto::{DeviceSpec, DEFAULT_DEVICE};
+#[cfg(test)]
+use crate::proto::{image_px, MAX_JPEG};
 use image::{imageops, DynamicImage, ImageEncoder};
 
 fn scale_key(img: &DynamicImage, px: u32) -> DynamicImage {

@@ -239,6 +239,7 @@ fn paint_dra_one<W: DockWriter>(
     Ok(())
 }
 
+#[cfg(test)]
 const DEVICE: &str = DEFAULT_DEVICE.manifest_id;
 
 fn pct_decode(s: &str) -> Vec<u8> {
@@ -701,6 +702,7 @@ impl Runtime {
     }
 
     /// Builtin images go through the same channel and view as plugin images.
+    #[cfg(test)]
     fn paint(&self, context: &str, key: u8, img: DynamicImage) {
         self.paint_at(self.gen.load(Ordering::Relaxed), context, key, img);
     }
@@ -2394,6 +2396,30 @@ mod tests {
     fn settings_at(path: &Path) -> Value {
         let doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         doc["Actions"]["2,1"]["Settings"].clone()
+    }
+
+    #[test]
+    fn long_of_reads_scene_and_builtin_destinations() {
+        let dir = Path::new("");
+        let json = r#"{"Actions":{
+            "0,0":{"UUID":"com.x.a","Long":{"UUID":"com.hotspot.streamdock.profile.rotate","Settings":{"ProfileUUID":"S2"}}},
+            "1,0":{"UUID":"com.x.a","Long":{"UUID":"com.b.lock"}},
+            "2,0":{"UUID":"com.x.a","Long":{"UUID":"com.unknown.thing"}},
+            "3,0":{"UUID":"com.x.a"}}}"#;
+        let scene = Scene::parse(dir, json).unwrap();
+        let builtins: HashSet<&'static str> = HashSet::from(["com.b.lock"]);
+        let at = |c: u8| {
+            let (cell, a) = scene.actions.iter().find(|((x, _), _)| *x == c).unwrap();
+            long_of(a, *cell, &builtins, "AKP153E")
+        };
+        let (t, k) = at(0).unwrap();
+        assert_eq!(t, Target::Scene(SceneTarget::Id("S2".into())));
+        assert!(k.is_none());
+        let (t, k) = at(1).unwrap();
+        assert_eq!(t, Target::Builtin("1,0:L".into()));
+        assert_eq!(k.unwrap().context, "1,0:L");
+        assert!(at(2).is_none()); // plugins and unknown ids are not long destinations
+        assert!(at(3).is_none());
     }
 
     #[test]

@@ -81,8 +81,10 @@ pub const VID: u16 = DEFAULT_DEVICE.vid;
 #[allow(dead_code)]
 pub const PID: u16 = DEFAULT_DEVICE.pid;
 pub const HEARTBEAT_SECS: u64 = 10;
+#[cfg(test)]
 pub const MAX_JPEG: usize = DEFAULT_DEVICE.max_jpeg;
 pub const KEY_PX: u32 = DEFAULT_DEVICE.key_px;
+#[cfg(test)]
 pub const SIDE_PX: u32 = DEFAULT_DEVICE.side_px;
 
 pub fn select_device() -> Result<&'static DeviceSpec, String> {
@@ -122,6 +124,7 @@ pub fn key_index(col: u8, row: u8) -> Option<u8> {
     }
 }
 
+#[cfg(test)]
 pub fn image_px(key: u8) -> u32 {
     DEFAULT_DEVICE.image_px(key)
 }
@@ -134,6 +137,7 @@ pub fn work_px(key: u8) -> u32 {
     DEFAULT_DEVICE.image_px(key) * WORK_SCALE
 }
 
+#[cfg(test)]
 pub fn image_px_for(spec: &DeviceSpec, key: u8) -> u32 {
     spec.image_px(key)
 }
@@ -229,6 +233,7 @@ pub fn centred_rect(cx: i32, cy: i32, w: u16, h: u16, off: (i16, i16)) -> Rect {
 }
 
 /// DRA tile of a key 1..=15: `tile` px square centred on the BAT tile centre, plus `off` (panel dx, dy), clamped.
+#[cfg(test)]
 pub fn dra_tile(key: u8, tile: u16, off: (i16, i16)) -> Option<Rect> {
     dra_key_rect(key, tile, tile, off)
 }
