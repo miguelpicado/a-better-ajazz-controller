@@ -1,9 +1,9 @@
-# Scene Shift (`com.hotspot.streamdock.profile.rotate`) — diseño para `orcadeck run`
+# Scene Shift (`com.hotspot.streamdock.profile.rotate`) — diseño para `abac run`
 
 > **Nota (2026-11-10):** implementado en `run` (`daemon/src/scenes.rs`); pendiente la prueba física con
 > el teclado. Estado en [`../project/STATUS.md`](../project/STATUS.md).
 
-Investigación 2026-11-10, solo lectura: no se ejecutó la app, ni `orcadeck`, ni se abrió el HID. Etiquetas:
+Investigación 2026-11-10, solo lectura: no se ejecutó la app, ni `abac`, ni se abrió el HID. Etiquetas:
 **OBSERVED** = visto en ficheros, bytes o desensamblado; **INFERRED** = deducido, no probado en vivo.
 ## 1. Qué hace al pulsar (evidencia)
 - **OBSERVED**: el plugin integrado de la app es `...\plugins\com.hotspot.streamdock.profile.rotate.sdPlugin\manifest.json`:
@@ -49,19 +49,19 @@ Investigación 2026-11-10, solo lectura: no se ejecutó la app, ni `orcadeck`, n
   (fallback `[AKP153EDeviceConfig]`).
 - **OBSERVED** el editor web (`daemon/crates/web/src/store.rs`): `FsStore` lee `state.json` (`order`, `current`) y,
   si faltan, los siembra de `DataCache.db`/ini. `PUT /api/scenes/current` y `set_current` escriben
-  `%APPDATA%\OrcaDeck\state.json`. `set_order` escribe el mismo fichero.
+  `%APPDATA%\ABAC\state.json`. `set_order` escribe el mismo fichero.
 - **OBSERVED**: `Pages` de cada manifiesto solo se lista a sí mismo en las escenas observadas; no es el orden de escenas.
 - Quién actualiza: la app de Stream Dock escribe DataCache/ini; el editor web escribe `state.json`. `run` solo escribirá
   `state.json` (no tocará los ficheros del vendor).
 ## 4. Diseño mínimo para `run`
-Reutilizar `orcadeck_web::FsStore`, que ya es dependencia del daemon: evita duplicar el lector de DataCache/ini y el
+Reutilizar `abac_web::FsStore`, que ya es dependencia del daemon: evita duplicar el lector de DataCache/ini y el
 estado del editor, no añade dependencias y no arranca ningún servidor. No hay polling nuevo; el cambio solo ocurre al
 pulsar.
 ### 4.1 `daemon/src/scenes.rs` (nuevo)
 ```rust
 pub enum SceneTarget { Next, Previous, Id(String) }
 pub struct SceneSet {
-    store: orcadeck_web::FsStore, // profiles, plugins, data=%APPDATA%\OrcaDeck, legacy_config=.../config
+    store: abac_web::FsStore, // profiles, plugins, data=%APPDATA%\ABAC, legacy_config=.../config
     profiles: PathBuf,
     order: Vec<String>,           // solo escenas listadas, en orden
     current: String,
@@ -75,13 +75,13 @@ impl SceneSet {
 }
 ```
 - `open`: `profiles = profile.parent()`, `legacy_config = profiles.parent()/config`,
-  `FsStore { profiles, plugins, builtin_plugins: vec![], data: %APPDATA%\OrcaDeck, legacy_config: Some(config) }`,
+  `FsStore { profiles, plugins, builtin_plugins: vec![], data: %APPDATA%\ABAC, legacy_config: Some(config) }`,
   `store.scenes()`; `order` = `listed` y `device == device` en orden; `current` = id deducido del argumento CLI (el
   CLI manda; si difiere del store se escribe con `set_current`). Si la escena del CLI no está en `order`, se carga
   igual; para next/prev se usa como posición fuera de lista (next = primera, previous = última).
 - `target_of`: solo para `profile.rotate`; `Settings.ProfileUUID` ausente o `""` → `Next`, `"PreviousScene"` → `Previous`,
   otro → `Id(trim_end_matches(".sdProfile"))`.
-- `resolve`: `Id` solo si `safe_id` (de `orcadeck_web::store`) y existe `<profiles>/<id>.sdProfile/manifest.json`;
+- `resolve`: `Id` solo si `safe_id` (de `abac_web::store`) y existe `<profiles>/<id>.sdProfile/manifest.json`;
   `Next`/`Previous` con `step(+1/-1)` y `rem_euclid(order.len())`.
 - `switch`: `profile::Scene::load`, después `store.set_current(id)` (atómico; si falla, log y seguir), actualiza
   `current`. No cambia `DataCache.db` ni el ini.
@@ -107,7 +107,7 @@ impl SceneSet {
 - `session` pasa a recibir `&mut by_key`, `&mut latest`, `&mut SceneSet`, `&mut running`, `&mpsc::Sender<SceneCmd>`,
   `&[host::Plugin]` y `&HashSet<&'static str>` de built-ins. En `Target::Scene`, llama a `switch_scene`, mete los pares
   en `pending` y sigue; si falla, log y sigue. El switch ocurre en el hilo HID (sin hilo nuevo).
-- Pintado: un solo lote con `ORCADECK_GAP_MS` (125 ms por defecto), solo claves de `old ∪ new`, sin `CLE` ni `STP`
+- Pintado: un solo lote con `ABAC_GAP_MS` (125 ms por defecto), solo claves de `old ∪ new`, sin `CLE` ni `STP`
   extra. El firmware pierde pulsaciones mientras pinta: mantener la pausa, no bajarla. `latest` permite repintar la
   escena nueva tras reconectar.
 - Plugins: `willDisappear` a los contextos viejos y `willAppear` a los nuevos, como en `plugin-host-protocol.md` §routing.
@@ -138,9 +138,9 @@ impl SceneSet {
    los UUID built-in antes de mover el registro al hilo.
 4. **`daemon/src/app.rs`**: `Target::Scene`, `place_scene`, `SceneCmd`, `switch_scene` y la nueva firma de `session`.
 5. **Pruebas**: `cargo test --release --workspace`; manual con Stream Dock parado:
-   `orcadeck run "%APPDATA%\HotSpot\StreamDock\profiles\R0KZ…sdProfile"`, pulsar `2,0` → Grabación, `4,2` →
+   `abac run "%APPDATA%\HotSpot\StreamDock\profiles\R0KZ…sdProfile"`, pulsar `2,0` → Grabación, `4,2` →
    Monitorización; una plantilla con `ProfileUUID:""` → siguiente; una con `"PreviousScene"` → anterior;
-   `ORCADECK_TRACE=1` para ver un único lote y que la pulsación siguiente no se pierde.
+   `ABAC_TRACE=1` para ver un único lote y que la pulsación siguiente no se pierde.
 6. **Tamaño**: sin dependencias nuevas; `FsStore` ya está en el workspace. Si se mide el binario, anotar el delta; el
    código nuevo es ~150 líneas y no añade hilos ni polls.
 ## Fuentes

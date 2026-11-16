@@ -1,6 +1,6 @@
 # Desarrollo
 
-Guía para compilar, probar y tocar OrcaDeck sin romper el objetivo del proyecto: un binario Rust
+Guía para compilar, probar y tocar ABAC sin romper el objetivo del proyecto: un binario Rust
 ligero, sin runtime async, con 0 % de CPU en reposo y UI web solo bajo demanda.
 
 - Uso: [USAGE.md](USAGE.md). Arquitectura: [ARCHITECTURE.md](../design/ARCHITECTURE.md).
@@ -29,8 +29,8 @@ cargo build --release
 cargo test --release --workspace
 ```
 
-- El binario queda en `daemon\target\release\orcadeck.exe`; el instalador de plugins, en
-  `daemon\target\release\orcadeck-plugman.exe`.
+- El binario queda en `daemon\target\release\abac.exe`; el instalador de plugins, en
+  `daemon\target\release\abac-plugman.exe`.
 - `RUSTUP_TOOLCHAIN=gnullvm-local` es el apaño de esta máquina porque rustup ya no instala el canal
   `gnullvm`. En otra máquina, instala el toolchain que fija `rust-toolchain.toml`.
 - Si trabajas en paralelo con otros agentes, usa un target propio para no bloquear el `target`:
@@ -54,9 +54,9 @@ más el smoke del binario release (`tools/smoke/smoke.ps1`) y la suite E2E de `t
 Medidas que acompañan a un cambio de rendimiento (anotarlas, no estimarlas):
 
 ```powershell
-(Get-Item .\target\release\orcadeck.exe).Length          # tamaño
-Get-Process orcadeck | Select-Object CPU, WorkingSet     # CPU acumulada y RSS con el dispositivo
-$env:ORCADECK_TRACE=1; .\target\release\orcadeck.exe run <perfil>   # entradas y duración de lotes
+(Get-Item .\target\release\abac.exe).Length          # tamaño
+Get-Process abac | Select-Object CPU, WorkingSet     # CPU acumulada y RSS con el dispositivo
+$env:ABAC_TRACE=1; .\target\release\abac.exe run <perfil>   # entradas y duración de lotes
 ```
 
 ## 4. Estructura de tests
@@ -78,7 +78,7 @@ loopback y carpetas temporales.
 | `daemon/crates/host/tests/real_plugin.rs` | plugin Node real; solo corre con `ORCADOCK_PLUGIN` apuntando a la carpeta del plugin y `node` disponible (si no, se omite) |
 | `daemon/crates/plugman/tests/plugman.rs` | zips de fixture, manifests cifrados/planos, overlay, `force`/backup, límites, traversal |
 | `daemon/crates/web/tests/api.rs` | HTTP real en loopback: seguridad (token/Host/Origin), escenas, celdas, plugins, imágenes |
-| `tools/e2e/` (Playwright) | E2E del editor con el `orcadeck.exe` release: arranque y token, edición de una celda, instalación/quitado de plugins, accesibilidad y errores de consola; sin hardware |
+| `tools/e2e/` (Playwright) | E2E del editor con el `abac.exe` release: arranque y token, edición de una celda, instalación/quitado de plugins, accesibilidad y errores de consola; sin hardware |
 | `tools/smoke/smoke.ps1` | smoke del binario release: `help`, `render` offline y `edit` standalone, con rutas temporales |
 
 Los tests que dependen de datos reales no fallan si faltan: imprimen `skipped` y pasan. No leen ni
@@ -91,20 +91,20 @@ El HID solo hace falta para `probe`, `scene`, `bright`, `watch`, `poll` y `run`.
 1. **Unitarios**: `cargo test --release --workspace`.
 2. **Render offline** sobre una copia del perfil:
    ```powershell
-   .\target\release\orcadeck.exe render <perfil.sdProfile> .\out
+   .\target\release\abac.exe render <perfil.sdProfile> .\out
    ```
    Abre los `keyNN.jpg` y comprueba composición, rotación y tamaños. No abre el HID.
 3. **Editor** con copias, nunca contra los perfiles reales:
    ```powershell
-   $env:ORCADECK_PROFILES="C:\temp\perfiles-copia"
-   $env:ORCADECK_PLUGINS="C:\temp\plugins-copia"
-   $env:ORCADECK_DATA="C:\temp\datos-copia"
-   .\target\release\orcadeck.exe edit --no-open
+   $env:ABAC_PROFILES="C:\temp\perfiles-copia"
+   $env:ABAC_PLUGINS="C:\temp\plugins-copia"
+   $env:ABAC_DATA="C:\temp\datos-copia"
+   .\target\release\abac.exe edit --no-open
    ```
 4. **Plugman**:
    ```powershell
-   .\target\release\orcadeck-plugman.exe inspect <paquete-o-carpeta>
-   .\target\release\orcadeck-plugman.exe install <paquete> --plugins C:\temp\plugins --data C:\temp\datos --force
+   .\target\release\abac-plugman.exe inspect <paquete-o-carpeta>
+   .\target\release\abac-plugman.exe install <paquete> --plugins C:\temp\plugins --data C:\temp\datos --force
    ```
 5. **`run` sin dispositivo**: arranca el host y el hilo `builtin`, pero `session` falla y reintenta
    cada 2 s (`device: …; retrying in 2 s`). Sirve para ver que el host enlaza el 18618 y que los
@@ -174,9 +174,9 @@ Estas reglas no se negocian y aplican también a tests y scripts:
 ## 10. Releases
 
 Las releases se publican desde el repo público (`github.com/miguelpicado/a-better-ajazz-controller`)
-con [`.github/workflows/release.yml`](../../.github/workflows/release.yml), que compila `orcadeck.exe`
+con [`.github/workflows/release.yml`](../../.github/workflows/release.yml), que compila `abac.exe`
 para Windows x64 al empujar un tag `v*` y adjunta
-`orcadeck-<tag>-windows-x64.zip` (binario, `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY-LICENSES.md`
+`abac-<tag>-windows-x64.zip` (binario, `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY-LICENSES.md`
 y `README.md`) más su `.sha256`, con notas generadas automáticamente.
 
 Para cortar una release, desde `main` ya verificado y en el repo público:
@@ -193,8 +193,8 @@ release.
 Verificar la descarga (PowerShell):
 
 ```powershell
-Get-FileHash .\orcadeck-v0.1.0-windows-x64.zip -Algorithm SHA256
-Get-Content .\orcadeck-v0.1.0-windows-x64.zip.sha256
+Get-FileHash .\abac-v0.1.0-windows-x64.zip -Algorithm SHA256
+Get-Content .\abac-v0.1.0-windows-x64.zip.sha256
 ```
 
 Los dos hashes deben coincidir; el `.sha256` lleva el hash y el nombre del zip, con el formato que

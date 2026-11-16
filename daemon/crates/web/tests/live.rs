@@ -1,6 +1,6 @@
 //! The editor tab is its own keep-alive: `/api/live` polls mark it open, and once they stop
 //! `Server::wait_idle` returns so the daemon can drop the editor.
-use orcadeck_web::{FsStore, Server};
+use abac_web::{FsStore, Server};
 use std::{
     fs,
     io::{Read, Write},
@@ -10,7 +10,7 @@ use std::{
 };
 
 fn start() -> Server {
-    let t = std::env::temp_dir().join(format!("orcadeck-live-{}", std::process::id()));
+    let t = std::env::temp_dir().join(format!("abac-live-{}", std::process::id()));
     let _ = fs::remove_dir_all(&t);
     fs::create_dir_all(t.join("profiles")).unwrap();
     fs::create_dir_all(t.join("plugins")).unwrap();
@@ -29,7 +29,7 @@ fn start() -> Server {
 fn live(s: &Server) -> String {
     let mut c = TcpStream::connect(s.addr).unwrap();
     let req = format!(
-        "GET /api/live?since=0 HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-OrcaDeck-Token: {}\r\n\r\n",
+        "GET /api/live?since=0 HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-ABAC-Token: {}\r\n\r\n",
         s.addr.port(),
         s.token()
     );

@@ -89,7 +89,7 @@ fn tag(vid: u16, pid: u16) -> String {
 }
 
 fn plugins_dir() -> std::path::PathBuf {
-    std::env::var_os("ORCADECK_PLUGINS")
+    std::env::var_os("ABAC_PLUGINS")
         .map(Into::into)
         .unwrap_or_else(|| {
             Path::new(&std::env::var_os("APPDATA").unwrap_or_default())
@@ -126,7 +126,7 @@ fn scene_jpegs(dir: &Path, plugins: &Path) -> Result<Vec<(u8, Vec<u8>)>, String>
 
 fn run(args: &[String]) -> Result<(), String> {
     let a = |i: usize| args.get(i).map(String::as_str);
-    let n_env = std::env::var("ORCADECK_REPORT_LEN")
+    let n_env = std::env::var("ABAC_REPORT_LEN")
         .ok()
         .and_then(|v| v.parse().ok());
     match a(0) {
@@ -398,8 +398,8 @@ fn run(args: &[String]) -> Result<(), String> {
                 println!("sending MOD {m}");
                 d.send(&crt(d.n, "MOD", &[(0x0a, m)]))?;
             }
-            // experiment hook: ORCADECK_CMD="VERB:0a=01,0b=00" (hex offsets/values)
-            if let Ok(spec) = std::env::var("ORCADECK_CMD") {
+            // experiment hook: ABAC_CMD="VERB:0a=01,0b=00" (hex offsets/values)
+            if let Ok(spec) = std::env::var("ABAC_CMD") {
                 let (verb, rest) = spec.split_once(':').unwrap_or((&spec, ""));
                 let extra: Vec<(usize, u8)> = rest
                     .split(',')
@@ -414,7 +414,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 println!("sending {verb} {extra:02x?}");
                 d.send(&crt(d.n, verb, &extra))?;
                 // ajazz-pi (rev2) order: QUCMD, LIG, CLE, images + STP, CONNECT
-                if let Ok(sc) = std::env::var("ORCADECK_SCENE") {
+                if let Ok(sc) = std::env::var("ABAC_SCENE") {
                     d.send(&brightness(d.n, 80))?;
                     d.send(&clear_all(d.n))?;
                     for (k, j) in &scene_jpegs(Path::new(&sc), &plugins_dir())? {
@@ -451,19 +451,33 @@ fn run(args: &[String]) -> Result<(), String> {
 }
 
 const USAGE: &str = "\
-uso: orcadeck <comando>
+uso: abac <comando>
 
   run <perfil>        driver HID + host de plugins + acciones integradas
   edit [--port N] [--no-open]   editor web (dentro de run si está vivo)
   install <paquete>   abre el editor para instalar un .streamDeckPlugin/.sdPlugin/.zip
-  register            asocia esos ficheros a OrcaDeck para este usuario (sin admin)
+  register            asocia esos ficheros a ABAC para este usuario (sin admin)
   unregister          deshace la asociación y restaura la anterior
   render <perfil> <outDir>      escena a JPEG (sin dispositivo)
   scene <perfil> | bright <0-100> | watch | probe | poll | hidwatch
 
 Detalle: docs/guide/USAGE.md";
 
+/// Old `ORCADECK_*` variables keep working: each one fills its `ABAC_*` twin when that is unset.
+/// ponytail: temporary compatibility, drop once every install has moved to `ABAC_*`.
+fn legacy_env() {
+    for (k, v) in std::env::vars_os().collect::<Vec<_>>() {
+        if let Some(rest) = k.to_str().and_then(|k| k.strip_prefix("ORCADECK_")) {
+            let new = format!("ABAC_{rest}");
+            if std::env::var_os(&new).is_none() {
+                std::env::set_var(new, v);
+            }
+        }
+    }
+}
+
 fn main() {
+    legacy_env();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Err(e) = run(&args) {
         eprintln!("error: {e}");

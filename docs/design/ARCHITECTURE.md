@@ -1,7 +1,7 @@
-# Arquitectura de OrcaDeck
+# Arquitectura de ABAC
 
-OrcaDeck sustituye a la app oficial «Stream Dock AJAZZ» para el AKP153E. Un único ejecutable Rust
-(`orcadeck.exe`) hace de driver HID, host de plugins del SDK v2 y, solo cuando se pide, servidor del
+ABAC sustituye a la app oficial «Stream Dock AJAZZ» para el AKP153E. Un único ejecutable Rust
+(`abac.exe`) hace de driver HID, host de plugins del SDK v2 y, solo cuando se pide, servidor del
 editor web. Sin Qt, CEF, Electron ni runtime async; sin admin; sin UI residente.
 
 Guías: [uso](../guide/USAGE.md) · [desarrollo](../guide/DEVELOPMENT.md) · [problemas](../guide/TROUBLESHOOTING.md).
@@ -10,8 +10,8 @@ Diseño histórico (borradores anteriores a la integración): [architecture-draf
 
 ## 1. Principios
 
-- **Un proceso para el uso normal.** `orcadeck run` es driver + host + acciones integradas.
-- **UI web bajo demanda, en otro proceso.** `orcadeck edit` levanta el servidor, abre el navegador y
+- **Un proceso para el uso normal.** `abac run` es driver + host + acciones integradas.
+- **UI web bajo demanda, en otro proceso.** `abac edit` levanta el servidor, abre el navegador y
   muere al cerrar. `run` no sirve UI.
 - **Hilos bloqueantes y canales.** Nada de tokio ni de polling de red; el objetivo es 0 % de CPU en
   reposo y memoria mínima.
@@ -19,7 +19,7 @@ Diseño histórico (borradores anteriores a la integración): [architecture-draf
   pintados por un canal.
 - **Sin dependencias nuevas** salvo necesidad medida. El perfil release usa `opt-level = "s"`, LTO,
   `panic = "abort"` y `strip`.
-- **Se leen los perfiles existentes sin migrarlos.** El estado propio va a `%APPDATA%\OrcaDeck`.
+- **Se leen los perfiles existentes sin migrarlos.** El estado propio va a `%APPDATA%\ABAC`.
 - **Sin admin.** Se pierden temperaturas de CPU/GPU y las teclas enviadas a ventanas elevadas (UIPI).
 
 ## 2. Mapa del workspace
@@ -28,14 +28,14 @@ El workspace es [`daemon/Cargo.toml`](../../daemon/Cargo.toml); el binario es `d
 
 | Ruta | Qué es | Responsabilidad |
 |---|---|---|
-| `daemon/` | binario `orcadeck` | CLI, protocolo HID, render, perfiles, escenas, `run`, `edit` |
+| `daemon/` | binario `abac` | CLI, protocolo HID, render, perfiles, escenas, `run`, `edit` |
 | [`daemon/src/app.rs`](../../daemon/src/app.rs) | `run` | hilos, canales, lotes de pintado, host, escenas |
-| [`daemon/crates/host`](../../daemon/crates/host) | `orcadeck-host` | WebSocket 18618, lanzamiento y supervisión de plugins, Property Inspector |
-| [`daemon/crates/builtin`](../../daemon/crates/builtin) | `orcadeck-builtin` | acciones Orca integradas (agente, cuota, reloj, resumen) |
-| [`daemon/crates/plugman`](../../daemon/crates/plugman) | `orcadeck-plugman` | instalación de plugins, reconstrucción de manifests cifrados |
-| [`daemon/crates/web`](../../daemon/crates/web) | `orcadeck-web` | servidor HTTP local, SPA del editor, `FsStore` |
+| [`daemon/crates/host`](../../daemon/crates/host) | `abac-host` | WebSocket 18618, lanzamiento y supervisión de plugins, Property Inspector |
+| [`daemon/crates/builtin`](../../daemon/crates/builtin) | `abac-builtin` | acciones Orca integradas (agente, cuota, reloj, resumen) |
+| [`daemon/crates/plugman`](../../daemon/crates/plugman) | `abac-plugman` | instalación de plugins, reconstrucción de manifests cifrados |
+| [`daemon/crates/web`](../../daemon/crates/web) | `abac-web` | servidor HTTP local, SPA del editor, `FsStore` |
 
-`plugman` tiene además su propio binario, `orcadeck-plugman.exe`.
+`plugman` tiene además su propio binario, `abac-plugman.exe`.
 
 ## 3. Proceso `run`
 
@@ -44,8 +44,8 @@ El workspace es [`daemon/Cargo.toml`](../../daemon/Cargo.toml); el binario es `d
 1. `Scene::load` del `.sdProfile` indicado en la línea de comandos.
 2. `SceneSet::open` lee el orden y la escena actual (`state.json`; si falta, se usa como respaldo
    `DataCache.db`/`StreamDockConfig.ini`, solo lectura).
-3. `host::discover` recorre `%APPDATA%\HotSpot\StreamDock\plugins` (o `ORCADECK_PLUGINS`) y aplica los
-   overlays de `%APPDATA%\OrcaDeck\manifests`.
+3. `host::discover` recorre `%APPDATA%\HotSpot\StreamDock\plugins` (o `ABAC_PLUGINS`) y aplica los
+   overlays de `%APPDATA%\ABAC\manifests`.
 4. `Host::start` enlaza `127.0.0.1:18618` y arranca el hilo aceptador.
 5. Se crean `Runtime`, el canal de pintado y el canal de mensajes a `builtin`.
 6. Nace el hilo `builtin`, que es el único dueño del `Registry`.
@@ -63,10 +63,10 @@ El workspace es [`daemon/Cargo.toml`](../../daemon/Cargo.toml); el binario es `d
 | `builtin` | `app::run` | `Registry::tick` cada 400 ms, pulsaciones y reemplazo de escena; RPC a Orca | `recv_timeout(400 ms)` y el RPC |
 | `host-accept` | `Host::start` | acepta conexiones WebSocket | `listener.incoming()` |
 | `host-socket` | una por conexión | lee el WebSocket, enruta eventos, llama a `Events::output` | lectura del socket |
-| `ctl` | `run` (named pipe) | atiende a `orcadeck edit` y mantiene el servidor web mientras el cliente vive | named pipe |
+| `ctl` | `run` (named pipe) | atiende a `abac edit` y mantiene el servidor web mientras el cliente vive | named pipe |
 | `<plugin>-wait` | `Host::launch` | `Child::wait`; reinicio con backoff si el plugin cae | `Child::wait` |
 | RPC (efímero) | `PipeOrca::call_once` | una llamada a Orca con timeout de 5 s | lectura de la tubería |
-| editor | `orcadeck edit` (o hilo efímero dentro de `run`) | servidor HTTP en loopback | `listener.incoming()` |
+| editor | `abac edit` (o hilo efímero dentro de `run`) | servidor HTTP en loopback | `listener.incoming()` |
 
 No hay un hilo por feedback ni por pintado: los avisos ok/alert son una fecha límite en
 `Runtime::restores` que el bucle del dispositivo comprueba en cada `tick`.
@@ -100,7 +100,7 @@ read_timeout(30 ms)
   └─ cada 10 s          → CONNECT
 ```
 
-`ORCADECK_TRACE=1` escribe a stderr cada entrada HID y la duración de cada lote.
+`ABAC_TRACE=1` escribe a stderr cada entrada HID y la duración de cada lote.
 
 ### 3.5 Flujo de pintado
 
@@ -137,7 +137,7 @@ Medido con el dispositivo (ver [HANDOFF](../project/HANDOFF.md)):
   cero pulsaciones en 80 s, sin línea amarilla local.
 - El arreglo es doble: **lotes** (todas las teclas pendientes juntas, para dejar huecos libres) y
   **JPEG q75** (~3 veces menos bytes que q100; el texto y las formas planas se ven bien).
-- `ORCADECK_GAP_MS` (125 por defecto) fija el mínimo entre lotes. Se lee al abrir cada sesión del
+- `ABAC_GAP_MS` (125 por defecto) fija el mínimo entre lotes. Se lee al abrir cada sesión del
   dispositivo. **No se baja**: si se pierden pulsaciones, se sube.
 - Un cambio de escena pinta todas las teclas afectadas en un lote; una pulsación inmediata puede
   esperar hasta el siguiente hueco.
@@ -187,7 +187,7 @@ Mapa de coordenadas a índice de tecla (`daemon/src/proto.rs`):
 | row 2 | 15 | 12 | 9 | 6 | 3 | 18 |
 
 El editor escribe los manifiestos de forma atómica (`.tmp` + rename) con la disposición de Qt
-(claves ordenadas, 4 espacios, sin BOM) y conserva el anterior como `manifest.json.orcadeck.bak`.
+(claves ordenadas, 4 espacios, sin BOM) y conserva el anterior como `manifest.json.abac.bak`.
 `run` solo escribe `Settings` de la celda (con debounce de 1 s) y el `state.json` propio al arrancar
 (si la escena actual no coincide) o al cambiar de escena; nunca toca `DataCache.db` ni el `.ini` de
 Stream Dock.
@@ -199,20 +199,20 @@ Stream Dock.
 | `%APPDATA%\HotSpot\StreamDock\profiles\<id>.sdProfile\manifest.json` | acciones, ajustes, imágenes de la escena | `edit`; `run` solo `Settings` | `run`, `edit` |
 | `%APPDATA%\HotSpot\StreamDock\config\DataCache.db` | orden de escenas del dispositivo | Stream Dock | `edit`/`SceneSet` (solo lectura) |
 | `%APPDATA%\HotSpot\StreamDock\config\StreamDockConfig.ini` | escena actual, brillo | Stream Dock | `edit`/`SceneSet` (solo lectura) |
-| `%APPDATA%\OrcaDeck\state.json` | `order`, `current`, `brightness`, `installed` | `edit`, `SceneSet` | `edit`, `SceneSet` |
-| `%APPDATA%\OrcaDeck\manifests\<uuid>.json` | overlay del manifest cifrado | `plugman` | `host::discover` |
-| `%APPDATA%\OrcaDeck\globals\<plugin>.json` | ajustes globales del plugin | `run` | `run` al lanzar |
+| `%APPDATA%\ABAC\state.json` | `order`, `current`, `brightness`, `installed` | `edit`, `SceneSet` | `edit`, `SceneSet` |
+| `%APPDATA%\ABAC\manifests\<uuid>.json` | overlay del manifest cifrado | `plugman` | `host::discover` |
+| `%APPDATA%\ABAC\globals\<plugin>.json` | ajustes globales del plugin | `run` | `run` al lanzar |
 | `%APPDATA%\orca\orca-runtime.json` | tubería y token de Orca | Orca | `PipeOrca` |
 | `%QUOTA_DIR%\quota-status.json` | cuotas por cuenta | `orca-dock-rs` | acciones de cuota |
 | `%QUOTA_DIR%/.wake` | petición de refresco | acción de cuota | `orca-dock-rs` |
-| `%LOCALAPPDATA%\OrcaDeck\bin` y `orcadeck.log` | binario copiado y log del autoarranque | `tools/autostart/orcadeck-task.ps1` | tarea programada |
+| `%LOCALAPPDATA%\ABAC\bin` y `abac.log` | binario copiado y log del autoarranque | `tools/autostart/abac-task.ps1` | tarea programada |
 
-`run` usa siempre `%APPDATA%\OrcaDeck` como carpeta de datos; `ORCADECK_DATA` solo afecta a `edit`
+`run` usa siempre `%APPDATA%\ABAC` como carpeta de datos; `ABAC_DATA` solo afecta a `edit`
 (ver [USAGE](../guide/USAGE.md#4-variables-de-entorno)).
 
 ## 6. Acciones integradas
 
-Viven en `orcadeck-builtin`, en el hilo `builtin`, sin proceso ni WebSocket.
+Viven en `abac-builtin`, en el hilo `builtin`, sin proceso ni WebSocket.
 
 | UUID | Acción | Qué muestra | Pulsación |
 |---|---|---|---|
@@ -234,7 +234,7 @@ frene el giro del spinner ni el pintado.
 
 ## 7. Host de plugins
 
-`orcadeck-host` habla el protocolo del SDK v2 de Elgato y de Stream Dock. Escucha en
+`abac-host` habla el protocolo del SDK v2 de Elgato y de Stream Dock. Escucha en
 `127.0.0.1:18618` (fijo), igual que la app oficial: **nunca ejecutes las dos a la vez**.
 
 - **Descubrimiento**: carpetas `*.sdPlugin`, manifiesto plano o overlay si empieza por `ELGATO`;
@@ -274,7 +274,7 @@ URL, se cambia por una cookie `HttpOnly; SameSite=Strict` y se exige en cada `/a
 - Si `run` está vivo, `edit` corre dentro de `run` por el named pipe de `ctl.rs` y guardar una celda
   recarga esa tecla en caliente; si no, arranca standalone y `run` no ve los cambios. Cambiar de
   escena en `run` sí recarga el manifiesto de la escena destino.
-- El brillo del editor es un stub persistido; el `run` arranca a 80 y `orcadeck bright` cambia el
+- El brillo del editor es un stub persistido; el `run` arranca a 80 y `abac bright` cambia el
   brillo real.
 - Property Inspector en iframe sandbox (sin `allow-same-origin`), token de un solo uso por
   `postMessage` y CSP sin red externa.
@@ -282,7 +282,7 @@ URL, se cambia por una cookie `HttpOnly; SameSite=Strict` y se exige en cada `/a
 
 ## 9. Instalador de plugins
 
-`orcadeck-plugman` es el port a Rust de `tools/legacy/plugin-install/install.mjs`.
+`abac-plugman` es el port a Rust de `tools/legacy/plugin-install/install.mjs`.
 
 - Acepta `.streamDeckPlugin` (zip) o una carpeta `.sdPlugin`.
 - **No descifra** un `manifest.json` que empieza por `ELGATO`; reconstruye el manifest funcional
@@ -298,7 +298,7 @@ URL, se cambia por una cookie `HttpOnly; SameSite=Strict` y se exige en cada `/a
 ## 10. HID y render
 
 - Dispositivo: AKP153E, `VID 0x0300 / PID 0x1010` (bootloader `0xEEEF/0x2929`).
-- `N` (payload del reporte de salida): `ORCADECK_REPORT_LEN` si está; si no, se deduce del
+- `N` (payload del reporte de salida): `ABAC_REPORT_LEN` si está; si no, se deduce del
   descriptor HID; si no, 512. Cada escritura antepone el ID de reporte `0x00`.
 - Comandos: `CRT\0\0` + verbo. `DIS` despierta, `LIG` brillo, `CLE` borra, `BAT` cabecera de imagen
   (longitud BE16 + tecla), `STP` refresca, `CONNECT` latido cada 10 s.
@@ -321,7 +321,7 @@ URL, se cambia por una cookie `HttpOnly; SameSite=Strict` y se exige en cada `/a
 | Property Inspector limitado a plugins con PI resoluble | si falta, el editor muestra título/JSON |
 | Sin recarga en caliente fuera de `edit` dentro de `run` | el fallback standalone escribe en disco y `run` no lo ve |
 | Plugins viejos no se matan al cambiar de escena | evita perder ajustes; consume RAM |
-| Plugins de `Program Files` fuera de `run` | `run` solo descubre `%APPDATA%\HotSpot\StreamDock\plugins` u `ORCADECK_PLUGINS`; `edit` los lista, pero no se lanzan |
+| Plugins de `Program Files` fuera de `run` | `run` solo descubre `%APPDATA%\HotSpot\StreamDock\plugins` u `ABAC_PLUGINS`; `edit` los lista, pero no se lanzan |
 | Parpadeo ok/alert | 600 ms, dos pintados extra |
 | Sin cierre ordenado de hijos al matar `run` | Windows no mata los procesos hijos del padre |
 | Parche de firmware | diseñado y emulado, **nunca flasheado**; regla dura: no flashear |

@@ -1,6 +1,6 @@
 # Handoff: instalación nativa de plugins de Stream Deck
 
-> **Nota (2026-11-10):** portado a `orcadeck-plugman` e integrado en `edit`; se conserva como contrato
+> **Nota (2026-11-10):** portado a `abac-plugman` e integrado en `edit`; se conserva como contrato
 > funcional del instalador. Estado en [`../project/STATUS.md`](../project/STATUS.md).
 
 Fecha: 2026-11-09. Para el worker que está construyendo la app (demonio Rust).
@@ -300,9 +300,9 @@ node tools/legacy/plugin-install/install.mjs import <dir> --data <dir>
 ### Rutas sugeridas para la app
 
 ```
-%APPDATA%\OrcaDeck\plugins\<uuid>.sdPlugin     plugins instalados
-%APPDATA%\OrcaDeck\manifests\<uuid>.json       overlays reconstruidos
-%APPDATA%\OrcaDeck\overlays\                   export/import manual
+%APPDATA%\ABAC\plugins\<uuid>.sdPlugin     plugins instalados
+%APPDATA%\ABAC\manifests\<uuid>.json       overlays reconstruidos
+%APPDATA%\ABAC\overlays\                   export/import manual
 ```
 
 La ruta exacta la decide la app; el módulo solo recibe `pluginsRoot` y `dataRoot`.

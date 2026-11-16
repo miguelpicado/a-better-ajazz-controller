@@ -6,7 +6,7 @@ mod proto;
 mod render;
 
 use image::{GenericImage, Rgba, RgbaImage};
-use orcadeck_builtin::core::{render_agent, Agent, State};
+use abac_builtin::core::{render_agent, Agent, State};
 use std::fs;
 
 fn render_label(text: &str, w: u32, h: u32, font_size: u32, color: &str) -> RgbaImage {
@@ -14,9 +14,9 @@ fn render_label(text: &str, w: u32, h: u32, font_size: u32, color: &str) -> Rgba
     let text_y = (h * 7 / 10).max(font_size);
     let svg = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{px}" height="{px}" viewBox="0 0 {px} {px}"><rect width="{px}" height="{px}" fill="#18181b"/><text x="10" y="{text_y}" font-family="Segoe UI, Arial, sans-serif" font-size="{font_size}" font-weight="bold" fill="{color}">{}</text></svg>"##,
-        orcadeck_builtin::core::esc(text)
+        abac_builtin::core::esc(text)
     );
-    let rgba = orcadeck_builtin::raster::svg_to_rgba(&svg, px)
+    let rgba = abac_builtin::raster::svg_to_rgba(&svg, px)
         .unwrap_or_else(|_| vec![24; (px * px * 4) as usize]);
     let full = RgbaImage::from_raw(px, px, rgba).unwrap();
     let mut out = RgbaImage::new(w, h);
@@ -29,7 +29,7 @@ fn render_label(text: &str, w: u32, h: u32, font_size: u32, color: &str) -> Rgba
 }
 
 fn jpeg_roundtrip(svg: &str) -> RgbaImage {
-    let rgba = orcadeck_builtin::raster::svg_to_rgba(svg, 85).expect("raster svg");
+    let rgba = abac_builtin::raster::svg_to_rgba(svg, 85).expect("raster svg");
     let img = RgbaImage::from_raw(85, 85, rgba).expect("raw image");
     let dyn_img = image::DynamicImage::ImageRgba8(img);
     let jpeg = render::key_jpeg(&dyn_img, 1);
@@ -257,7 +257,7 @@ fn main() {
 
     // Draw main title
     let title_img = render_label(
-        "OrcaDeck Agent Key Render Test Sheet (85px -> 3x NN, JPEG round-trip)",
+        "ABAC Agent Key Render Test Sheet (85px -> 3x NN, JPEG round-trip)",
         total_w,
         title_h,
         18,
@@ -287,7 +287,7 @@ fn main() {
         }
     }
 
-    let out_dir = std::env::temp_dir().join("orcadeck-frames");
+    let out_dir = std::env::temp_dir().join("abac-frames");
     fs::create_dir_all(&out_dir).expect("create out_dir");
     let sheet_path = out_dir.join("sheet.png");
     sheet

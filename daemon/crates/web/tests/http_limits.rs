@@ -1,6 +1,6 @@
 //! HTTP/1.1 size limits (REPO-AUDIT.md §4.2): an oversized or lying `Content-Length` and an
 //! oversized header must be refused quickly, without reading the declared body.
-use orcadeck_web::{FsStore, Server};
+use abac_web::{FsStore, Server};
 use std::{
     fs,
     io::{Read, Write},
@@ -15,7 +15,7 @@ const MAX_HEAD: usize = 16 * 1024;
 
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
-        "orcadeck-http-limits-{name}-{}",
+        "abac-http-limits-{name}-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&d);

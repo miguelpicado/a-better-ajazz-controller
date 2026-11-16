@@ -3,6 +3,57 @@
 version = 4
 
 [[package]]
+name = "abac"
+version = "0.1.0"
+dependencies = [
+ "abac-builtin",
+ "abac-host",
+ "abac-web",
+ "base64",
+ "hidapi",
+ "image",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "abac-builtin"
+version = "0.1.0"
+dependencies = [
+ "resvg",
+ "serde_json",
+]
+
+[[package]]
+name = "abac-host"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "log",
+ "serde_json",
+ "tungstenite",
+]
+
+[[package]]
+name = "abac-plugman"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
+name = "abac-web"
+version = "0.1.0"
+dependencies = [
+ "abac-plugman",
+ "getrandom",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -479,57 +530,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "orcadeck"
-version = "0.1.0"
-dependencies = [
- "base64",
- "hidapi",
- "image",
- "orcadeck-builtin",
- "orcadeck-host",
- "orcadeck-web",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "orcadeck-builtin"
-version = "0.1.0"
-dependencies = [
- "resvg",
- "serde_json",
-]
-
-[[package]]
-name = "orcadeck-host"
-version = "0.1.0"
-dependencies = [
- "getrandom",
- "log",
- "serde_json",
- "tungstenite",
-]
-
-[[package]]
-name = "orcadeck-plugman"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "serde_json",
- "zip",
-]
-
-[[package]]
-name = "orcadeck-web"
-version = "0.1.0"
-dependencies = [
- "getrandom",
- "orcadeck-plugman",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "pico-args"

@@ -19,7 +19,7 @@ pub fn fit_px(img: DynamicImage, px: u32) -> DynamicImage {
 fn start_quality() -> i32 {
     static Q: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
     *Q.get_or_init(|| {
-        std::env::var("ORCADECK_JPEG_Q")
+        std::env::var("ABAC_JPEG_Q")
             .ok()
             .and_then(|v| v.trim().parse().ok())
             .map_or(85, |q: i32| q.clamp(1, 100))
@@ -51,7 +51,7 @@ pub fn key_jpeg_spec(spec: &DeviceSpec, img: &DynamicImage, key: u8) -> Vec<u8> 
     };
     let rgb = imageops::rotate270(&img.to_rgb8());
     // Start quality (default 85) steps down until the frame fits `max_jpeg`. Lower = smaller = less USB time:
-    // at q75 a 4-key animation kept the device ~40 % busy and presses were missed. `ORCADECK_JPEG_Q` tunes it.
+    // at q75 a 4-key animation kept the device ~40 % busy and presses were missed. `ABAC_JPEG_Q` tunes it.
     let mut q: i32 = start_quality();
     loop {
         let mut out = Vec::new();
@@ -196,7 +196,7 @@ pub fn dra_side_jpegs(
 /// Rasterises a `panel_strip` SVG (`dw` x `dh`, device orientation) at 2x, like the key pipeline's work size.
 pub fn strip_image(svg: &str, dw: u32, dh: u32) -> Option<DynamicImage> {
     let (w, h) = (dw.clamp(1, 400) * 2, dh.clamp(1, 960) * 2);
-    let rgba = orcadeck_builtin::raster::svg_to_rgba_wh(svg, w, h).ok()?;
+    let rgba = abac_builtin::raster::svg_to_rgba_wh(svg, w, h).ok()?;
     image::RgbaImage::from_raw(w, h, rgba).map(DynamicImage::ImageRgba8)
 }
 
@@ -206,7 +206,7 @@ pub fn strip_slices(strip2x: &DynamicImage) -> [DynamicImage; 3] {
     const W: u32 = 160;
     let rgb = strip2x.to_rgb8();
     let x0 = rgb.width().saturating_sub(W) / 2;
-    orcadeck_builtin::cell_rows().map(|(y0, _)| {
+    abac_builtin::cell_rows().map(|(y0, _)| {
         let mut cell = image::RgbImage::new(W, W);
         let (y0, w) = (y0 * 2, W.min(rgb.width()));
         if y0 < rgb.height() {
@@ -345,10 +345,10 @@ mod tests {
 
     // ---- panel_strip ----------------------------------------------------------------------
 
-    use orcadeck_builtin::core::LocalTime;
-    use orcadeck_builtin::strip::{render_strip, strip_dims};
-    use orcadeck_builtin::sys::{Gpu, Sample};
-    use orcadeck_builtin::StripCfg;
+    use abac_builtin::core::LocalTime;
+    use abac_builtin::strip::{render_strip, strip_dims};
+    use abac_builtin::sys::{Gpu, Sample};
+    use abac_builtin::StripCfg;
 
     fn state(cpu: f64, ram: f64, gpu: Option<f64>) -> Sample {
         Sample {
@@ -437,7 +437,7 @@ mod tests {
         out
     }
 
-    /// Offline previews. `STRIP_PREVIEW_DIR=<dir> cargo test -p orcadeck strip_previews` writes them; otherwise a no-op.
+    /// Offline previews. `STRIP_PREVIEW_DIR=<dir> cargo test -p abac strip_previews` writes them; otherwise a no-op.
     #[test]
     fn strip_previews() {
         let Some(dir) = std::env::var_os("STRIP_PREVIEW_DIR").map(std::path::PathBuf::from) else { return };

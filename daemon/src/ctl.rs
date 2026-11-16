@@ -1,11 +1,11 @@
-//! Local control channel between `orcadeck run` and `orcadeck edit`.
+//! Local control channel between `abac run` and `abac edit`.
 //!
 //! `run` owns the HID device, the plugin host and, on demand, the web editor. `edit` is a client:
 //! it asks the live `run` to start the editor inside its own process, receives the URL and holds
 //! the connection open. Ctrl+C closes the pipe and `run` drops the web server, so the editor is
 //! never resident.
 //!
-//! Transport is the Windows named pipe `\\.\pipe\orcadeck-ctl` (byte mode, one instance, blocking
+//! Transport is the Windows named pipe `\\.\pipe\abac-ctl` (byte mode, one instance, blocking
 //! I/O) through raw `kernel32`/`advapi32` calls, like the Ctrl+C handler in `edit.rs`: no crates,
 //! and the server thread sleeps in `ConnectNamedPipe`/`ReadFile`, so an idle daemon costs no CPU.
 //!
@@ -281,12 +281,12 @@ pub(crate) mod imp {
             if !self.server {
                 return Some(line);
             }
-            // `INSTALL <path>` from `orcadeck install`: stage the package here, in the process that
+            // `INSTALL <path>` from `abac install`: stage the package here, in the process that
             // owns the web server, and let `serve_edit` start the editor as if it had asked for it.
             let Some(path) = super::parse_install(&line) else {
                 return Some(line);
             };
-            match orcadeck_web::stage_package(&path) {
+            match abac_web::stage_package(&path) {
                 Ok(token) => {
                     self.pending = Some("EDIT 0".into());
                     self.staged = Some(token);
@@ -540,7 +540,7 @@ pub(crate) mod imp {
             if !h.valid() {
                 // SAFETY: GetLastError checks if still busy after wait.
                 return if unsafe { GetLastError() } == ERROR_PIPE_BUSY {
-                    Some(Err("otro 'orcadeck edit' ya está conectado a run".into()))
+                    Some(Err("otro 'abac edit' ya está conectado a run".into()))
                 } else {
                     None
                 };
@@ -633,7 +633,7 @@ pub(crate) use imp::Listener;
 pub use imp::{spawn, Conn, Session};
 
 /// Pipe the daemon listens on; `run` owns it, `edit` connects.
-pub const NAME: &str = r"\\.\pipe\orcadeck-ctl";
+pub const NAME: &str = r"\\.\pipe\abac-ctl";
 
 /// Pure function building the restrictive SDDL DACL for the named pipe.
 /// Only the given user SID and SYSTEM are granted Generic All access.
@@ -684,7 +684,7 @@ mod tests {
     use super::*;
 
     fn test_pipe(tag: &str) -> String {
-        format!(r"\\.\pipe\orcadeck-ctl-test-{tag}-{}", std::process::id())
+        format!(r"\\.\pipe\abac-ctl-test-{tag}-{}", std::process::id())
     }
 
     #[test]
@@ -725,7 +725,7 @@ mod tests {
         let name = test_pipe("install");
         let listener = imp::Listener::new(&name).expect("pipe instance");
         let pkg = std::env::temp_dir().join(format!(
-            "orcadeck-ctl-test-{}.streamDeckPlugin",
+            "abac-ctl-test-{}.streamDeckPlugin",
             std::process::id()
         ));
         std::fs::write(&pkg, b"package body").unwrap();

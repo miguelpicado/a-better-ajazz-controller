@@ -1,4 +1,4 @@
-//! `orcadeck run <profile>`: HID driver + plugin host + built-in Orca Deck actions in one process.
+//! `abac run <profile>`: HID driver + plugin host + built-in Orca Deck actions in one process.
 //!
 //! Threads: main (owns the HID device: input, paint, heartbeat), `builtin` (owns the `Registry`,
 //! ticks every 400 ms), host accept/socket threads (plugins). Everything that paints sends
@@ -18,8 +18,8 @@ use crate::{
 use base64::Engine;
 use hidapi::{HidApi, HidDevice};
 use image::{imageops, DynamicImage};
-use orcadeck_builtin as bi;
-use orcadeck_host as host;
+use abac_builtin as bi;
+use abac_host as host;
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
@@ -69,16 +69,16 @@ fn send_brightness(dock: &mut impl DockWriter) -> Result<(), String> {
 
 /// Minimum time between paint batches (all pending keys go out together). The firmware misses key
 /// presses while busy with images, so paint traffic must leave idle gaps. Default is 125 ms (checked on
-/// device with 4 animating keys, no lost presses); ORCADECK_GAP_MS=250 or 400 restores a safer gap.
+/// device with 4 animating keys, no lost presses); ABAC_GAP_MS=250 or 400 restores a safer gap.
 fn batch_gap() -> Duration {
     Duration::from_millis(
-        std::env::var("ORCADECK_GAP_MS")
+        std::env::var("ABAC_GAP_MS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(BATCH_GAP_MS),
     )
 }
-/// Experimental DRA render path (docs/research/hid/dra-render-notes.md). `ORCADECK_DRA=1` opts in; default off.
+/// Experimental DRA render path (docs/research/hid/dra-render-notes.md). `ABAC_DRA=1` opts in; default off.
 struct Dra {
     gap: Duration,
     side: u16,
@@ -88,11 +88,11 @@ fn dra_cfg() -> Option<&'static Dra> {
     static C: LazyLock<Option<Dra>> = LazyLock::new(|| {
         let env = |k: &str| std::env::var(k).ok();
         let num = |k: &str, d: u64| env(k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
-        // ORCADECK_DRA=1 or `"enabled": true` in calibration.json. Per-key size/offset live in `calib`
-        // (file entry, else ORCADECK_DRA_TILE_PX / ORCADECK_DRA_OFFSETS).
-        (env("ORCADECK_DRA").as_deref() == Some("1") || calib::file_enabled()).then(|| Dra {
-            gap: Duration::from_millis(num("ORCADECK_DRA_GAP_MS", 50)),
-            side: num("ORCADECK_DRA_SIDE_PX", 80).clamp(1, 200) as u16,
+        // ABAC_DRA=1 or `"enabled": true` in calibration.json. Per-key size/offset live in `calib`
+        // (file entry, else ABAC_DRA_TILE_PX / ABAC_DRA_OFFSETS).
+        (env("ABAC_DRA").as_deref() == Some("1") || calib::file_enabled()).then(|| Dra {
+            gap: Duration::from_millis(num("ABAC_DRA_GAP_MS", 50)),
+            side: num("ABAC_DRA_SIDE_PX", 80).clamp(1, 200) as u16,
         })
     });
     C.as_ref()
@@ -160,10 +160,10 @@ fn calib_sync(rt: &Runtime, pending: &mut HashMap<u8, (DynamicImage, u64)>) {
     }
 }
 
-/// DRA mode paints ALL pending keys (and the side strip) in one pass, `ORCADECK_DRA_GAP_MS` (default 50) apart
+/// DRA mode paints ALL pending keys (and the side strip) in one pass, `ABAC_DRA_GAP_MS` (default 50) apart
 /// (hardware: 15 tiles 50 ms apart all drew); the caller then applies the usual batch gap once. Unchanged keys are
 /// never pending, so one changed key costs one DRA. No BAT, no STP (STP erases DRA content).
-/// `ORCADECK_TRACE` logs each pass (number of DRA, elapsed ms) like the BAT batch.
+/// `ABAC_TRACE` logs each pass (number of DRA, elapsed ms) like the BAT batch.
 fn paint_dra<W: DockWriter>(
     cfg: &Dra,
     rt: &Runtime,
@@ -179,7 +179,7 @@ fn paint_dra<W: DockWriter>(
         paint_dra_one(cfg, rt, pending, dock)?;
         n += 1;
     }
-    if std::env::var_os("ORCADECK_TRACE").is_some() {
+    if std::env::var_os("ABAC_TRACE").is_some() {
         eprintln!("DRA pass: {n} draws in {} ms (gap {} ms)", t.elapsed().as_millis(), cfg.gap.as_millis());
     }
     Ok(())
@@ -483,7 +483,7 @@ struct Runtime {
     settings: Mutex<SettingsPending>,
     /// Manifest of the scene now on the deck, replaced by a scene switch.
     manifest: Mutex<PathBuf>,
-    /// `<APPDATA>/OrcaDeck`, holds `globals/<plugin>.json`.
+    /// `<APPDATA>/ABAC`, holds `globals/<plugin>.json`.
     data: PathBuf,
 }
 
@@ -869,7 +869,7 @@ fn scene_dir(rt: &Runtime) -> Option<PathBuf> {
 }
 
 /// Live bridge from the web editor to the plugin host: a one-use inspector token for the plugin
-/// action on a cell of the scene now on the deck (`orcadeck_web::InspectorBridge`).
+/// action on a cell of the scene now on the deck (`abac_web::InspectorBridge`).
 pub(crate) struct RunInspector {
     rt: Arc<Runtime>,
     host: host::Host,
@@ -909,10 +909,10 @@ impl RunInspector {
     }
 }
 
-impl orcadeck_web::InspectorBridge for RunInspector {
-    fn open(&self, scene: &str, key: &str) -> Result<orcadeck_web::InspectorSession, String> {
+impl abac_web::InspectorBridge for RunInspector {
+    fn open(&self, scene: &str, key: &str) -> Result<abac_web::InspectorSession, String> {
         let (token, port, context) = RunInspector::open(self, scene, key)?;
-        Ok(orcadeck_web::InspectorSession {
+        Ok(abac_web::InspectorSession {
             token,
             port,
             context,
@@ -939,11 +939,11 @@ impl orcadeck_web::InspectorBridge for RunInspector {
         r
     }
 
-    fn mirror(&self, since: u64) -> orcadeck_web::Mirror {
+    fn mirror(&self, since: u64) -> abac_web::Mirror {
         use base64::engine::general_purpose::STANDARD;
         let gen = MIRROR_GEN.load(Ordering::Relaxed);
         if gen == since {
-            return orcadeck_web::Mirror { gen, ..Default::default() };
+            return abac_web::Mirror { gen, ..Default::default() };
         }
         let cells = MIRROR
             .lock()
@@ -954,13 +954,13 @@ impl orcadeck_web::InspectorBridge for RunInspector {
                 Some((key_cell(*k)?, format!("data:image/jpeg;base64,{}", STANDARD.encode(j))))
             })
             .collect();
-        orcadeck_web::Mirror { gen, scene: current_scene(&self.rt), cells }
+        abac_web::Mirror { gen, scene: current_scene(&self.rt), cells }
     }
 }
 
-/// `%APPDATA%\OrcaDeck\globals\<plugin>.json`, or `None` for an id unsafe as a file name.
+/// `%APPDATA%\ABAC\globals\<plugin>.json`, or `None` for an id unsafe as a file name.
 fn globals_path(data: &Path, plugin: &str) -> Option<PathBuf> {
-    orcadeck_web::store::safe_id(plugin)
+    abac_web::store::safe_id(plugin)
         .then(|| data.join("globals").join(format!("{plugin}.json")))
 }
 
@@ -974,7 +974,7 @@ fn save_global(data: &Path, plugin: &str, settings: &Value) {
         }
     }
     if let Err(e) =
-        orcadeck_web::store::atomic_write(&path, &orcadeck_web::store::to_pretty(settings), false)
+        abac_web::store::atomic_write(&path, &abac_web::store::to_pretty(settings), false)
     {
         eprintln!("globals {plugin}: {e}");
     }
@@ -1416,7 +1416,7 @@ fn reload_cell(
     Some((key, v.effective(key)))
 }
 
-/// `orcadeck edit` inside `run`: the web server lives exactly as long as the client stays
+/// `abac edit` inside `run`: the web server lives exactly as long as the client stays
 /// connected, and it uses the plugin host that already has the plugins running.
 fn serve_edit(
     conn: &mut ctl::Conn,
@@ -1424,7 +1424,7 @@ fn serve_edit(
     plugins: &Path,
     data: &Path,
     host: &host::Host,
-    inspector: Option<Arc<dyn orcadeck_web::InspectorBridge>>,
+    inspector: Option<Arc<dyn abac_web::InspectorBridge>>,
 ) {
     let Some(port) = conn.read_line().as_deref().and_then(ctl::parse_edit) else {
         conn.write_line("ERR expected: EDIT <port>");
@@ -1443,7 +1443,7 @@ fn serve_edit(
         .filter(|p| !p.as_os_str().is_empty())
         .map(|p| p.join("config"))
         .filter(|p| p.is_dir());
-    let store = orcadeck_web::FsStore {
+    let store = abac_web::FsStore {
         profiles,
         plugins: plugins.to_path_buf(),
         builtin_plugins: crate::edit::resolve_paths().builtin_plugins,
@@ -1452,7 +1452,7 @@ fn serve_edit(
         downloads: None,
         inspector,
     };
-    match orcadeck_web::Server::start(Arc::new(store), port) {
+    match abac_web::Server::start(Arc::new(store), port) {
         Ok(server) => {
             // The PI connects to the plugin host from the editor page, whose port is only known now.
             host.allow_origin(format!("http://127.0.0.1:{}", server.addr.port()));
@@ -1484,10 +1484,10 @@ pub fn run(
     let (reload_tx, reload_rx) = mpsc::channel::<ReloadCmd>();
 
     // Plugin host: only plugins the scene uses are launched.
-    let data_root = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("OrcaDeck");
+    let data_root = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("ABAC");
     if let Some(pct) = std::fs::read(data_root.join("state.json"))
         .ok()
-        .and_then(|b| orcadeck_web::store::parse_json(&b))
+        .and_then(|b| abac_web::store::parse_json(&b))
         .and_then(|s| s.get("brightness")?.as_u64())
         .filter(|p| *p <= 100)
     {
@@ -1525,13 +1525,13 @@ pub fn run(
     )
     .map_err(|e| format!("plugin host: {e}"))?;
 
-    // `orcadeck edit` attaches here. The worker thread blocks in the named pipe, so it costs no
+    // `abac edit` attaches here. The worker thread blocks in the named pipe, so it costs no
     // CPU, and it only starts the web server while an edit client is connected.
     let ctl_profile = profile.to_path_buf();
     let ctl_plugins = plugins.to_path_buf();
     let ctl_data = data_root.clone();
     let ctl_host = host.clone();
-    let ctl_inspector: Arc<dyn orcadeck_web::InspectorBridge> =
+    let ctl_inspector: Arc<dyn abac_web::InspectorBridge> =
         Arc::new(RunInspector::new(Arc::clone(&runtime), host.clone()));
     ctl::spawn(ctl::NAME, move |conn| {
         serve_edit(
@@ -1581,7 +1581,7 @@ pub fn run(
                         builtin.paint_at(my_gen, &ctx, k, img);
                     }
                 }
-                if n > 0 && std::env::var_os("ORCADECK_TRACE").is_some() {
+                if n > 0 && std::env::var_os("ABAC_TRACE").is_some() {
                     eprintln!(
                         "builtin tick {tick_us} us, raster {n} svgs {} us",
                         tr.elapsed().as_micros()
@@ -1706,7 +1706,7 @@ pub fn run(
 }
 
 fn hid_reader_mode() -> bool {
-    std::env::var("ORCADECK_HID_READER")
+    std::env::var("ABAC_HID_READER")
         .map(|v| v.eq_ignore_ascii_case("thread"))
         .unwrap_or(false)
 }
@@ -1798,7 +1798,7 @@ fn handle_input_packet<W: DockWriter>(
     pending: &mut HashMap<u8, (DynamicImage, u64)>,
     t0: Instant,
 ) -> Result<(), String> {
-    if std::env::var_os("ORCADECK_TRACE").is_some() {
+    if std::env::var_os("ABAC_TRACE").is_some() {
         eprintln!(
             "{:>6}ms in {:02x?}",
             t0.elapsed().as_millis(),
@@ -1942,10 +1942,10 @@ static LONG: LazyLock<Mutex<HashMap<u8, Target>>> = LazyLock::new(|| Mutex::new(
 static ARMED: LazyLock<Mutex<HashMap<u8, (Instant, bool)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Long-press threshold: 500 ms, `ORCADECK_LONG_MS` overrides it.
+/// Long-press threshold: 500 ms, `ABAC_LONG_MS` overrides it.
 fn long_press() -> Duration {
     static MS: LazyLock<u64> = LazyLock::new(|| {
-        std::env::var("ORCADECK_LONG_MS")
+        std::env::var("ABAC_LONG_MS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(500)
@@ -2087,7 +2087,7 @@ fn process_paints<W: DockWriter>(
             }
             dock.flush()?;
             *last_batch = Instant::now();
-            if std::env::var_os("ORCADECK_TRACE").is_some() {
+            if std::env::var_os("ABAC_TRACE").is_some() {
                 keys.sort_unstable();
                 eprintln!(
                     "{:>6}ms painted {count} keys {keys:?} {bytes} B in {} ms (jpeg {jpeg_us} us)",
@@ -2359,7 +2359,7 @@ mod tests {
     }
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("orcadeck-app-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("abac-app-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -2942,7 +2942,7 @@ mod tests {
             |_| {},
         )
         .unwrap();
-        let name = format!(r"\\.\pipe\orcadeck-ctl-test-edit-{}", std::process::id());
+        let name = format!(r"\\.\pipe\abac-ctl-test-edit-{}", std::process::id());
         let listener = ctl::Listener::new(&name).expect("pipe instance");
         let (profile, plugins, data) = (scene.clone(), root.join("plugins"), root.clone());
         let server = std::thread::spawn(move || {
@@ -2958,7 +2958,7 @@ mod tests {
         let port: u16 = rest.split('/').next().unwrap().parse().unwrap();
         std::net::TcpStream::connect(("127.0.0.1", port)).expect("the embedded editor listens");
 
-        drop(session); // Ctrl+C in `orcadeck edit`
+        drop(session); // Ctrl+C in `abac edit`
         server
             .join()
             .expect("serve_edit returns and stops the server");
@@ -3215,19 +3215,19 @@ mod tests {
 
     #[test]
     fn reader_thread_env_switch() {
-        std::env::remove_var("ORCADECK_HID_READER");
+        std::env::remove_var("ABAC_HID_READER");
         assert!(!hid_reader_mode(), "default OFF");
 
-        std::env::set_var("ORCADECK_HID_READER", "0");
+        std::env::set_var("ABAC_HID_READER", "0");
         assert!(!hid_reader_mode(), "non-thread is OFF");
 
-        std::env::set_var("ORCADECK_HID_READER", "thread");
+        std::env::set_var("ABAC_HID_READER", "thread");
         assert!(hid_reader_mode(), "thread is ON");
 
-        std::env::set_var("ORCADECK_HID_READER", "THREAD");
+        std::env::set_var("ABAC_HID_READER", "THREAD");
         assert!(hid_reader_mode(), "case-insensitive THREAD is ON");
 
-        std::env::remove_var("ORCADECK_HID_READER");
+        std::env::remove_var("ABAC_HID_READER");
     }
 
     #[test]
@@ -3261,14 +3261,14 @@ mod tests {
 
     #[test]
     fn batch_gap_defaults_to_125_and_honours_env() {
-        std::env::remove_var("ORCADECK_GAP_MS");
+        std::env::remove_var("ABAC_GAP_MS");
         assert_eq!(batch_gap(), Duration::from_millis(BATCH_GAP_MS));
         assert_eq!(BATCH_GAP_MS, 125);
 
-        std::env::set_var("ORCADECK_GAP_MS", "400");
+        std::env::set_var("ABAC_GAP_MS", "400");
         assert_eq!(batch_gap(), Duration::from_millis(400));
 
-        std::env::remove_var("ORCADECK_GAP_MS");
+        std::env::remove_var("ABAC_GAP_MS");
     }
 
     #[test]

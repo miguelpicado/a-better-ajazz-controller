@@ -1,13 +1,13 @@
-//! OrcaDeck local web editor: an HTTP server on 127.0.0.1 that serves an embedded SPA and a JSON API to edit
+//! ABAC local web editor: an HTTP server on 127.0.0.1 that serves an embedded SPA and a JSON API to edit
 //! scenes, cells and actions and to inspect plugins. The daemon starts it on demand and drops it when done.
 //!
 //! ```no_run
 //! # use std::sync::Arc;
-//! let store = Arc::new(orcadeck_web::FsStore {
+//! let store = Arc::new(abac_web::FsStore {
 //!     profiles: "data/profiles".into(), plugins: "data/plugins".into(), builtin_plugins: vec![],
 //!     data: "data".into(), legacy_config: None, downloads: None, inspector: None,
 //! });
-//! let server = orcadeck_web::Server::start(store, 0).unwrap();
+//! let server = abac_web::Server::start(store, 0).unwrap();
 //! println!("open {}", server.url()); // token in the URL; the page swaps it for a cookie
 //! ```
 mod api;
@@ -20,7 +20,7 @@ pub mod store;
 pub use api::validate_scene;
 pub use store::{Error, FsStore, Plugin, SceneInfo, Store};
 
-/// Validates a package path handed over by the OS shell (double click, `orcadeck install`).
+/// Validates a package path handed over by the OS shell (double click, `abac install`).
 pub fn validate_package(raw: &str) -> Result<std::path::PathBuf, String> {
     staged::validate(std::path::Path::new(raw))
 }

@@ -35,7 +35,7 @@ jobs:
       - run: cargo build --release --workspace
       - name: smoke (release binary)
         shell: pwsh
-        run: pwsh -File ../tools/smoke/smoke.ps1 -Exe target/release/orcadeck.exe
+        run: pwsh -File ../tools/smoke/smoke.ps1 -Exe target/release/abac.exe
       - run: cargo test --release --workspace
       # E2E after the Rust gate: the release binary is already built, and a source regression
       # fails in cargo test before spending time on npm/browser setup.
@@ -53,7 +53,7 @@ jobs:
       - name: e2e (Playwright)
         working-directory: tools/e2e
         env:
-          ORCADECK_BIN: ${{ github.workspace }}\daemon\target\release\orcadeck.exe
+          ABAC_BIN: ${{ github.workspace }}\daemon\target\release\abac.exe
         run: npx playwright test
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()

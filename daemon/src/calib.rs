@@ -107,11 +107,11 @@ fn factory(key: u8) -> KeyCal {
     }
 }
 
-/// `%LOCALAPPDATA%\OrcaDeck\calibration.json`; `ORCADECK_CALIBRATION` overrides the whole path.
+/// `%LOCALAPPDATA%\ABAC\calibration.json`; `ABAC_CALIBRATION` overrides the whole path.
 pub fn file_path() -> Option<PathBuf> {
-    std::env::var_os("ORCADECK_CALIBRATION")
+    std::env::var_os("ABAC_CALIBRATION")
         .map(PathBuf::from)
-        .or_else(|| Some(PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("OrcaDeck").join("calibration.json")))
+        .or_else(|| Some(PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("ABAC").join("calibration.json")))
 }
 
 /// Temp file + rename, so a crash never leaves a half-written file.
@@ -129,7 +129,7 @@ pub fn write_atomic(path: &std::path::Path, text: &str) -> Result<(), String> {
 
 pub struct State {
     pub file: File,
-    /// Env-derived value for keys the file does not list (`ORCADECK_DRA_TILE_PX`, `ORCADECK_DRA_OFFSETS`).
+    /// Env-derived value for keys the file does not list (`ABAC_DRA_TILE_PX`, `ABAC_DRA_OFFSETS`).
     defaults: Vec<KeyCal>,
     path: Option<PathBuf>,
     on: bool,
@@ -307,9 +307,9 @@ static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
         })
         .unwrap_or_default();
     let num = |k: &str, d: u64| env(k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
-    let tile = num("ORCADECK_DRA_TILE_PX", DRA_TILE_PX as u64).clamp(1, DRA_MAX_W as u64) as u16;
-    let side = num("ORCADECK_DRA_SIDE_PX", SIDE_CELL as u64).clamp(1, 200) as u16;
-    Mutex::new(State::new(file, tile, side, &env("ORCADECK_DRA_OFFSETS").unwrap_or_default(), path))
+    let tile = num("ABAC_DRA_TILE_PX", DRA_TILE_PX as u64).clamp(1, DRA_MAX_W as u64) as u16;
+    let side = num("ABAC_DRA_SIDE_PX", SIDE_CELL as u64).clamp(1, 200) as u16;
+    Mutex::new(State::new(file, tile, side, &env("ABAC_DRA_OFFSETS").unwrap_or_default(), path))
 });
 
 /// Runs `f` on the shared state.
@@ -317,15 +317,15 @@ pub fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     f(&mut STATE.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
-/// The `enabled` flag of the saved file (turns DRA mode on at startup, like `ORCADECK_DRA=1`).
+/// The `enabled` flag of the saved file (turns DRA mode on at startup, like `ABAC_DRA=1`).
 pub fn file_enabled() -> bool {
     with(|s| s.file.enabled)
 }
 
-/// Gap between redraws while calibrating (`ORCADECK_CALIB_GAP_MS`, default 150, at least 20).
+/// Gap between redraws while calibrating (`ABAC_CALIB_GAP_MS`, default 150, at least 20).
 pub fn gap() -> Duration {
     Duration::from_millis(
-        std::env::var("ORCADECK_CALIB_GAP_MS").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(150u64).max(20),
+        std::env::var("ABAC_CALIB_GAP_MS").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(150u64).max(20),
     )
 }
 
@@ -340,7 +340,7 @@ pub fn apply(s: &mut State, cmd: &Value, dra: bool) -> Result<Value, String> {
     }
     if let Some(b) = cmd.get("on").and_then(Value::as_bool) {
         if b && !dra {
-            return Err("calibration needs DRA mode: set ORCADECK_DRA=1 (or enable it here and restart)".into());
+            return Err("calibration needs DRA mode: set ABAC_DRA=1 (or enable it here and restart)".into());
         }
         s.set_on(b)?;
     }
@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn reset_all_marks_only_calibrated_keys_and_leaving_saves() {
-        let dir = std::env::temp_dir().join(format!("orcadeck-calib-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("abac-calib-{}", std::process::id()));
         let path = dir.join("calibration.json");
         let mut s = State::new(File::default(), 98, 80, "", Some(path.clone()));
         s.set_on(true).unwrap();
@@ -491,7 +491,7 @@ mod tests {
 
     #[test]
     fn write_atomic_replaces_file() {
-        let dir = std::env::temp_dir().join(format!("orcadeck-calib-w-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("abac-calib-w-{}", std::process::id()));
         let p = dir.join("c.json");
         write_atomic(&p, "a").unwrap();
         write_atomic(&p, "b").unwrap();

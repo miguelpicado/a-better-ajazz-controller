@@ -5,7 +5,7 @@
 //! test uses a process-unique pipe name and a temp `orca-runtime.json`.
 #![cfg(windows)]
 
-use orcadeck_builtin::{Orca, PipeOrca};
+use abac_builtin::{Orca, PipeOrca};
 use serde_json::{json, Value};
 use std::ffi::{c_void, OsStr};
 use std::fs::{self, File};
@@ -35,14 +35,14 @@ extern "system" {
 }
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("orcadeck-orca-pipe-{name}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("abac-orca-pipe-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
 }
 
 fn pipe_name(label: &str) -> String {
-    format!("orcadeck-test-{}-{label}", std::process::id())
+    format!("abac-test-{}-{label}", std::process::id())
 }
 
 fn write_runtime(path: &Path, pipe: &str, token: &str) {

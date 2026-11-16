@@ -1,7 +1,7 @@
 //! Profile/plugin icon resolution must never escape its folder (REPO-AUDIT.md §4.2): `..`,
 //! absolute and drive/UNC paths, bad scene/plugin ids and links are all refused by `Store::image`,
 //! which is what the `/api/image` route uses.
-use orcadeck_web::{FsStore, Server, Store};
+use abac_web::{FsStore, Server, Store};
 use std::{
     fs,
     io::{Read, Write},
@@ -20,7 +20,7 @@ fn w(p: impl AsRef<Path>, b: impl AsRef<[u8]>) {
 
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
-        "orcadeck-image-paths-{name}-{}",
+        "abac-image-paths-{name}-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&d);
@@ -144,7 +144,7 @@ fn get(s: &Server, path: &str) -> (String, Vec<u8>) {
         .unwrap();
     write!(
         c,
-        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-OrcaDeck-Token: {}\r\n\r\n",
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-ABAC-Token: {}\r\n\r\n",
         s.addr.port(),
         s.token()
     )

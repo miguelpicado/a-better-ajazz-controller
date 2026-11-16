@@ -1,4 +1,4 @@
-# orcadeck-builtin
+# abac-builtin
 
 Acciones Orca integradas en el demonio, sin proceso de plugin ni WebSocket. Es el port a Rust del
 plugin Node `com.miguelpicado.orcadock.sdPlugin` (`core.js` + `plugin.js`).
@@ -31,7 +31,7 @@ tocarlas.
 ## Uso
 
 ```rust
-use orcadeck_builtin::{now_ms, Deck, Key, PipeOrca, Registry};
+use abac_builtin::{now_ms, Deck, Key, PipeOrca, Registry};
 
 let mut registry = Registry::new(Deck::new(Box::new(PipeOrca::from_env()), Deck::default_quota_dir()));
 registry.appear(Key {
@@ -68,13 +68,13 @@ firmware entrega la pulsación al soltar, así que `keyDown` es el único evento
 usa timeout de 5 s y reintenta una vez releyendo el fichero (Orca puede haber reiniciado con otra
 tubería y otro token). `raise` trae la ventana de Orca al frente.
 
-`Deck::default_quota_dir()` usa `QUOTA_DIR` o, si no, `%APPDATA%\OrcaDeck\quota` (`<temp>\OrcaDeck\quota` sin `APPDATA`).
+`Deck::default_quota_dir()` usa `QUOTA_DIR` o, si no, `%APPDATA%\ABAC\quota` (`<temp>\ABAC\quota` sin `APPDATA`).
 
 ## Tests
 
 ```powershell
 cd daemon
-cargo test --release -p orcadeck-builtin
+cargo test --release -p abac-builtin
 ```
 
 `tests/port.rs` replica las aserciones de `test.js` del plugin Node y añade pruebas de `Registry` con

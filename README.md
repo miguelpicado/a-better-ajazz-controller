@@ -1,7 +1,7 @@
 # A Better AJazz Controller
 
 An extremely light, native replacement for the "Stream Dock AJAZZ" control app, written in Rust
-(binary and crates are called **OrcaDeck**: `orcadeck.exe`). Designed for the **AJAZZ AKP153E**, built to
+(binary and crates are called **ABAC**: `abac.exe`). Designed for the **AJAZZ AKP153E**, built to
 run natively next to **Orca** for agentic workflows with several accounts and many parallel workers.
 
 > Español: [README.es.md](README.es.md)
@@ -28,7 +28,7 @@ the same *useful* functionality with almost no footprint:
 
 **What this adds over the official app** (all free and open source, stock hardware):
 
-- **DRA render mode** (`ORCADECK_DRA=1`, experimental): keys drawn at **98×98 px** instead of 85×85, with per-key calibration in the editor, partial redraws (only the keys that changed are sent) and the **side panel as one continuous bar** (clock, CPU, GPU, RAM, CPU/GPU temperature) instead of three separate cells. See [Usage §4b](docs/guide/USAGE.en.md).
+- **DRA render mode** (`ABAC_DRA=1`, experimental): keys drawn at **98×98 px** instead of 85×85, with per-key calibration in the editor, partial redraws (only the keys that changed are sent) and the **side panel as one continuous bar** (clock, CPU, GPU, RAM, CPU/GPU temperature) instead of three separate cells. See [Usage §4b](docs/guide/USAGE.en.md).
 - **Press / release firmware patch**: stock firmware reports a key only on release. The [patcher](docs/guide/FIRMWARE-PATCH.en.md) makes the AKP153E send a report on **press** and another on **release**, so software gets real short/long press. You flash it yourself from your own firmware copy; no AJAZZ binary is distributed.
 The protocol layer should work with other AJAZZ / Stream Dock devices that speak the same HID protocol,
 but nothing outside the AKP153E is verified: expect to adjust key counts, image sizes and quirks. See [docs/design/devices.md](docs/design/devices.md) for the device specification table, verification status, and how to add support for new models.
@@ -39,12 +39,12 @@ Windows 10/11 x64 only for now.
 
 | Piece | State |
 |---|---|
-| `orcadeck run` (driver + plugin host + built-in keys) | tested live on an AKP153E |
+| `abac run` (driver + plugin host + built-in keys) | tested live on an AKP153E |
 | Built-in keys: agent, quota, clock, summary | working; animations, alert ring and timers tuned offline |
-| Web editor `orcadeck edit` (loopback only) | working: scenes, cells, plugins, brightness, Property Inspector |
-| Double-click install of `.streamDeckPlugin` / `.sdPlugin` (`orcadeck register`) | implemented; **not yet tested end-to-end on a real machine** |
+| Web editor `abac edit` (loopback only) | working: scenes, cells, plugins, brightness, Property Inspector |
+| Double-click install of `.streamDeckPlugin` / `.sdPlugin` (`abac register`) | implemented; **not yet tested end-to-end on a real machine** |
 | Scene Shift (profile rotation) | implemented; **not yet tested on the device** |
-| Optional threaded HID reader (`ORCADECK_HID_READER=thread`) | implemented, off by default, **not yet tested on the device** |
+| Optional threaded HID reader (`ABAC_HID_READER=thread`) | implemented, off by default, **not yet tested on the device** |
 | Press/release firmware patch | **flashed and tested on one unit** (firmware `V2.293S.00.003`): press and release reports arrive; see [FIRMWARE-PATCH](docs/guide/FIRMWARE-PATCH.en.md) |
 | DRA render mode (98×98 keys, continuous side bar) | experimental; used daily on one unit |
 
@@ -61,21 +61,21 @@ cargo build --release
 schtasks /end /tn StreamDock
 
 # 3. Check the keyboard (read-only)
-.\target\release\orcadeck.exe probe
+.\target\release\abac.exe probe
 
 # 4. Run with your profile
-.\target\release\orcadeck.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\<ID>.sdProfile"
+.\target\release\abac.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\<ID>.sdProfile"
 
 # 5. Edit scenes in the browser (inside `run` when it is alive)
-.\target\release\orcadeck.exe edit
+.\target\release\abac.exe edit
 ```
 
-Never run the official app and this one at the same time. Full usage and the `ORCADECK_*` variables:
+Never run the official app and this one at the same time. Full usage and the `ABAC_*` variables:
 [docs/guide/USAGE.md](docs/guide/USAGE.md). Architecture: [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md).
 
 ## Documentation
 
-- [Usage](docs/guide/USAGE.en.md) — commands, `ORCADECK_*` variables, Scene Shift, plugins, autostart.
+- [Usage](docs/guide/USAGE.en.md) — commands, `ABAC_*` variables, Scene Shift, plugins, autostart.
 - [Press/release firmware patch](docs/guide/FIRMWARE-PATCH.en.md) — how to patch and flash the AKP153E, how to go back.
 - [Troubleshooting](docs/guide/TROUBLESHOOTING.en.md) — common errors and diagnostics.
 - [Security policy](SECURITY.md) — supported versions, private reporting, security model.

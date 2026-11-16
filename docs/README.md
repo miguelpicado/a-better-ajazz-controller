@@ -1,4 +1,4 @@
-# Documentación de OrcaDeck
+# Documentación de ABAC
 
 Índice. `guide/` y `design/ARCHITECTURE.md` describen el código actual; `project/` es el estado de
 trabajo (puede quedar desfasado) y `research/` es el registro de evidencias y decisiones, no
@@ -13,7 +13,7 @@ Carpetas: [guide](guide/README.md) · [design](design/README.md) · [project](pr
 
 | Documento | Qué contiene |
 |---|---|
-| [guide/USAGE.md](guide/USAGE.md) | subcomandos, variables `ORCADECK_*`, flujo de uso, Scene Shift, editor, plugins, autoarranque |
+| [guide/USAGE.md](guide/USAGE.md) | subcomandos, variables `ABAC_*`, flujo de uso, Scene Shift, editor, plugins, autoarranque |
 | [guide/DEVELOPMENT.md](guide/DEVELOPMENT.md) | entorno Windows/llvm-mingw, gate de tests, estructura de tests, probar sin dispositivo, reglas de firmware |
 | [guide/TROUBLESHOOTING.md](guide/TROUBLESHOOTING.md) | `-1073741515`, dispositivo no encontrado, Stream Dock y puerto 18618, pulsaciones perdidas, plugins, escenas |
 
@@ -65,7 +65,7 @@ Carpetas: [guide](guide/README.md) · [design](design/README.md) · [project](pr
 |---|---|
 | [tools/legacy/README.md](../tools/legacy/README.md) | archivo del plugin Node, `deploy.ps1` e instalador de referencia |
 | [tools/legacy/plugin-install/README.md](../tools/legacy/plugin-install/README.md) | instalador de referencia en Node (`install.mjs`) |
-| [tools/autostart/orcadeck-task.ps1](../tools/autostart/orcadeck-task.ps1) | tarea programada de autoarranque (comandos en [guide/USAGE.md](guide/USAGE.md#9-autoarranque)) |
+| [tools/autostart/abac-task.ps1](../tools/autostart/abac-task.ps1) | tarea programada de autoarranque (comandos en [guide/USAGE.md](guide/USAGE.md#9-autoarranque)) |
 
 ## Código
 

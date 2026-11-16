@@ -1,8 +1,8 @@
-# Using OrcaDeck
+# Using ABAC
 
 > Español: [USAGE.md](USAGE.md).
 
-`orcadeck` is the lightweight replacement for "Stream Dock AJAZZ" for the AKP153E keyboard. It reads
+`abac` is the lightweight replacement for "Stream Dock AJAZZ" for the AKP153E keyboard. It reads
 Stream Dock profiles as they are and runs SDK v2 plugins (`.exe` and Node) plus built-in Orca actions.
 
 - Architecture and the reason for the timings: [ARCHITECTURE.md](../design/ARCHITECTURE.md).
@@ -12,7 +12,7 @@ Stream Dock profiles as they are and runs SDK v2 plugins (`.exe` and Node) plus 
 
 ## 1. Before you start
 
-1. **Stop Stream Dock** if it is running: `orcadeck run` uses the same HID and the same port 18618.
+1. **Stop Stream Dock** if it is running: `abac run` uses the same HID and the same port 18618.
    ```powershell
    schtasks /end /tn StreamDock
    ```
@@ -24,7 +24,7 @@ Stream Dock profiles as they are and runs SDK v2 plugins (`.exe` and Node) plus 
    The profile is the `<ID>.sdProfile` folder; pass that path, not `manifest.json`.
 3. Check that the device shows up (read-only, sends nothing):
    ```powershell
-   .\orcadeck.exe probe
+   .\abac.exe probe
    ```
    With the monitors off, the USB hub does not power the keyboard and `probe` will not find it.
 
@@ -45,7 +45,7 @@ All are implemented in [`daemon/src/main.rs`](../../daemon/src/main.rs); `run` a
 | `poll` | `poll [input\|feature]` | Reads `GET_REPORT` every 30 ms and shows changes. Experimental. | Yes (read) |
 | `hidwatch` | `hidwatch` | Enumerates HID every 100 ms, without opening or writing. Flags `EEEF:2929` (bootloader). | No (enumerates only) |
 | `install` | `install <package>` | Opens the editor with the package staged for install; nothing installs by itself. | No |
-| `register` | `register` | Associates `.streamDeckPlugin` and `.sdPlugin` with OrcaDeck for the current user (no admin). | No |
+| `register` | `register` | Associates `.streamDeckPlugin` and `.sdPlugin` with ABAC for the current user (no admin). | No |
 | `unregister` | `unregister` | Undoes the association and restores the previous one. | No |
 | `help` | `help`, `-h`, `--help` | Prints the command list. | No |
 
@@ -59,7 +59,7 @@ Notes:
   `MOD` does not change the behaviour: the event still arrives on release and with `state = 0`.
 - `poll feature` returns "Función incorrecta" (wrong function) on this unit; this is expected. `poll input`
   returns the version string and does not reflect a held key.
-- `orcadeck help` (also `-h`/`--help`) prints the command list. `edit --help` also exists.
+- `abac help` (also `-h`/`--help`) prints the command list. `edit --help` also exists.
 
 ## 3. Usage flow
 
@@ -69,9 +69,9 @@ Notes:
 # 1. Parar la app oficial (mismo HID y puerto 18618)
 schtasks /end /tn StreamDock
 
-# 2. Arrancar OrcaDeck con la escena Orca
+# 2. Arrancar ABAC con la escena Orca
 cd daemon
-.\target\release\orcadeck.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile"
+.\target\release\abac.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile"
 ```
 
 `run` prints `device ready, N = …` and stays in the foreground. Ctrl+C or closing the console terminates
@@ -88,7 +88,7 @@ What is started:
 ### 3.2 Stopping and returning to the official app
 
 ```powershell
-# Ctrl+C en la consola de orcadeck, o cerrar la ventana
+# Ctrl+C en la consola de abac, o cerrar la ventana
 schtasks /run /tn StreamDock
 ```
 
@@ -97,41 +97,41 @@ Do not run `run` while Stream Dock is open: the HID `open` or the 18618 `bind` w
 ## 4. Environment variables
 
 The daemon paths hang off `%APPDATA%`; the editor also looks at `%USERPROFILE%\Downloads` and
-autostart uses `%LOCALAPPDATA%`. The `ORCADECK_*` variables are read at the point indicated; there is
+autostart uses `%LOCALAPPDATA%`. The `ABAC_*` variables are read at the point indicated; there is
 no configuration file for them.
 
 | Variable | Default | Effect | Where it is read |
 |---|---|---|---|
-| `ORCADECK_REPORT_LEN` | HID descriptor; if it fails, 512 | Forces the `N` size of the output payload. Useful if the descriptor cannot be read. | [`daemon/src/main.rs`](../../daemon/src/main.rs) |
-| `ORCADECK_PLUGINS` | `%APPDATA%\HotSpot\StreamDock\plugins` | Plugin folder for `run`, `render`, `scene` and `watch`; also the editor's plugin root. | [`main.rs`](../../daemon/src/main.rs), [`edit.rs`](../../daemon/src/edit.rs) |
-| `ORCADECK_PROFILES` | `%APPDATA%\HotSpot\StreamDock\profiles` | Profiles folder **for `edit` only**. `run` receives the profile as an argument. | [`edit.rs`](../../daemon/src/edit.rs) |
-| `ORCADECK_DATA` | `%APPDATA%\OrcaDeck` | `state.json` and overlays **for `edit` only**. `run` always uses `%APPDATA%\OrcaDeck`. | [`edit.rs`](../../daemon/src/edit.rs) |
-| `ORCADECK_BUILTIN_PLUGINS` | empty; Stream Dock `plugins` folders are added if they exist | Extra read-only plugin roots for `edit`, separated by `;`. | [`edit.rs`](../../daemon/src/edit.rs) |
-| `ORCADECK_GAP_MS` | `250` | Minimum milliseconds between paint batches. Read when each device session is opened. **Do not lower it.** | [`app.rs`](../../daemon/src/app.rs) |
-| action `com.miguelpicado.orcadock.panel_strip` | _(scene)_ | **Experimental.** Side panel as ONE bar (time/date, CPU, RAM, GPU). Put it at cell (5,0): with `ORCADECK_DRA=1` it is drawn whole (across = `h` of calibration slot 16, length 378); without DRA it is sliced into the 3 cells of 80 px. See [`dra-render-notes.md`](../research/hid/dra-render-notes.md). | [`strip.rs`](../../daemon/crates/builtin/src/strip.rs) |
-| `ORCADECK_DRA` | _(unset)_ | **Experimental.** `1` = paint with `DRA` (live rectangles, no BAT/STP) instead of BAT. All changed keys in one pass. See [`dra-render-notes.md`](../research/hid/dra-render-notes.md). Also: `ORCADECK_DRA_GAP_MS` (50, pause between DRA), `ORCADECK_CALIBRATION` (path of `calibration.json`; default `%LOCALAPPDATA%\OrcaDeck\calibration.json`), `ORCADECK_CALIB_GAP_MS` (150), `ORCADECK_DRA_TILE_PX` (98, max 384), `ORCADECK_DRA_SIDE_PX` (80), `ORCADECK_DRA_OFFSETS` (`key:dx,dy;…` in panel pixels). | [`app.rs`](../../daemon/src/app.rs) |
-| `ORCADECK_TRACE` | off (any value enables it) | Writes each HID input and each batch duration to stderr. | [`app.rs`](../../daemon/src/app.rs) |
-| `ORCADECK_CMD` | off | `watch` experiment hook: `VERB:0a=01,0b=00` (offsets and values in hexadecimal). Sends a `CRT` and continues. | [`main.rs`](../../daemon/src/main.rs) |
-| `ORCADECK_SCENE` | off | With `ORCADECK_CMD`: after the command, sends `LIG`, `CLE`, the images of that profile (with `STP` per key) and `CONNECT`. | [`main.rs`](../../daemon/src/main.rs) |
-| `QUOTA_DIR` | `%APPDATA%\OrcaDeck\quota` (if there is no `APPDATA`: `<temp>\OrcaDeck\quota`) | Folder for `quota-status.json` and `.wake` used by the quota keys. | [`builtin/src/actions.rs`](../../daemon/crates/builtin/src/actions.rs) |
+| `ABAC_REPORT_LEN` | HID descriptor; if it fails, 512 | Forces the `N` size of the output payload. Useful if the descriptor cannot be read. | [`daemon/src/main.rs`](../../daemon/src/main.rs) |
+| `ABAC_PLUGINS` | `%APPDATA%\HotSpot\StreamDock\plugins` | Plugin folder for `run`, `render`, `scene` and `watch`; also the editor's plugin root. | [`main.rs`](../../daemon/src/main.rs), [`edit.rs`](../../daemon/src/edit.rs) |
+| `ABAC_PROFILES` | `%APPDATA%\HotSpot\StreamDock\profiles` | Profiles folder **for `edit` only**. `run` receives the profile as an argument. | [`edit.rs`](../../daemon/src/edit.rs) |
+| `ABAC_DATA` | `%APPDATA%\ABAC` | `state.json` and overlays **for `edit` only**. `run` always uses `%APPDATA%\ABAC`. | [`edit.rs`](../../daemon/src/edit.rs) |
+| `ABAC_BUILTIN_PLUGINS` | empty; Stream Dock `plugins` folders are added if they exist | Extra read-only plugin roots for `edit`, separated by `;`. | [`edit.rs`](../../daemon/src/edit.rs) |
+| `ABAC_GAP_MS` | `250` | Minimum milliseconds between paint batches. Read when each device session is opened. **Do not lower it.** | [`app.rs`](../../daemon/src/app.rs) |
+| action `com.miguelpicado.orcadock.panel_strip` | _(scene)_ | **Experimental.** Side panel as ONE bar (time/date, CPU, RAM, GPU). Put it at cell (5,0): with `ABAC_DRA=1` it is drawn whole (across = `h` of calibration slot 16, length 378); without DRA it is sliced into the 3 cells of 80 px. See [`dra-render-notes.md`](../research/hid/dra-render-notes.md). | [`strip.rs`](../../daemon/crates/builtin/src/strip.rs) |
+| `ABAC_DRA` | _(unset)_ | **Experimental.** `1` = paint with `DRA` (live rectangles, no BAT/STP) instead of BAT. All changed keys in one pass. See [`dra-render-notes.md`](../research/hid/dra-render-notes.md). Also: `ABAC_DRA_GAP_MS` (50, pause between DRA), `ABAC_CALIBRATION` (path of `calibration.json`; default `%LOCALAPPDATA%\ABAC\calibration.json`), `ABAC_CALIB_GAP_MS` (150), `ABAC_DRA_TILE_PX` (98, max 384), `ABAC_DRA_SIDE_PX` (80), `ABAC_DRA_OFFSETS` (`key:dx,dy;…` in panel pixels). | [`app.rs`](../../daemon/src/app.rs) |
+| `ABAC_TRACE` | off (any value enables it) | Writes each HID input and each batch duration to stderr. | [`app.rs`](../../daemon/src/app.rs) |
+| `ABAC_CMD` | off | `watch` experiment hook: `VERB:0a=01,0b=00` (offsets and values in hexadecimal). Sends a `CRT` and continues. | [`main.rs`](../../daemon/src/main.rs) |
+| `ABAC_SCENE` | off | With `ABAC_CMD`: after the command, sends `LIG`, `CLE`, the images of that profile (with `STP` per key) and `CONNECT`. | [`main.rs`](../../daemon/src/main.rs) |
+| `QUOTA_DIR` | `%APPDATA%\ABAC\quota` (if there is no `APPDATA`: `<temp>\ABAC\quota`) | Folder for `quota-status.json` and `.wake` used by the quota keys. | [`builtin/src/actions.rs`](../../daemon/crates/builtin/src/actions.rs) |
 | `APPDATA` | the Windows user's | Base for all default paths. | `main.rs`, `app.rs`, `edit.rs`, `orca.rs` |
 
-`ORCADECK_CMD` and `ORCADECK_SCENE` are probing tools, not normal usage options. `watch` also runs
+`ABAC_CMD` and `ABAC_SCENE` are probing tools, not normal usage options. `watch` also runs
 `init`, so images or screen clearing may appear.
 
 ## 4b. DRA mode: 98 px keys and side bar (state 2026-11-16)
 
-With `ORCADECK_DRA=1` (autostart already sets it in `orcadeck-run.cmd`) or `"enabled": true` in `calibration.json`, `run` stops
+With `ABAC_DRA=1` (autostart already sets it in `abac-run.cmd`) or `"enabled": true` in `calibration.json`, `run` stops
 using `BAT`/`STP` and paints every key as a live `DRA` rectangle.
 
 | | Classic (BAT) | DRA (current) |
 |---|---|---|
 | Keys 1-15 | 85×85 px | **98×98 px** by default (per-key calibration, max 384 wide) |
 | Side panel | 3 cells of 80×80 with gaps | **one continuous bar** (height = `h` of slot 16, default 80, length 378) |
-| Sending | one batch plus `STP` | only changed keys, `ORCADECK_DRA_GAP_MS` (50 ms) apart |
+| Sending | one batch plus `STP` | only changed keys, `ABAC_DRA_GAP_MS` (50 ms) apart |
 
 **Per-key calibration:** editor tab **Calibración** (press a physical key to select it, its action does not run; arrows move the
-square, width/height resize). Saved to `%LOCALAPPDATA%\OrcaDeck\calibration.json` (panel pixels, offset from the BAT cell centre).
+square, width/height resize). Saved to `%LOCALAPPDATA%\ABAC\calibration.json` (panel pixels, offset from the BAT cell centre).
 Keys 16-18 share slot 16. No file: 98×98, no offset, 80 px bar.
 
 **Side bar** (`com.miguelpicado.orcadock.panel_strip` in cell (5,0), leave (5,1)/(5,2) empty), top to bottom: clock/date, CPU, GPU, RAM,
@@ -141,7 +141,7 @@ panel as one tall cell.
 **Summary key** («activos / espera / hechos»): focuses the Orca agent that has waited longest (the only one if there is one);
 does nothing when none is waiting.
 
-**Press/release firmware (hardware-tested 2026-11-16).** Stock firmware sends one report, on release (`state 0`). Patch v3 (`docs/research/firmware/work/make_patch_v3.py`; the binary is not published) adds a report on press (`state 1`) and leaves release unchanged; `run` detects it by itself (stock firmware: `0` is still a click). Flashing: `orcadeck bootwatch 25`, then `FirmwareUpgradeTool.exe 768 4112 <bin> <icon>` run from its own folder with quoted paths, then replug USB. See `docs/research/firmware/`.
+**Press/release firmware (hardware-tested 2026-11-16).** Stock firmware sends one report, on release (`state 0`). Patch v3 (`docs/research/firmware/work/make_patch_v3.py`; the binary is not published) adds a report on press (`state 1`) and leaves release unchanged; `run` detects it by itself (stock firmware: `0` is still a click). Flashing: `abac bootwatch 25`, then `FirmwareUpgradeTool.exe 768 4112 <bin> <icon>` run from its own folder with quoted paths, then replug USB. See `docs/research/firmware/`.
 
 **`STP` at startup.** The firmware reports keys only after its first `STP` (RAM flag, lost on replug); `run` sends one when the session opens, before drawing.
 
@@ -151,14 +151,14 @@ does nothing when none is waiting.
 - **Profile**: read at startup and when changing scenes. Editor edits are not reloaded by themselves,
   except the hot reload of one key when `edit` runs inside `run` (see §7).
 - **Scene Shift**: yes, it reloads the target scene manifest (see §6).
-- **Batches**: up to the wait gap between batches (250 ms by default, `ORCADECK_GAP_MS`; setting
-  `ORCADECK_GAP_MS=400` restores the conservative gap). This is deliberate: the firmware drops
+- **Batches**: up to the wait gap between batches (250 ms by default, `ABAC_GAP_MS`; setting
+  `ABAC_GAP_MS=400` restores the conservative gap). This is deliberate: the firmware drops
   presses if it is painted without pauses.
 - **Heartbeat**: `CONNECT` every 10 s.
 - **Reconnection**: if the USB disappears, `device: …; retrying in 2 s`; when it comes back, `init`
   and a repaint.
 - **Plugin settings**: `setSettings` is written to the cell's `manifest.json` with a 1 s debounce;
-  `setGlobalSettings` to `%APPDATA%\OrcaDeck\globals\<plugin>.json`.
+  `setGlobalSettings` to `%APPDATA%\ABAC\globals\<plugin>.json`.
 - **Feedback**: `showOk`/`showAlert` overlay a check or cross for 600 ms; then the current image
   returns.
 - **Titles**: 14 characters maximum; the rest is truncated with `…`.
@@ -178,7 +178,7 @@ jump to Monitoring).
 | `"PreviousScene"` | previous scene |
 | any other id | that scene (accepted with or without `.sdProfile`) |
 
-- The order is the device list order in `%APPDATA%\OrcaDeck\state.json` (`order`). If that file does
+- The order is the device list order in `%APPDATA%\ABAC\state.json` (`order`). If that file does
   not exist yet, it is taken from `DataCache.db` (read-only). A direct id only works if
   `<id>.sdProfile\manifest.json` exists and the id is safe.
 - "Next/previous" wraps around at either end. If the current scene is not in the list, "next" is the
@@ -208,9 +208,9 @@ of another scene, it is read when jumping to it.
 
 ```powershell
 cd daemon
-.\target\release\orcadeck.exe edit
+.\target\release\abac.exe edit
 # o:
-.\target\release\orcadeck.exe edit --port 8765 --no-open
+.\target\release\abac.exe edit --port 8765 --no-open
 ```
 
 - It listens only on `127.0.0.1`; the default port is a free one. It opens the browser unless
@@ -224,7 +224,7 @@ cd daemon
 - Two views: **Keys** (scenes, 5×3 grid + side panel, drag actions, title/JSON inspector, brightness)
   and **Plugins** (status, manifest, install/remove).
 - The brightness saved by the editor is a stub: `run` starts at 80 and the real brightness is changed
-  with `orcadeck bright`.
+  with `abac bright`.
 - The plugin Property Inspector loads in an isolated iframe (sandbox without `allow-same-origin`)
   with a one-use token via `postMessage`; if the plugin has no PI, the inspector shows title and
   settings JSON.
@@ -232,30 +232,30 @@ cd daemon
 To test without touching your real profiles, point the editor at copies:
 
 ```powershell
-$env:ORCADECK_PROFILES = "C:\temp\perfiles-copia"
-$env:ORCADECK_PLUGINS  = "C:\temp\plugins-copia"
-$env:ORCADECK_DATA     = "C:\temp\datos-copia"
-.\orcadeck.exe edit
+$env:ABAC_PROFILES = "C:\temp\perfiles-copia"
+$env:ABAC_PLUGINS  = "C:\temp\plugins-copia"
+$env:ABAC_DATA     = "C:\temp\datos-copia"
+.\abac.exe edit
 ```
 
 ## 8. Installing and removing plugins from `edit`
 
-The editor uses `orcadeck-plugman`; it does not need the Elgato app and does not decrypt Marketplace
+The editor uses `abac-plugman`; it does not need the Elgato app and does not decrypt Marketplace
 manifests.
 
 ### Double-click a package: `register`, `install`, `unregister`
 
 ```powershell
-.\target\release\orcadeck.exe register              # una vez, sin admin
-.\target\release\orcadeck.exe install C:\ruta\MiPlugin.streamDeckPlugin
-.\target\release\orcadeck.exe unregister            # deshacer
+.\target\release\abac.exe register              # una vez, sin admin
+.\target\release\abac.exe install C:\ruta\MiPlugin.streamDeckPlugin
+.\target\release\abac.exe unregister            # deshacer
 ```
 
-- `register` writes only to `HKCU\Software\Classes` (user, no admin): it creates the `OrcaDeck.Plugin`
-  ProgID with the command `<path to orcadeck.exe> install "%1"` and associates the
+- `register` writes only to `HKCU\Software\Classes` (user, no admin): it creates the `ABAC.Plugin`
+  ProgID with the command `<path to abac.exe> install "%1"` and associates the
   `.streamDeckPlugin` and `.sdPlugin` extensions. From then on, double-clicking the package (or
-  "Open with" → OrcaDeck) opens the editor on the install page with that package staged.
-- `install <package>` does the same from the console. If `orcadeck run` is alive, it asks the editor
+  "Open with" → ABAC) opens the editor on the install page with that package staged.
+- `install <package>` does the same from the console. If `abac run` is alive, it asks the editor
   over the named pipe (the install shows up live); if not, it starts a standalone editor. Ctrl+C
   closes the editor, as in `edit`.
 - The page shows name, UUID, version, author and whether a version is already installed. **Nothing
@@ -263,10 +263,10 @@ manifests.
   drag its actions to a key from the **Keys** view.
 - The file path does not travel in the URL: the server keeps it behind a one-use token. If you
   install and reload the page, the link no longer works.
-- If you move `orcadeck.exe`, run `register` again.
+- If you move `abac.exe`, run `register` again.
 - `unregister` deletes the ProgID and returns each extension to the default value it had before the
   first `register` (stored as `PreviousDefault.<ext>` under the ProgID). If Windows still opens
-  another app, choose OrcaDeck in "Open with…" or reset the association in Settings: Windows may
+  another app, choose ABAC in "Open with…" or reset the association in Settings: Windows may
   keep its own per-user choice (`UserChoice`) above this entry.
 
 1. Download the `.streamDeckPlugin` with your browser session (Marketplace → Download). A `.sdPlugin`
@@ -281,10 +281,10 @@ manifests.
    folder `run` reads). If it already exists, the editor asks for confirmation and reinstalls with
    `force`, leaving `<uuid>.sdPlugin.bak-<timestamp>`.
 5. If the manifest is `ELGATO` and the reconstruction is `full`, the overlay
-   `%APPDATA%\OrcaDeck\manifests\<uuid>.json` is written. If it is `partial`/`none`, the plugin is
+   `%APPDATA%\ABAC\manifests\<uuid>.json` is written. If it is `partial`/`none`, the plugin is
    copied but not launched until a vendor manifest is supplied with
-   `orcadeck-plugman install --manifest <json>`.
-6. **Remove plugin** is only available for plugins installed by OrcaDeck (`state.json` →
+   `abac-plugman install --manifest <json>`.
+6. **Remove plugin** is only available for plugins installed by ABAC (`state.json` →
    `installed`). It does not delete built-ins or plugins that were already there. To remove one that
    `run` is using, stop `run` first.
 
@@ -294,21 +294,21 @@ manifests.
 
 ## 9. Autostart
 
-[`tools/autostart/orcadeck-task.ps1`](../../tools/autostart/orcadeck-task.ps1) registers a normal-user
-task (no admin) that starts `orcadeck run` at sign-in.
+[`tools/autostart/abac-task.ps1`](../../tools/autostart/abac-task.ps1) registers a normal-user
+task (no admin) that starts `abac run` at sign-in.
 
 ```powershell
-# Copia el exe y libunwind.dll a %LOCALAPPDATA%\OrcaDeck\bin y registra la tarea DESACTIVADA
-.\tools\autostart\orcadeck-task.ps1 install
+# Copia el exe y libunwind.dll a %LOCALAPPDATA%\ABAC\bin y registra la tarea DESACTIVADA
+.\tools\autostart\abac-task.ps1 install
 
 # Actívala solo cuando la tarea de Stream Dock esté desactivada
 # (esto último exige una consola elevada):
 schtasks /change /tn StreamDock /disable
-.\tools\autostart\orcadeck-task.ps1 enable
+.\tools\autostart\abac-task.ps1 enable
 
-.\tools\autostart\orcadeck-task.ps1 status
-.\tools\autostart\orcadeck-task.ps1 disable
-.\tools\autostart\orcadeck-task.ps1 uninstall
+.\tools\autostart\abac-task.ps1 status
+.\tools\autostart\abac-task.ps1 disable
+.\tools\autostart\abac-task.ps1 uninstall
 ```
 
 - Default profile: `R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88` (the Orca scene). Change it with
@@ -316,8 +316,8 @@ schtasks /change /tn StreamDock /disable
 - `-Build` points to `daemon\target\release` by default.
 - It copies `libunwind.dll` next to the executable: this avoids error `-1073741515` when starting
   without the llvm-mingw `PATH`.
-- Log: `%LOCALAPPDATA%\OrcaDeck\orcadeck.log` (appended, never rotated).
-- The `OrcaDeck` task is registered disabled on purpose; enabling it while Stream Dock is active
+- Log: `%LOCALAPPDATA%\ABAC\abac.log` (appended, never rotated).
+- The `ABAC` task is registered disabled on purpose; enabling it while Stream Dock is active
   breaks both (same HID and port 18618).
 
 ## 10. Hard rules
@@ -325,7 +325,7 @@ schtasks /change /tn StreamDock /disable
 - **Do not flash the firmware.** Do not run `FirmwareUpgradeTool.exe` with 4 arguments (it flashes
   instantly, without confirmation), and do not send `CRT\0\0APP NEW` or update commands. Only with an
   explicit user order and a recovery plan.
-- **Do not run Stream Dock and OrcaDeck at the same time.**
+- **Do not run Stream Dock and ABAC at the same time.**
 - Do not delete or move the large files in the repository root: they belong to the user.
 
-**Per-key calibration (experimental, needs DRA mode).** With OrcaDeck running (`ORCADECK_DRA=1`), open the editor → *Calibración* tab → "Calibración activa". Press a key on the device (or pick it in the tab): a test pattern is drawn (white border, diagonals, number, red mark top-left). Move with the arrows (Shift = 5 px) or the buttons, adjust w/h, then switch calibration off: it is saved to `calibration.json` and applied at startup. With "Usar DRA calibrado al arrancar" ticked, `ORCADECK_DRA=1` is not needed. Details and untested assumptions: [`dra-render-notes.md`](../research/hid/dra-render-notes.md).
+**Per-key calibration (experimental, needs DRA mode).** With ABAC running (`ABAC_DRA=1`), open the editor → *Calibración* tab → "Calibración activa". Press a key on the device (or pick it in the tab): a test pattern is drawn (white border, diagonals, number, red mark top-left). Move with the arrows (Shift = 5 px) or the buttons, adjust w/h, then switch calibration off: it is saved to `calibration.json` and applied at startup. With "Usar DRA calibrado al arrancar" ticked, `ABAC_DRA=1` is not needed. Details and untested assumptions: [`dra-render-notes.md`](../research/hid/dra-render-notes.md).

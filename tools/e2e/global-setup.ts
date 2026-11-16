@@ -4,7 +4,7 @@ import os from 'node:os';
 import { createTempFolders, spawnEditor, resolveOrkaDeckBin } from './helpers/server.js';
 import { ensureFixturesExist } from './fixtures/generate-fixtures.js';
 
-export const SESSION_FILE = path.join(os.tmpdir(), 'orcadeck-e2e-session.json');
+export const SESSION_FILE = path.join(os.tmpdir(), 'abac-e2e-session.json');
 
 export default async function globalSetup() {
   // Ensure fixtures exist
@@ -37,5 +37,5 @@ export default async function globalSetup() {
   };
 
   fs.writeFileSync(SESSION_FILE, JSON.stringify(sessionData, null, 2), 'utf8');
-  process.env.PLAYWRIGHT_ORCADECK_SESSION = SESSION_FILE;
+  process.env.PLAYWRIGHT_ABAC_SESSION = SESSION_FILE;
 }

@@ -1,7 +1,7 @@
 //! Ports of tools/plugin-install/install.test.mjs plus zip-slip, encryption detection,
 //! needs-manifest/provided, export/import and watcher cases. All fixtures are synthetic.
 
-use orcadeck_plugman::*;
+use abac_plugman::*;
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;

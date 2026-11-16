@@ -1,6 +1,6 @@
 # Third-party licenses
 
-Generated from `cargo metadata` (daemon/Cargo.lock) on 2026-11-11. OrcaDeck itself is `MIT OR Apache-2.0` (see LICENSE-MIT, LICENSE-APACHE). Every dependency is permissive; where a crate offers several licenses, the permissive one is chosen. Redistributing binaries must keep these notices (MIT, BSD, Zlib and Apache-2.0 require attribution).
+Generated from `cargo metadata` (daemon/Cargo.lock) on 2026-11-11. ABAC itself is `MIT OR Apache-2.0` (see LICENSE-MIT, LICENSE-APACHE). Every dependency is permissive; where a crate offers several licenses, the permissive one is chosen. Redistributing binaries must keep these notices (MIT, BSD, Zlib and Apache-2.0 require attribution).
 
 | Crate | Version | License | Repository |
 |---|---|---|---|

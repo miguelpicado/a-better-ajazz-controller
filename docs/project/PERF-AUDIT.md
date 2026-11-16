@@ -1,4 +1,4 @@
-# Auditoría de rendimiento: `orcadeck run` y `orcadeck edit`
+# Auditoría de rendimiento: `abac run` y `abac edit`
 
 - **Fecha:** 2026-11-10
 - **Repositorio:** `%USERPROFILE%\orca\workspaces\orca-stream-dock\perf-audit`
@@ -13,7 +13,7 @@
 - **MEDIDA**: tomada con un instrumento (tamaño de fichero, `Get-Process`, cronómetro del propio binario, sonda compilada contra el código real).
 - **ESTIMADA**: calculada o modelada, no cronometrada directamente. Indico si es *cálculo* (aritmética exacta sobre constantes del código o medidas) o *modelo* (supone una hipótesis).
 - Las cifras de CPU son **% de un núcleo lógico** salvo que digan "sistema". El equipo tiene 16 núcleos lógicos.
-- El AKP153E pierde pulsaciones si se pinta casi sin pausa. Todo pintado pasa por el canal único `(key, image)` y se agrupa en lotes separados por `ORCADECK_GAP_MS` (400 ms por defecto) — `daemon/src/app.rs:36-40`, `app.rs:1098-1115`. Ninguna propuesta de este informe lo rompe.
+- El AKP153E pierde pulsaciones si se pinta casi sin pausa. Todo pintado pasa por el canal único `(key, image)` y se agrupa en lotes separados por `ABAC_GAP_MS` (400 ms por defecto) — `daemon/src/app.rs:36-40`, `app.rs:1098-1115`. Ninguna propuesta de este informe lo rompe.
 
 ---
 
@@ -40,13 +40,13 @@ Comando base (desde `daemon/`, con el `PATH`/`RUSTUP_*` del encargo):
 
 ```powershell
 $env:CARGO_TARGET_DIR="$env:TEMP\ocdeck-perf\base"
-cargo build --release -p orcadeck --bin orcadeck
-(Get-Item "$env:CARGO_TARGET_DIR\release\orcadeck.exe").Length
+cargo build --release -p abac --bin abac
+(Get-Item "$env:CARGO_TARGET_DIR\release\abac.exe").Length
 ```
 
 Cada variante usó un `CARGO_TARGET_DIR` distinto y una variable de entorno, sin editar `Cargo.toml`:
 
-| Variante | Variable usada | `orcadeck.exe` | Δ vs actual | Tipo |
+| Variante | Variable usada | `abac.exe` | Δ vs actual | Tipo |
 |---|---|---:|---:|---|
 | **Actual** (`s`, fat LTO, cgu 1, abort, strip) | — | **3 681 792 B** (3.51 MiB) | — | MEDIDA |
 | `strip = false` | `CARGO_PROFILE_RELEASE_STRIP=false` | 7 134 720 B (6.80 MiB) | **+3 452 928 B (+93.8 %)** | MEDIDA |
@@ -63,7 +63,7 @@ Secciones del binario actual (`llvm-objdump -h`, MEDIDA): `.text` 3 020 166 B, `
 
 ### 1.3 Coste en velocidad de las variantes de tamaño
 
-`orcadeck render` sobre la escena real `R0KZ54Z0-…sdProfile` (17 celdas, sin dispositivo), 5 ejecuciones en caliente (MEDIDA):
+`abac render` sobre la escena real `R0KZ54Z0-…sdProfile` (17 celdas, sin dispositivo), 5 ejecuciones en caliente (MEDIDA):
 
 | Binario | Mediana de `render` | Δ vs actual |
 |---|---:|---:|
@@ -90,15 +90,15 @@ Secciones del binario actual (`llvm-objdump -h`, MEDIDA): `.text` 3 020 166 B, `
 
 | Hilo | Fuente | Frecuencia | Por qué existe | Diseño propuesto |
 |---|---|---|---:|---|
-| **device (main)** | `app.rs:1053` `read_timeout(&mut buf, 30)` | **33.3 /s** siempre | Leer entrada HID y, de paso, ejecutar deadlines (restore 600 ms, retire 2 s, debounce settings 1 s, heartbeat 10 s) y vaciar el canal de pintado | Hilo lector que hace `read()` **bloqueante** y empuja `Event::Input` a un canal único; el hilo escritor/device espera con `recv_timeout(next_deadline)` o `recv()` si no hay plazo. Un solo escritor HID, un solo `STP` por lote, `ORCADECK_GAP_MS` calculado como `last_batch + gap`. |
+| **device (main)** | `app.rs:1053` `read_timeout(&mut buf, 30)` | **33.3 /s** siempre | Leer entrada HID y, de paso, ejecutar deadlines (restore 600 ms, retire 2 s, debounce settings 1 s, heartbeat 10 s) y vaciar el canal de pintado | Hilo lector que hace `read()` **bloqueante** y empuja `Event::Input` a un canal único; el hilo escritor/device espera con `recv_timeout(next_deadline)` o `recv()` si no hay plazo. Un solo escritor HID, un solo `STP` por lote, `ABAC_GAP_MS` calculado como `last_batch + gap`. |
 | **builtin** | `app.rs:960` `recv_timeout(400)` | 2.5 /s | Refrescar reloj/spinner/agentes/cuota y recibir pulsaciones | `recv_timeout(min(next_deadline))` con plazos reales: fin de minuto si hay reloj, `SPIN_MS` solo si hay un agente `working` visible, `POLL_MS` si hay claves de agente/cuota, fin de blink; si no hay ninguno, `recv()` bloqueante. |
 | **device (reconexión)** | `app.rs:1018` `sleep(2 s)` | 0.5 /s **solo desconectado** | Reintentar abrir el HID tras error | Dejarlo (solo corre sin dispositivo) o esperar `WM_DEVICECHANGE`/hotplug de hidapi. No afecta al reposo con dispositivo. |
-| **ctl** | `ctl.rs:160-176` `ConnectNamedPipe` bloqueante | 0 /s | Aceptar `orcadeck edit` | Correcto: no tocar. |
+| **ctl** | `ctl.rs:160-176` `ConnectNamedPipe` bloqueante | 0 /s | Aceptar `abac edit` | Correcto: no tocar. |
 | **host-accept / readers** | `host.rs:260-266`, `host.rs:521-545` sockets bloqueantes | 0 /s | Aceptar plugins y leer WebSocket | Correcto: no tocar. |
 | **host supervisor** | `host.rs:368-408` `Child::wait` bloqueante; `sleep` solo en backoff de crash | 0 /s en reposo | Reaprovechar/rearrancar plugins | Correcto. El `sleep` de backoff solo ocurre tras un crash. |
 | **web (solo `edit`)** | `web/lib.rs:85-93` `listener.incoming()` bloqueante; `126-134` timeouts de 10 s **por petición** | 0 /s en reposo | Servir el editor bajo demanda | Correcto: el servidor solo existe mientras el cliente `edit` está conectado (`ctl` cierra el pipe). |
 | **`edit` CLI** | `edit.rs:137-143` `thread::park()` | 0 /s | Esperar Ctrl+C sin polling | Correcto. |
-| **plugman watcher** | `plugman/lib.rs:761-771` `sleep(500 ms)` + `poll()` | 500 ms | Instalar paquetes del inbox | **No lo usa `run` ni `edit`**: solo el CLI `orcadeck-plugman watch`. Si algún día se conecta al daemon, usar `ReadDirectoryChangesW`, no polling. |
+| **plugman watcher** | `plugman/lib.rs:761-771` `sleep(500 ms)` + `poll()` | 500 ms | Instalar paquetes del inbox | **No lo usa `run` ni `edit`**: solo el CLI `abac-plugman watch`. Si algún día se conecta al daemon, usar `ReadDirectoryChangesW`, no polling. |
 | **RPC a Orca** | `builtin/orca.rs:57-79` hilo por llamada + `recv_timeout(5 s)` | 0.83 polls/s × 2 llamadas + 0.1/s workerList | Refrescar agentes/cuota | Un hilo RPC persistente con canal de peticiones (o pipe solapado); y bajar la cadencia (§8). |
 
 **Total en reposo con la escena Orca:** 33.3 + 2.5 wakes/s periódicos ≈ **35.8 /s**, más ~1.8 hilos nuevos/s por las llamadas RPC (no son wakes de timer, pero sí trabajo de kernel).
@@ -123,7 +123,7 @@ Secciones del binario actual (`llvm-objdump -h`, MEDIDA): `.text` 3 020 166 B, `
 
 **ESTIMADA (cálculo con las medidas):** (15.2+3.7) ms / 1.2 s ≈ **15.8 ms/s ≈ 1.6 % de un núcleo** (rango 1.6–2.3 % con la otra tanda) en el proceso de Orca, más (160+3.1)/10 s ≈ **16.3 ms/s ≈ 1.6 %**, total ≈ **3.2 % de un núcleo de forma continua** mientras haya una clave `agent`/`summary` visible. En la escena `Orca` del usuario hay 5 claves de agente + summary → siempre. Además el daemon crea ~1.8 hilos/s (`orca.rs:60`) y abre el pipe 2 veces/s.
 
-Esto sí incumple el objetivo de “0 % CPU en reposo”, aunque el consumo esté en Orca y no en `orcadeck`. Es el hallazgo P0 de la auditoría.
+Esto sí incumple el objetivo de “0 % CPU en reposo”, aunque el consumo esté en Orca y no en `abac`. Es el hallazgo P0 de la auditoría.
 
 ### 2.4 Riesgos del rediseño propuesto
 
@@ -131,7 +131,7 @@ Esto sí incumple el objetivo de “0 % CPU en reposo”, aunque el consumo est�
 - **Dos handles vs uno:** leer y escribir desde dos hilos sobre el **mismo** `HidDevice` no está documentado como thread-safe por hidapi; lo conservador es abrir un segundo handle solo-lectura (mismo VID/PID) y mantener el escritor actual. Validar en dispositivo.
 - **Pulsaciones perdidas:** el lector bloqueante **mejora** la latencia (elimina el muestreo de 30 ms) y sigue vaciando el buffer HID mientras el escritor pinta; el canal debe ser ilimitado para que el lector nunca se bloquee. Mantener el lote único y el `STP` único.
 - **Handshake:** hoy el `HANLDER` se responde desde el bucle principal; con lector separado, el lector debe reenviar el evento al escritor (nunca escribir él).
-- **`ORCADECK_GAP_MS`:** el plazo del próximo lote es `last_batch + gap`; si no hay nada pendiente, no debe haber despertar. No reducir el gap.
+- **`ABAC_GAP_MS`:** el plazo del próximo lote es `last_batch + gap`; si no hay nada pendiente, no debe haber despertar. No reducir el gap.
 
 ---
 
@@ -173,7 +173,7 @@ Sonda compilada contra el código real de `key_jpeg` (misma secuencia `resize_ex
 
 Rasterizado resvg de un SVG de agente a 85 px: **82.7–128.8 µs** (MEDIDA, dos tandas de la sonda).
 
-`orcadeck render` de la escena real (17 celdas, incluye decodificar PNG de disco): **41.4 ms** en caliente, **6.8 MB de pico de working set** (MEDIDA). Salida: 34 962 B de JPEG para 17 celdas.
+`abac render` de la escena real (17 celdas, incluye decodificar PNG de disco): **41.4 ms** en caliente, **6.8 MB de pico de working set** (MEDIDA). Salida: 34 962 B de JPEG para 17 celdas.
 
 ### 3.3 Propuestas concretas
 
@@ -215,12 +215,12 @@ Por plugin hay además **2 hilos del daemon** (lector de socket + waiter de proc
 
 ### 5.1 Árbol
 
-`cargo tree -p orcadeck`: **122 paquetes** (MEDIDA). Duplicados (MEDIDA):
+`cargo tree -p abac`: **122 paquetes** (MEDIDA). Duplicados (MEDIDA):
 
 | Crate | Versiones | Quién lo arrastra |
 |---|---|---|
-| `base64` | 0.22.1 / 0.23.1 | `orcadeck` / `usvg` |
-| `getrandom` | 0.2.17 / 0.4.3 | `orcadeck-web` / `orcadeck-host`, `tungstenite`, `zip` |
+| `base64` | 0.22.1 / 0.23.1 | `abac` / `usvg` |
+| `getrandom` | 0.2.17 / 0.4.3 | `abac-web` / `abac-host`, `tungstenite`, `zip` |
 | `miniz_oxide` | 0.8.9 / 0.9.1 | `png` / `flate2` |
 | `syn` | 2.0.119 / 3.0.10 | proc-macros (`zeroize_derive` / `serde_derive`, `thiserror`) |
 
@@ -238,11 +238,11 @@ No hay `cargo-bloat` instalado y el encargo prohíbe instalarlo. Se usó un buil
 | `tiny_skia` | 385 347 | 8.7 |
 | `std` | 291 683 | 6.6 |
 | `image` | 241 498 | 5.5 |
-| `orcadeck_web` | 223 478 | 5.0 |
+| `abac_web` | 223 478 | 5.0 |
 | `read_fonts` | 167 295 | 3.8 |
-| `orcadeck_host` | 127 065 | 2.9 |
-| `orcadeck_builtin` | 119 325 | 2.7 |
-| `orcadeck_plugman` | 118 525 | 2.7 |
+| `abac_host` | 127 065 | 2.9 |
+| `abac_builtin` | 119 325 | 2.7 |
+| `abac_plugman` | 118 525 | 2.7 |
 | `core` | 99 566 | 2.2 |
 | `pxfm` (vía `moxcms` de `image`) | 90 200 | 2.0 |
 | `resvg` | 62 341 | 1.4 |
@@ -261,7 +261,7 @@ No hay `cargo-bloat` instalado y el encargo prohíbe instalarlo. Se usó un buil
 **La pila SVG+fuentes** (`usvg`+`skrifa`+`harfrust`+`tiny_skia`+`read_fonts`+`pxfm`+`resvg`+`svgtypes`+`roxmltree`+`fontdb`+`data_encoding`+`imagesize`+`unicode_*`) suma **≈2.47 MB, el 56 %** de las secciones atribuidas. Es el precio de rasterizar texto SVG (títulos de tecla y las 4 acciones builtin) con resvg + fuentes del sistema; no hay recorte sin renunciar al texto o cambiar de renderer.
 
 - `image` (241 KB) incluye `png` (53), `zune-jpeg` (35) y `moxcms/pxfm` (90) para gestión de color; en `image 0.25.10` `moxcms` no es opcional (no hay feature `color-management`), así que no se puede recortar sin cambiar de crate. `default-features=false, features=["png","jpeg"]` ya está bien.
-- `orcadeck_web` + `orcadeck_plugman` + `zip` ≈ **375 KB (8.5 %)** solo existen para el editor. `orcadeck-web` embebe además la SPA: 53 058 B en `.rdata` (MEDIDA: `index.html` 3 398 + `app.js` 34 769 + `app.css` 14 453 + `icon.svg` 438).
+- `abac_web` + `abac_plugman` + `zip` ≈ **375 KB (8.5 %)** solo existen para el editor. `abac-web` embebe además la SPA: 53 058 B en `.rdata` (MEDIDA: `index.html` 3 398 + `app.js` 34 769 + `app.css` 14 453 + `icon.svg` 438).
 - `base64` 0.22 se usa solo para decodificar data-URIs (`app.rs:71-72`); `usvg` ya trae 0.23. Unificar a 0.23 elimina un crate (ahorro pequeño, ESTIMADA < 20 KB).
 - `getrandom` 0.2 (web) vs 0.4 (host) se puede unificar a 0.4; ahorro pequeño (ESTIMADA < 10 KB).
 - `miniz_oxide` y `syn` duplicados vienen de dependencias externas; no se arreglan sin subir versiones ajenas.
@@ -297,7 +297,7 @@ Incluye el `STP` (un paquete de N+1). **Escena real `Orca`** (13 teclas de 2 152
 ### 6.3 Coste temporal
 
 - **MEDIDA:** 822 µs/tecla (144²) y 1 624 µs/tecla (288²) de CPU para producir el JPEG.
-- **ESTIMADA (modelo):** si cada transferencia OUT interrupt tarda ~1 ms (bInterval típico 1 ms), un lote de 15 teclas a 7 KB son 226 paquetes ≈ **226 ms de dispositivo ocupado**; a 2 KB son 87 paquetes ≈ **87 ms**. Con `ORCADECK_GAP_MS=400`, eso deja el dispositivo ocupado el **22–56 %** del tiempo si se repinta sin parar (coincide con el ~40 % que cita `render.rs:8-9`).
+- **ESTIMADA (modelo):** si cada transferencia OUT interrupt tarda ~1 ms (bInterval típico 1 ms), un lote de 15 teclas a 7 KB son 226 paquetes ≈ **226 ms de dispositivo ocupado**; a 2 KB son 87 paquetes ≈ **87 ms**. Con `ABAC_GAP_MS=400`, eso deja el dispositivo ocupado el **22–56 %** del tiempo si se repinta sin parar (coincide con el ~40 % que cita `render.rs:8-9`).
 - **Riesgo firmware:** con un spinner a `SPIN_MS=400` (`actions.rs:11`) y 5 agentes `working`, hay un lote de 5 teclas **cada 400 ms indefinidamente** (~19 % de duty a 6 paquetes/tecla). Es exactamente el patrón “pintar casi sin pausa” que pierde pulsaciones. Ver P0-2.
 
 ---
@@ -310,11 +310,11 @@ Incluye el `STP` (un paquete de N+1). **Escena real `Orca`** (13 teclas de 2 152
 
 ```powershell
 # 1) arrancar el daemon con la escena real (consola aparte)
-$env:ORCADECK_GAP_MS = "400"
-.\orcadeck.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile"
+$env:ABAC_GAP_MS = "400"
+.\abac.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88.sdProfile"
 
 # 2) medir 60 s sin tocar nada
-$p = Get-Process orcadeck
+$p = Get-Process abac
 $c1 = $p.TotalProcessorTime.TotalMilliseconds
 $w1 = $p.WorkingSet64
 $t0 = Get-Date
@@ -329,10 +329,10 @@ $cores = (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors
 "Delta RSS MB       : {0:N1}" -f (($p.WorkingSet64 - $w1) / 1MB)
 
 # 3) contadores (1 muestra/s durante 60 s)
-Get-Counter '\Process(orcadeck)\% Processor Time' -SampleInterval 1 -MaxSamples 60 |
+Get-Counter '\Process(abac)\% Processor Time' -SampleInterval 1 -MaxSamples 60 |
   ForEach-Object { $_.CounterSamples[0].CookedValue } |
   Measure-Object -Average -Maximum
-Get-Counter '\Process(orcadeck)\Working Set - Private' -SampleInterval 1 -MaxSamples 60 |
+Get-Counter '\Process(abac)\Working Set - Private' -SampleInterval 1 -MaxSamples 60 |
   ForEach-Object { $_.CounterSamples[0].CookedValue } |
   Measure-Object -Average -Maximum
 ```
@@ -344,7 +344,7 @@ Repetir con una escena sin claves builtin (p. ej. `Grabación`) y con una escena
 El propio binario ya traza cada lote (`app.rs:1111-1112`):
 
 ```powershell
-$env:ORCADECK_TRACE = "1"
+$env:ABAC_TRACE = "1"
 # ... run ...
 # salida esperada por lote:
 #   1234ms painted 15 keys 30904 B in 87 ms
@@ -410,8 +410,8 @@ foreach ($v in @(
 )) {
   $env:CARGO_TARGET_DIR = "$env:TEMP\ocdeck-perf\$($v.n)"
   foreach ($k in $v.e.Keys) { Set-Item "env:$k" $v.e[$k] }
-  cargo build --release -p orcadeck --bin orcadeck *> $null
-  "{0,-9} {1,9:N0} B" -f $v.n, (Get-Item "$env:CARGO_TARGET_DIR\release\orcadeck.exe").Length
+  cargo build --release -p abac --bin abac *> $null
+  "{0,-9} {1,9:N0} B" -f $v.n, (Get-Item "$env:CARGO_TARGET_DIR\release\abac.exe").Length
   foreach ($k in $v.e.Keys) { Remove-Item "env:$k" }
 }
 ```
@@ -452,7 +452,7 @@ Medido: 822 µs/tecla (144²), 1 624 µs (288²); JPEG 1 685 B (UI) / 5 518 B (r
 |---|---|---|---|---|---|
 | **P1-1** | **Eliminar el mapa `latest`**; repintar tras re-plug desde `view.effective(key)`. | **−1.2…−2.5 MB RSS** con imágenes 144²; **−5…−10 MB** con 288². Un clon de 83–332 KB menos por repintado. | El repintado de reconexión debe componer título/feedback; probar desenchufar/enchufar. | `src/app.rs` (`session`, `switch_scene`, `paint`, `Runtime`) | Sí (reconexión); no para RSS |
 | **P1-2** | **Pre-escalar a 85/80 al ingerir** y saltar el resize en `key_jpeg` si ya está a `px`. | **−0.7…−1.8 ms por tecla** (≈70 % de `key_jpeg`): lote de 15 teclas **12–30 ms → 3–5 ms**; con P1-1, memoria persistente **2.5 MB → ~0.9 MB** (y 10 MB → 0.9 MB en 288²). | Cambio de aspecto si el filtro no es idéntico; la composición de título/feedback ya asume 85. | `src/app.rs`, `src/render.rs` | Sí (visual) |
-| **P1-3** | **Lectura HID bloqueante en hilo lector** + bucle de device por `recv_timeout(next_deadline)`/`recv()`, canal único de eventos. | **33.3 → 0 wakes/s en reposo**; **−0…30 ms de latencia por pulsación**; mantiene un solo escritor, un solo `STP` y `ORCADECK_GAP_MS`. | Segundo handle/thread-safe de hidapi, cierre en reconexión, handshake reenviado; validar que no se pierden pulsaciones. | `src/app.rs`, `src/main.rs` (`Dock`), `src/proto.rs` | **Sí** |
+| **P1-3** | **Lectura HID bloqueante en hilo lector** + bucle de device por `recv_timeout(next_deadline)`/`recv()`, canal único de eventos. | **33.3 → 0 wakes/s en reposo**; **−0…30 ms de latencia por pulsación**; mantiene un solo escritor, un solo `STP` y `ABAC_GAP_MS`. | Segundo handle/thread-safe de hidapi, cierre en reconexión, handshake reenviado; validar que no se pierden pulsaciones. | `src/app.rs`, `src/main.rs` (`Dock`), `src/proto.rs` | **Sí** |
 | **P1-4** | **Builtin por deadline** (parte de P1-3): `recv_timeout(min(próximo plazo))` o `recv()`; plazos: minuto si hay reloj, `SPIN_MS` solo si hay `working`, `POLL_MS` si hay claves, fin de blink. | **2.5 → 0 wakes/s** y 37.5 → 0 construcciones de SVG/s en reposo. CPU del tick ya es 7–15 µs (despreciable); el valor es no despertar. | Baja; cuidado con el orden tick-antes-de-esperar para no perder el repintado tras una pulsación. | `src/app.rs`, `crates/builtin/src/actions.rs` | No |
 
 ### P2 — menores, o solo si el tamaño/energía importan
@@ -462,7 +462,7 @@ Medido: 822 µs/tecla (144²), 1 624 µs (288²); JPEG 1 685 B (UI) / 5 518 B (r
 | P2-1 | Un **hilo RPC persistente** con canal de peticiones en vez de un hilo por llamada (`orca.rs:57-79`). | −1.8 hilos/s y −2 aperturas de pipe/s; evita el hilo colgado 5 s si el pipe se bloquea. | Manejo de timeout/reconexión del pipe. | `crates/builtin/src/orca.rs` | No |
 | P2-2 | **Unificar `base64` a 0.23** y `getrandom` a 0.4. | Elimina 2 crates duplicados; ESTIMADA < 20 KB de exe y árbol más simple. | Muy bajo (API compatible en lo usado). | `Cargo.toml`, `crates/web/Cargo.toml` | No |
 | P2-3 | **`TerminateProcess` directo** en vez de `taskkill /PID /F` al retirar un plugin. | −1 proceso por retirada; ESTIMADA 3–10 ms menos y menos ruido en el sistema. | Abrir proceso por PID (permisos); ya se usan llamadas raw de kernel32 en `ctl.rs`. | `crates/host/src/host.rs` | No |
-| P2-4 | **Sacar el editor** (`orcadeck-web` + `plugman` + `zip`) a otro binario. | **−375 KB ≈ −8.5 %** de las secciones y código no residente en `run`. | Pierde el inspector en vivo y la reutilización del host de plugins. **Descartado el 2026-11-11 por decisión del usuario.** | `Cargo.toml`, `src/main.rs`, `crates/web` | No |
+| P2-4 | **Sacar el editor** (`abac-web` + `plugman` + `zip`) a otro binario. | **−375 KB ≈ −8.5 %** de las secciones y código no residente en `run`. | Pierde el inspector en vivo y la reutilización del host de plugins. **Descartado el 2026-11-11 por decisión del usuario.** | `Cargo.toml`, `src/main.rs`, `crates/web` | No |
 | P2-5 | **Relleno negro de celdas laterales 16–18**: `scene_jpegs` solo rellena 1..=15 (`main.rs:89-94`) y `run` solo precarga 1..=15 (`app.rs:1007`), así que la tecla 17 nunca se pinta y queda el splash de arranque. | Cosmético; coherencia entre `render`/`scene`/`run`. | Ninguno. | `src/main.rs`, `src/app.rs` | Sí (visual) |
 | P2-6 | **No hacer**: `opt-level="z"` (−466 KB pero **+40 %** de pipeline), `panic="unwind"` (+219 KB), `lto="thin"` (+596 KB), `cgu=16` (+36 KB y peor código). | — | — | `Cargo.toml` | No |
 
@@ -472,7 +472,7 @@ Medido: 822 µs/tecla (144²), 1 624 µs (288²); JPEG 1 685 B (UI) / 5 518 B (r
 
 1. **N real del reporte HID**: no se midió (requiere `probe`, prohibido). Los cálculos de bytes se dan para 512 y 1024; el código usa 512 si el descriptor no responde.
 2. **CPU/RSS de `run` con dispositivo**: no medidos, por la prohibición de ejecutar `run`. Se midieron los componentes (suelo del `WaitForSingleObject`, tick de builtin, RPC de Orca, pipeline de imagen, `edit` en reposo = 6.5 MB WS / 0.00 % CPU), pero no el proceso completo con el bucle de 30 ms y el dispositivo conectado.
-3. **Tiempo de bus HID**: el modelo de ~1 ms por transferencia OUT es una hipótesis (bInterval típico); hay que confirmarlo con `ORCADECK_TRACE` o USBPcap.
+3. **Tiempo de bus HID**: el modelo de ~1 ms por transferencia OUT es una hipótesis (bInterval típico); hay que confirmarlo con `ABAC_TRACE` o USBPcap.
 4. **`workerList`**: 160–278 ms medidos hoy con Orca ocupado; el comentario del código dice ~450 ms. El número depende de la carga de Orca.
 5. **Coste exacto con `opt-level="s"`**: las sondas de `key_jpeg` y resvg se compilaron con el perfil release por defecto (`opt-level=3`); el daemon real será algo más lento (ESTIMADA la diferencia).
 6. **`panic="abort"`**: no se ejecutó la suite con él; Cargo ignora `panic` en el perfil `test`, así que los tests no cambian, pero no se verificó aquí.

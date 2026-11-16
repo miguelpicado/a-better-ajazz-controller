@@ -7,14 +7,14 @@ directamente a §10.
 
 ```powershell
 # ¿Ve el teclado? (solo lectura)
-.\orcadeck.exe probe
+.\abac.exe probe
 
 # ¿Quién ocupa el HID o el puerto?
-Get-Process orcadeck, node, "Stream Dock AJAZZ" -ErrorAction SilentlyContinue
+Get-Process abac, node, "Stream Dock AJAZZ" -ErrorAction SilentlyContinue
 Get-NetTCPConnection -LocalPort 18618 -ErrorAction SilentlyContinue | Select-Object State, OwningProcess
 
 # Log del autoarranque
-Get-Content "$env:LOCALAPPDATA\OrcaDeck\orcadeck.log" -Tail 50
+Get-Content "$env:LOCALAPPDATA\ABAC\abac.log" -Tail 50
 ```
 
 Regla que prevalece sobre todas: **no flashear el firmware**. Ver §9.
@@ -28,10 +28,10 @@ Regla que prevalece sobre todas: **no flashear el firmware**. Ver §9.
 - Arreglo:
   ```powershell
   $env:PATH="C:\Tools\llvm-mingw-20261104-ucrt-x86_64\bin;$env:PATH"
-  .\orcadeck.exe probe
+  .\abac.exe probe
   ```
-  O copia `libunwind.dll` al lado de `orcadeck.exe`. El script de autoarranque ya lo copia a
-  `%LOCALAPPDATA%\OrcaDeck\bin`.
+  O copia `libunwind.dll` al lado de `abac.exe`. El script de autoarranque ya lo copia a
+  `%LOCALAPPDATA%\ABAC\bin`.
 - No es un fallo del código ni del dispositivo.
 
 ## 2. «device not found» / `probe` no encuentra nada
@@ -40,19 +40,19 @@ Mensaje de `Dock::open`: `device not found (monitors on? Stream Dock closed?)`.
 
 1. **Monitores encendidos**: el teclado cuelga del hub USB del monitor; con los monitores apagados no
    aparece en el sistema.
-2. **Stream Dock cerrado**: si la app oficial tiene el HID abierto, `orcadeck` no puede usarlo.
+2. **Stream Dock cerrado**: si la app oficial tiene el HID abierto, `abac` no puede usarlo.
    ```powershell
    schtasks /end /tn StreamDock
    ```
    Si el proceso sobrevive, ciérralo desde una consola elevada.
 3. **Cable/hub**: prueba otro puerto USB directo al PC.
-4. **Otra instancia de `orcadeck run`**: también tiene el HID.
+4. **Otra instancia de `abac run`**: también tiene el HID.
 5. `hidwatch` no abre el dispositivo: úsalo para ver si el USB aparece y desaparece, y para detectar
    `EEEF:2929` (bootloader).
 
 ## 3. Stream Dock debe pararse (mismo HID y puerto 18618)
 
-`orcadeck run` y «Stream Dock AJAZZ» no pueden convivir: comparten el dispositivo HID y el puerto
+`abac run` y «Stream Dock AJAZZ» no pueden convivir: comparten el dispositivo HID y el puerto
 18618 del host de plugins.
 
 - Parar: `schtasks /end /tn StreamDock`.
@@ -72,7 +72,7 @@ Get-Process -Id <OwningProcess>
 ```
 
 - Si el dueño es `Stream Dock AJAZZ` o un `node20` suyo: para la app oficial.
-- Si es otro `orcadeck`: ya hay un `run` en marcha; no lances dos.
+- Si es otro `abac`: ya hay un `run` en marcha; no lances dos.
 - `edit` usa un puerto libre (o el que pases con `--port`), así que no colisiona con 18618.
 
 ## 5. Se pierden pulsaciones
@@ -83,10 +83,10 @@ Es el problema conocido del firmware del AKP153E v1, no de la app.
   ~120 ms dio cero pulsaciones en 80 s.
 - Cada imagen cuesta 25–30 ms fijos de escritura HID, aunque pese poco.
 - `run` lo mitiga con lotes (todas las teclas pendientes juntas) y un hueco de 250 ms
-  (`ORCADECK_GAP_MS`; `ORCADECK_GAP_MS=400` recupera el valor conservador), más JPEG q75.
+  (`ABAC_GAP_MS`; `ABAC_GAP_MS=400` recupera el valor conservador), más JPEG q75.
 - Si aún se pierden, **sube** el gap, no lo bajes:
   ```powershell
-  $env:ORCADECK_GAP_MS=500
+  $env:ABAC_GAP_MS=500
   ```
 - Un cambio de escena pinta todas las teclas en un lote; una pulsación inmediata puede caer en ese
   hueco. Es normal.
@@ -101,7 +101,7 @@ Es el problema conocido del firmware del AKP153E v1, no de la app.
   HID. Reiniciar `run` no lo mejora.
 - Las teclas de agente enfocan un panel de Orca; si Orca está ocupado o la tubería no responde, la
   acción puede tardar o devolver alerta.
-- `ORCADECK_TRACE=1` muestra las entradas y los lotes, no el tiempo del RPC.
+- `ABAC_TRACE=1` muestra las entradas y los lotes, no el tiempo del RPC.
 
 ## 7. Scene Shift no hace nada o cambia a la escena equivocada
 
@@ -127,7 +127,7 @@ Estado: implementado con tests unitarios, **pendiente de prueba física** con el
 - `quota-status.json` tiene más de **10 minutos** o no existe: la tecla se atenúa o queda vacía si no
   hay datos.
 - `QUOTA_DIR` debe apuntar a la carpeta de `quota-monitor`. Sin definirlo, `run` lee
-  `%APPDATA%\OrcaDeck\quota` y la tecla queda vacía. Defínelo antes de arrancar `run`
+  `%APPDATA%\ABAC\quota` y la tecla queda vacía. Defínelo antes de arrancar `run`
   (o en la tarea de autoarranque).
 - `orca-dock-rs` debe estar en marcha para refrescar el fichero. La tecla de cuota escribe `.wake`;
   `orca-dock-rs` lo mira cada 5 s y refresca. `run` relee cada 3 s hasta 45 s.
@@ -167,7 +167,7 @@ cargo test --release --workspace
 
 ## 11. El editor no abre o da 403
 
-- `edit` imprime `OrcaDeck editor: http://127.0.0.1:<puerto>/?token=…`. Abre esa URL exacta; el token
+- `edit` imprime `ABAC editor: http://127.0.0.1:<puerto>/?token=…`. Abre esa URL exacta; el token
   cambia en cada arranque.
 - `--no-open` solo evita lanzar el navegador; el servidor sigue escuchando.
 - Si el puerto que pasaste con `--port` está ocupado, elige otro o usa el puerto libre por defecto.
@@ -187,7 +187,7 @@ Con `run` vivo, `edit` corre dentro de `run` y guardar una celda recarga esa tec
 ## 13. Un plugin no pinta nada
 
 1. ¿Está el plugin en la escena? Al arrancar, solo se lanzan los plugins usados por la escena activa.
-   Además, `run` solo descubre `%APPDATA%\HotSpot\StreamDock\plugins` (u `ORCADECK_PLUGINS`); los
+   Además, `run` solo descubre `%APPDATA%\HotSpot\StreamDock\plugins` (u `ABAC_PLUGINS`); los
    plugins de `Program Files` se listan en `edit`, pero no se lanzan.
 2. ¿El UUID de la acción empieza por el id del plugin (`<plugin>.`)? Si no, `place_scene` escribe
    `no handler for …`.
@@ -210,7 +210,7 @@ binario no instala logger, así que esos mensajes no se ven.
 - `edit` en reposo duerme en `accept`; la última medición anotada es ~7 MB RSS y 0 s de CPU.
 - Mide antes de optimizar:
   ```powershell
-  Get-Process orcadeck | Select-Object CPU, WorkingSet, Id
+  Get-Process abac | Select-Object CPU, WorkingSet, Id
   ```
 - `run` mantiene vivos los plugins de escenas anteriores a propósito; si pesan demasiado, reinicia
   `run`.
@@ -219,20 +219,20 @@ binario no instala logger, así que esos mensajes no se ven.
 
 - Al matar `run` (Ctrl+C, cerrar consola, `Stop-Process`), Windows no mata automáticamente los
   procesos hijos de los plugins. Es esperado: el host no instala un cierre ordenado.
-- Comprueba `Get-Process node, SystemMonitor` y mata solo los que sepas que eran de OrcaDeck.
-- El script de autoarranque mata `orcadeck` antes de reinstalar, pero no los plugins.
+- Comprueba `Get-Process node, SystemMonitor` y mata solo los que sepas que eran de ABAC.
+- El script de autoarranque mata `abac` antes de reinstalar, pero no los plugins.
 
 ## 16. Diagnóstico con traza
 
 ```powershell
-$env:ORCADECK_TRACE=1
-.\orcadeck.exe run <perfil.sdProfile>
+$env:ABAC_TRACE=1
+.\abac.exe run <perfil.sdProfile>
 ```
 
 Salida esperada:
 
 - `device ready, N = 512`
-- `in …` por cada entrada HID (con `ORCADECK_TRACE`)
+- `in …` por cada entrada HID (con `ABAC_TRACE`)
 - `painted N keys … B in … ms` por cada lote
 - `device: …; retrying in 2 s` si se pierde el USB
 

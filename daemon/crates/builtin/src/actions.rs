@@ -91,8 +91,8 @@ impl Deck {
         }
     }
 
-    /// `QUOTA_DIR` if set, else `%APPDATA%\OrcaDeck\quota` (the daemon's data dir); with no
-    /// `APPDATA` (non-Windows) it falls back to `<temp>\OrcaDeck\quota`.
+    /// `QUOTA_DIR` if set, else `%APPDATA%\ABAC\quota` (the daemon's data dir); with no
+    /// `APPDATA` (non-Windows) it falls back to `<temp>\ABAC\quota`.
     pub fn default_quota_dir() -> PathBuf {
         if let Some(dir) = std::env::var_os("QUOTA_DIR") {
             return PathBuf::from(dir);
@@ -100,7 +100,7 @@ impl Deck {
         std::env::var_os("APPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir)
-            .join("OrcaDeck")
+            .join("ABAC")
             .join("quota")
     }
 
@@ -597,13 +597,13 @@ mod tests {
         std::env::set_var("APPDATA", "appdata-dir");
         assert_eq!(
             Deck::default_quota_dir(),
-            PathBuf::from("appdata-dir").join("OrcaDeck").join("quota")
+            PathBuf::from("appdata-dir").join("ABAC").join("quota")
         );
 
         std::env::remove_var("APPDATA");
         assert_eq!(
             Deck::default_quota_dir(),
-            std::env::temp_dir().join("OrcaDeck").join("quota")
+            std::env::temp_dir().join("ABAC").join("quota")
         );
     }
 

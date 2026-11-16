@@ -1,4 +1,4 @@
-//! OrcaDeck plugin host: runs Elgato Stream Deck SDK v2 (and Stream Dock) plugins.
+//! ABAC plugin host: runs Elgato Stream Deck SDK v2 (and Stream Dock) plugins.
 //!
 //! The host listens on a loopback WebSocket port, launches plugin processes with the SDK argv,
 //! and routes events between plugins, property inspectors and the daemon. The daemon drives it
@@ -6,7 +6,7 @@
 //! through an [`Events`] sink. No hardware access happens here.
 //!
 //! ```no_run
-//! use orcadeck_host::{discover, Config, Host, Instance, Output};
+//! use abac_host::{discover, Config, Host, Instance, Output};
 //! let host = Host::start(Config::default(), |out: Output| println!("{out:?}")).unwrap();
 //! for plugin in discover(&["C:/plugins".into()], None) {
 //!     host.launch(plugin).unwrap();

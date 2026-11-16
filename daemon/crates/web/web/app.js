@@ -1,5 +1,5 @@
 'use strict';
-// OrcaDeck editor. Plain DOM, no build step. All data goes through h()/textContent, never innerHTML.
+// ABAC editor. Plain DOM, no build step. All data goes through h()/textContent, never innerHTML.
 
 const $ = (s, el = document) => el.querySelector(s);
 const PROPS = new Set(['value', 'checked', 'selected', 'disabled', 'hidden', 'open']);
@@ -19,7 +19,7 @@ function h(tag, props, ...kids) {
 // replaceChildren() would print `false`/`null` from optional `cond && node` entries; drop them.
 const fill = (el, items) => el.replaceChildren(...items.flat().filter((x) => x != null && x !== false && x !== ''));
 
-const T_ACTION = 'application/x-orcadeck-action', T_CELL = 'application/x-orcadeck-cell', T_SCENE = 'application/x-orcadeck-scene';
+const T_ACTION = 'application/x-abac-action', T_CELL = 'application/x-abac-cell', T_SCENE = 'application/x-abac-scene';
 const ROTATE = 'com.hotspot.streamdock.profile.rotate';
 const S = { scenes: [], id: null, scene: null, groups: [], index: new Map(), sel: null, draft: null, dirty: false, plugins: null, psel: null, piReq: 0, piFrame: null, piCreds: null };
 
@@ -396,8 +396,8 @@ async function mountPi(box, req) {
 }
 
 window.addEventListener('message', (e) => {
-  if (!S.piFrame || e.source !== S.piFrame.contentWindow || !S.piCreds || !e.data || e.data.type !== 'orcadeck-pi-ready') return;
-  S.piFrame.contentWindow.postMessage({ type: 'orcadeck-pi-credentials', ...S.piCreds }, '*');
+  if (!S.piFrame || e.source !== S.piFrame.contentWindow || !S.piCreds || !e.data || e.data.type !== 'abac-pi-ready') return;
+  S.piFrame.contentWindow.postMessage({ type: 'abac-pi-credentials', ...S.piCreds }, '*');
 });
 
 function sceneInspector() {
@@ -590,8 +590,8 @@ function renderPluginDetail(p) {
     'needs-manifest': 'Su manifest viene cifrado por Elgato y aún no hay uno reconstruido. Reconstrúyelo con tools/plugin-install o aporta el manifest del fabricante; hasta entonces sus acciones no aparecen.',
     invalid: 'El manifest no es JSON válido. El plugin no se puede cargar hasta corregirlo o reinstalarlo.',
   }[p.status];
-  const origin = p.origin === 'orcadeck' ? 'Instalado por OrcaDeck'
-    : p.builtin ? (p.uuid === 'com.miguelpicado.orcadock' ? 'Integrado en OrcaDeck' : 'Integrado en Stream Dock (solo lectura)')
+  const origin = p.origin === 'abac' ? 'Instalado por ABAC'
+    : p.builtin ? (p.uuid === 'com.miguelpicado.orcadock' ? 'Integrado en ABAC' : 'Integrado en Stream Dock (solo lectura)')
     : 'Instalado (Stream Dock, solo lectura)';
   const pre = h('pre', { class: 'json', hidden: true });
   const show = h('button', { type: 'button', class: 'btn' }, 'Ver manifest');
@@ -743,7 +743,7 @@ function renderCal() {
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.enabled, onchange: (e) => calSend({ enabled: e.target.checked }) }), 'Usar DRA calibrado al arrancar'),
       h('span', { class: 'cal-save' + (st.saved ? '' : ' dirty') }, st.saved ? 'Guardado' : 'Cambios sin guardar'),
       h('button', { type: 'button', onclick: () => calSend({ save: true }) }, 'Guardar ahora')),
-    !st.dra && h('p', { class: 'status err' }, 'El modo DRA está apagado: arranca OrcaDeck con ORCADECK_DRA=1 para calibrar (o marca «Usar DRA…» y reinicia).'),
+    !st.dra && h('p', { class: 'status err' }, 'El modo DRA está apagado: arranca ABAC con ABAC_DRA=1 para calibrar (o marca «Usar DRA…» y reinicia).'),
     h('div', { class: 'cal-keys', role: 'group', 'aria-label': 'Tecla a calibrar' },
       st.keys.map((k) => h('button', { type: 'button', class: k.custom ? 'custom' : '', 'aria-pressed': st.selected === k.key ? 'true' : 'false', disabled: !on,
         title: k.key > 15 ? 'Panel lateral (16-18 comparten ajuste)' : `Tecla ${k.key}`, onclick: () => calSend({ select: k.key }) }, k.key))),
@@ -769,7 +769,7 @@ async function calPoll() {
     const typing = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.f;
     if (!typing && JSON.stringify(st) !== JSON.stringify(CAL.st)) { CAL.st = st; renderCal(); }
     msg.textContent = ''; msg.classList.remove('err');
-  } catch (e) { msg.textContent = e.status === 501 ? 'La calibración solo funciona con OrcaDeck en marcha (run).' : e.message; msg.classList.add('err'); }
+  } catch (e) { msg.textContent = e.status === 501 ? 'La calibración solo funciona con ABAC en marcha (run).' : e.message; msg.classList.add('err'); }
 }
 document.addEventListener('keydown', (e) => {
   if ($('#calib-view').hidden || !CAL_ARROWS[e.key] || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -791,7 +791,7 @@ for (const b of document.querySelectorAll('.views button')) {
   b.addEventListener('click', () => showView(b.dataset.view));
 }
 
-// Package opened from the OS shell (`orcadeck install`, double click): the URL carries a one-use
+// Package opened from the OS shell (`abac install`, double click): the URL carries a one-use
 // token, never a path. The page only shows what will be installed; nothing happens without confirm.
 async function openStaged(token) {
   try {
@@ -804,12 +804,12 @@ async function openStaged(token) {
 const stagedToken = new URLSearchParams(location.search).get('install');
 
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
-const savedTheme = store.get('orcadeck-theme');
+const savedTheme = store.get('abac-theme');
 if (savedTheme) document.documentElement.dataset.theme = savedTheme;
 $('#theme').addEventListener('click', () => {
   const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = dark ? 'light' : 'dark';
-  store.set('orcadeck-theme', document.documentElement.dataset.theme);
+  store.set('abac-theme', document.documentElement.dataset.theme);
 });
 
 function renderDevice(d) {

@@ -9,7 +9,7 @@ fn main() {
     let root = PathBuf::from(args.next().expect(
         "usage: serve <data-root> [--plugins DIR] [--builtin DIR] [--legacy DIR] [--port N]",
     ));
-    let mut store = orcadeck_web::FsStore {
+    let mut store = abac_web::FsStore {
         profiles: root.join("profiles"),
         plugins: root.join("plugins"),
         builtin_plugins: vec![],
@@ -29,7 +29,7 @@ fn main() {
             _ => panic!("unknown option {k}"),
         }
     }
-    let server = orcadeck_web::Server::start(Arc::new(store), port).expect("bind");
+    let server = abac_web::Server::start(Arc::new(store), port).expect("bind");
     println!("{}", server.url());
     std::thread::park();
 }

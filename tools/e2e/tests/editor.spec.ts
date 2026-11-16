@@ -18,7 +18,7 @@ function getSession() {
   return JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
 }
 
-test.describe('OrcaDeck Web Editor E2E Suite', () => {
+test.describe('ABAC Web Editor E2E Suite', () => {
   test('scenario 1: editor loads with valid token, displays profile grid, rejects unauthenticated API request', async ({
     page,
     playwright,
@@ -29,7 +29,7 @@ test.describe('OrcaDeck Web Editor E2E Suite', () => {
     await page.goto(session.url);
 
     // Assert top branding and title
-    await expect(page.locator('.brand span')).toHaveText('OrcaDeck');
+    await expect(page.locator('.brand span')).toHaveText('ABAC');
 
     // Assert scene tabs show the synthetic scene
     const sceneTab = page.locator('#scene-tabs li button');
@@ -108,7 +108,7 @@ test.describe('OrcaDeck Web Editor E2E Suite', () => {
     const session = getSession();
     const { pluginZipPath } = ensureFixturesExist();
 
-    // Stage package via CLI `orcadeck install <path>`
+    // Stage package via CLI `abac install <path>`
     const installer: RunningInstall = await spawnInstall(pluginZipPath, {
       profilesDir: session.profilesDir,
       pluginsDir: session.pluginsDir,
@@ -177,7 +177,7 @@ test.describe('OrcaDeck Web Editor E2E Suite', () => {
       `${SYNTHETIC_PLUGIN_UUID}.sdPlugin`
     );
 
-    // Ensure plugin exists and is tracked in state.json as installed by OrcaDeck
+    // Ensure plugin exists and is tracked in state.json as installed by ABAC
     if (!fs.existsSync(installedPluginDir)) {
       const { pluginDir } = ensureFixturesExist();
       fs.cpSync(pluginDir, installedPluginDir, { recursive: true });
@@ -225,13 +225,13 @@ test.describe('OrcaDeck Web Editor E2E Suite', () => {
 
   test('scenario 5: property inspector persists setting through SDK socket', async () => {
     // Explicitly justified skip per prompt requirements:
-    // Standalone `orcadeck edit` leaves FsStore::inspector at None (responding with HTTP 501
+    // Standalone `abac edit` leaves FsStore::inspector at None (responding with HTTP 501
     // "el daemon no está en marcha: no hay inspector en vivo"). The live Property Inspector
-    // host bridge is hosted by `orcadeck run` on port 18618. However, `orcadeck run` cannot
+    // host bridge is hosted by `abac run` on port 18618. However, `abac run` cannot
     // run without the physical AKP153E USB HID hardware device (Dock::open fails immediately).
     test.skip(
       true,
-      'Property Inspector requires a running `orcadeck run` daemon to host the SDK socket on port 18618. Standalone `orcadeck edit` leaves FsStore::inspector at None (HTTP 501), and `orcadeck run` requires physical AKP153E HID hardware (Dock::open fails without device).'
+      'Property Inspector requires a running `abac run` daemon to host the SDK socket on port 18618. Standalone `abac edit` leaves FsStore::inspector at None (HTTP 501), and `abac run` requires physical AKP153E HID hardware (Dock::open fails without device).'
     );
   });
 
@@ -254,7 +254,7 @@ test.describe('OrcaDeck Web Editor E2E Suite', () => {
     await page.goto(session.url);
 
     // Check page title
-    await expect(page).toHaveTitle('OrcaDeck');
+    await expect(page).toHaveTitle('ABAC');
 
     // Check main landmark
     const mainKeys = page.locator('main#keys-view');

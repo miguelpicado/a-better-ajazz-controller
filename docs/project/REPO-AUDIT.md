@@ -1,4 +1,4 @@
-# Auditoría Integral de Salud del Repositorio: orca-stream-dock (orcadeck)
+# Auditoría Integral de Salud del Repositorio: orca-stream-dock (abac)
 
 > **Nota (2026-11-10, posterior):** las rutas `file:///...repo-audit` y `docs/*.md` de este informe
 > son del worktree y del árbol anterior a la reorganización de `docs/`; se conservan como evidencia.
@@ -9,7 +9,7 @@
 - **Repositorio:** `%USERPROFILE%\orca\workspaces\orca-stream-dock\repo-audit` (worktree de `<repo>`)
 - **Rama:** `miguelpicado/repo-audit`
 - **Herramienta / Entorno:** Antigravity / Gemini 3.8 Flash, Rust `gnullvm-local` (1.99.0) + `llvm-mingw-20261104-ucrt-x86_64`
-- **Objetivo rector del proyecto:** Sustituto en Rust extremadamente ligero y optimizado de la app oficial "Stream Dock AJAZZ", 0 % CPU en reposo, sin dependencias superfluas, un solo binario, UI web bajo demanda (`orcadeck edit`) nunca residente.
+- **Objetivo rector del proyecto:** Sustituto en Rust extremadamente ligero y optimizado de la app oficial "Stream Dock AJAZZ", 0 % CPU en reposo, sin dependencias superfluas, un solo binario, UI web bajo demanda (`abac edit`) nunca residente.
 
 ---
 
@@ -54,7 +54,7 @@
 1. **`deploy.ps1` (raíz):**
    - *Ruta:* [deploy.ps1](deploy.ps1#L1-L18)
    - *Propósito:* Script de PowerShell para compilar (`npm install`) e instalar el plugin `com.miguelpicado.orcadock.sdPlugin` dentro de la aplicación propietaria `Stream Dock AJAZZ.exe` en `%APPDATA%\HotSpot\StreamDock\plugins\`.
-   - *Diagnóstico:* **Obsoleto / Huérfano**. El plugin en Node.js ya fue migrado íntegramente a Rust como acciones nativas en `daemon/crates/builtin`, y el daemon `orcadeck` sustituye a la app oficial. Además, contiene rutas locales absolutas cableadas (`C:\Program Files (x86)\Stream Dock AJAZZ Global\Stream Dock AJAZZ.exe`).
+   - *Diagnóstico:* **Obsoleto / Huérfano**. El plugin en Node.js ya fue migrado íntegramente a Rust como acciones nativas en `daemon/crates/builtin`, y el daemon `abac` sustituye a la app oficial. Además, contiene rutas locales absolutas cableadas (`C:\Program Files (x86)\Stream Dock AJAZZ Global\Stream Dock AJAZZ.exe`).
    - *Acción recomendada:* Retirar del árbol o trasladar a `tools/legacy/` cuando el coordinador lo decida.
 
 2. **`com.miguelpicado.orcadock.sdPlugin` (raíz):**
@@ -66,7 +66,7 @@
 3. **`tools/streamdock`:**
    - *Ruta:* [tools/streamdock](tools/streamdock)
    - *Contenido:* `ARROW_LEFT.png`, `ARROW_RIGHT.png`, `arrows.ps1`, `insta360-manifest.json`, `profiles.mjs`.
-   - *Diagnóstico:* **Herramientas de un solo uso (One-off) y artefactos estáticos**. El script `profiles.mjs` indica explícitamente en la línea 1: `// One-off: arrows on Orca scene, Orca Deck clock/summary on the side panel, Grabación scene. Run with Stream Dock stopped.`. Modificaba perfiles directamente en `%APPDATA%`. Actualmente, la manipulación de perfiles está integrada en `daemon/src/profile.rs`, `scenes.rs` y el editor web `orcadeck-web`. Las imágenes `ARROW_*.png` son generadas por `arrows.ps1`.
+   - *Diagnóstico:* **Herramientas de un solo uso (One-off) y artefactos estáticos**. El script `profiles.mjs` indica explícitamente en la línea 1: `// One-off: arrows on Orca scene, Orca Deck clock/summary on the side panel, Grabación scene. Run with Stream Dock stopped.`. Modificaba perfiles directamente en `%APPDATA%`. Actualmente, la manipulación de perfiles está integrada en `daemon/src/profile.rs`, `scenes.rs` y el editor web `abac-web`. Las imágenes `ARROW_*.png` son generadas por `arrows.ps1`.
    - *Acción recomendada:* Conservar en `tools/streamdock/` como utilidades de mantenimiento y fixtures, o documentar su condición de herramienta puntual.
 
 4. **`tools/plugin-install`:**
@@ -98,7 +98,7 @@
 
 | Fichero y línea | Afirmación en el documento | Realidad comprobada en el código / estado actual | Gravedad |
 |---|---|---|---|
-| [STATUS.md:8-10](docs/STATUS.md#L8-L10) | *"cinco piezas independientes que aún no están integradas ni probadas con el dispositivo"* | Las cinco piezas **ya están integradas** en el workspace único `daemon/` con los subcomandos `orcadeck run` y `orcadeck edit`, probadas y con 74 tests verdes. Documentado en [HANDOFF.md:64-75](docs/HANDOFF.md#L64-L75). | Alta |
+| [STATUS.md:8-10](docs/STATUS.md#L8-L10) | *"cinco piezas independientes que aún no están integradas ni probadas con el dispositivo"* | Las cinco piezas **ya están integradas** en el workspace único `daemon/` con los subcomandos `abac run` y `abac edit`, probadas y con 74 tests verdes. Documentado en [HANDOFF.md:64-75](docs/HANDOFF.md#L64-L75). | Alta |
 | [STATUS.md:26-27](docs/STATUS.md#L26-L27) | *"Cada crate de crates/ es independiente (su propio [workspace] vacío y rust-toolchain.toml); daemon/Cargo.toml no las referencia todavía."* | [daemon/Cargo.toml:7-8](daemon/Cargo.toml#L7-L8) ya declara `members = ["crates/host", "crates/plugman", "crates/builtin", "crates/web"]` con dependencias por path unificadas y un solo `Cargo.lock`. | Alta |
 | [STATUS.md:12](docs/STATUS.md#L12) | *"Nada está commiteado: daemon/, docs/, tools/plugin-install/, .opencode/ y .playwright-mcp/ están sin seguimiento"* | En git, `daemon/`, `docs/` y `tools/plugin-install/` **sí están rastreados**. Solo `.opencode/` quedaba sin seguimiento. | Media |
 | [STATUS.md:137-140](docs/STATUS.md#L137-L140) | *Pendiente #2: "Integración en el daemon: convertir daemon/ en workspace con las 4 crates..."* | Tarea completada. Ya es workspace y compila en conjunto. | Media |
@@ -167,11 +167,11 @@ El compilador genera exactamente 2 advertencias conocidas en el crate raíz:
 
 | Crate | `edition` | `publish = false` | `rust-version` | `license` | `lints` |
 |---|---|---|---|---|---|
-| `orcadeck` (raíz) | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
-| `orcadeck-builtin` | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
-| `orcadeck-host` | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
-| `orcadeck-plugman` | `2021` | **Presente** (L6) | **FALTA** | **FALTA** | **FALTA** |
-| `orcadeck-web` | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
+| `abac` (raíz) | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
+| `abac-builtin` | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
+| `abac-host` | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
+| `abac-plugman` | `2021` | **Presente** (L6) | **FALTA** | **FALTA** | **FALTA** |
+| `abac-web` | `2021` | **FALTA** | **FALTA** | **FALTA** | **FALTA** |
 
 *Riesgo detectado:* La ausencia de `publish = false` en 4 de los 5 crates expone al repositorio a una publicación accidental en crates.io en caso de ejecutar comandos globales de empaquetado. Se recomienda consolidar mediante `[workspace.package]` en el `Cargo.toml` raíz.
 
@@ -181,7 +181,7 @@ El comando `cargo tree -d` identifica 4 paquetes duplicados:
 
 1. **`base64`:**
    - `base64 v0.22.1` (directa en [daemon/Cargo.toml:14](daemon/Cargo.toml#L14)).
-   - `base64 v0.23.1` (transitiva vía `usvg v0.49` -> `resvg v0.49` en `orcadeck-builtin`).
+   - `base64 v0.23.1` (transitiva vía `usvg v0.49` -> `resvg v0.49` en `abac-builtin`).
    - *Coste:* Compilación duplicada del crate y desaprovechamiento de optimizaciones LTO.
    - *Solución:* Subir `base64 = "0.23"` en `daemon/Cargo.toml`.
 
@@ -189,7 +189,7 @@ El comando `cargo tree -d` identifica 4 paquetes duplicados:
    - `getrandom v0.2.17` (directa en [daemon/crates/web/Cargo.toml:11](daemon/crates/web/Cargo.toml#L11)).
    - `getrandom v0.4.3` (directa en [daemon/crates/host/Cargo.toml:16](daemon/crates/host/Cargo.toml#L16), y transitiva vía `rand v0.10` / `tungstenite` / `zip`).
    - *Coste:* Duplica las llamadas al sistema para generación de números aleatorios criptográficos (CSPRNG en Windows `BCryptGenRandom` / `ProcessPrng`).
-   - *Solución:* Actualizar `orcadeck-web` a `getrandom = "0.4"`.
+   - *Solución:* Actualizar `abac-web` a `getrandom = "0.4"`.
 
 3. **`miniz_oxide`:**
    - `miniz_oxide v0.8.9` (vía `png v0.18` en `image` y `tiny-skia`).
@@ -207,16 +207,16 @@ El comando `cargo tree -d` identifica 4 paquetes duplicados:
 
 ### 4.1 Inventario de pruebas por crate (Total: 74 tests, 100 % pasando)
 
-- **`orcadeck` (binario principal):** **23 tests unitarios** ([daemon/src/main.rs](daemon/src/main.rs)).
+- **`abac` (binario principal):** **23 tests unitarios** ([daemon/src/main.rs](daemon/src/main.rs)).
   - Cubre: parseo y chunks de protocolo HID (`proto.rs`), validación de dimensiones JPEG y límites de 9000 bytes (`render.rs`), debounce y persistencia de `Settings`/`GlobalSettings` (`app.rs`), filtrado estricto de URLs `http(s)` para `OpenUrl`, orden de escenas y transiciones cíclicas `Scene Shift` (`scenes.rs`), resolución de rutas de perfiles (`edit.rs`).
-- **`orcadeck-builtin`:** **6 tests de integración** ([daemon/crates/builtin/tests/port.rs](daemon/crates/builtin/tests/port.rs)).
+- **`abac-builtin`:** **6 tests de integración** ([daemon/crates/builtin/tests/port.rs](daemon/crates/builtin/tests/port.rs)).
   - Cubre: compatibilidad exacta con `test.js` del plugin legacy de Node, rasterización SVG de tarjetas de agente y panel lateral a 85x85 y 80x80 px con `resvg`, simulación del pipe RPC de Orca y tarjeta de cuota.
-- **`orcadeck-host`:** **20 tests** (10 unitarios en `lib.rs`, 8 integración en `fake_plugin.rs`, 1 integración en `real_plugin.rs`, 1 doc-test).
+- **`abac-host`:** **20 tests** (10 unitarios en `lib.rs`, 8 integración en `fake_plugin.rs`, 1 integración en `real_plugin.rs`, 1 doc-test).
   - Cubre: WebSocket RFC 6455 en loopback, allowlist estricta de `Origin`, generación y consumo único de tokens para Property Inspector, secuencia de backoff exponencial en reinicio de plugins, ciclo `register` / `appear` / `setImage` / `keyDown`.
-- **`orcadeck-plugman`:** **15 tests** (2 unitarios en `lib.rs`, 13 integración en `tests/plugman.rs`).
+- **`abac-plugman`:** **15 tests** (2 unitarios en `lib.rs`, 13 integración en `tests/plugman.rs`).
   - Cubre: mitigación de zip-slip (path traversal), mitigación de zip-bombs (ratio 200:1, límites de entradas y descompresión), detección y reconstrucción de overlays para plugins `ELGATO` sin tocar ficheros en disco, exportación e importación de overlays, watcher con debounce de tamaño estable.
-- **`orcadeck-web`:** **10 tests** (3 unitarios en `lib.rs`, 5 integración en `tests/api.rs`, 1 integración en `tests/real_folders.rs`, 1 doc-test).
-  - Cubre: parser HTTP/1.1 estricto en `std::net`, autenticación por token aleatorio de sesión (`X-OrcaDeck-Token` y cookie `SameSite=Strict`), endpoints REST para gestión de perfiles/celdas, lectura de base de datos SQLite `DataCache.db`, integración contra carpetas reales en modo solo-lectura.
+- **`abac-web`:** **10 tests** (3 unitarios en `lib.rs`, 5 integración en `tests/api.rs`, 1 integración en `tests/real_folders.rs`, 1 doc-test).
+  - Cubre: parser HTTP/1.1 estricto en `std::net`, autenticación por token aleatorio de sesión (`X-ABAC-Token` y cookie `SameSite=Strict`), endpoints REST para gestión de perfiles/celdas, lectura de base de datos SQLite `DataCache.db`, integración contra carpetas reales en modo solo-lectura.
 
 ### 4.2 Huecos priorizados de prueba
 
@@ -340,12 +340,12 @@ Se han localizado las siguientes rutas personales rastreadas en git:
 
 ### 6.3 Licencias de terceros (`docs/research/community-ideas.md`)
 
-El análisis forense de los 8 repositorios clonados en `/tmp/` impone restricciones jurídicas claras para el desarrollo de `orcadeck`:
+El análisis forense de los 8 repositorios clonados en `/tmp/` impone restricciones jurídicas claras para el desarrollo de `abac`:
 
-| Repositorio | Licencia | Directriz para `orcadeck` |
+| Repositorio | Licencia | Directriz para `abac` |
 |---|---|---|
 | `mirajazz` | **MPL-2.0** | Copyleft débil por archivo. Se pueden tomar algoritmos o ideas, pero **no copiar código directamente** salvo que el fichero resultante se licencie bajo MPL-2.0. |
-| `4ndv_opendeck-akp153` | **GPL-3.0** | **Prohibido copiar código fuente**. Copiar funciones contaminaría el binario `orcadeck` con GPL-3.0. Solo se pueden aprovechar constantes fácticas (mapeo de teclas 1..18, VID/PID, offsets). |
+| `4ndv_opendeck-akp153` | **GPL-3.0** | **Prohibido copiar código fuente**. Copiar funciones contaminaría el binario `abac` con GPL-3.0. Solo se pueden aprovechar constantes fácticas (mapeo de teclas 1..18, VID/PID, offsets). |
 | `Aiacos/ajazz-control-center` | **GPL-3.0** | **Prohibido copiar código fuente**. Solo datos y especificación de protocolos. |
 | `Uriziel01_Ajazz-reverse-engineering` | **Sin licencia** | Todos los derechos reservados. No copiar código; solo lectura de observaciones del protocolo. |
 | `warleyvic24_akp153e-controller` | **MIT** | Permisiva. Se pueden incorporar fragmentos de código conservando el aviso de copyright original. |

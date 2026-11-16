@@ -1,11 +1,11 @@
 [package]
-name = "orcadeck-web"
+name = "abac-web"
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
-description = "Local web editor (HTTP API + embedded SPA) for the OrcaDeck daemon"
+description = "Local web editor (HTTP API + embedded SPA) for the ABAC daemon"
 
 
 [dependencies]
@@ -13,5 +13,5 @@ serde = "1"
 serde_json = "1"
 getrandom = { workspace = true }
 # Workspace crate: no new external package, just the plugin installer itself.
-orcadeck-plugman = { path = "../plugman" }
+abac-plugman = { path = "../plugman" }
 

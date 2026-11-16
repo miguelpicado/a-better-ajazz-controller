@@ -1,6 +1,6 @@
-# orcadeck-web
+# abac-web
 
-Local web editor for the OrcaDeck daemon. It is a library crate. The daemon calls `Server::start` when the user
+Local web editor for the ABAC daemon. It is a library crate. The daemon calls `Server::start` when the user
 asks to edit, opens `server.url()` in the browser, and drops the `Server` when done. Nothing runs while it is
 stopped.
 
@@ -10,13 +10,13 @@ stopped.
   (debug build). `tiny_http` would bring 4 crates and its own thread pool for the same job. `axum` would bring
   tokio, which the daemon does not otherwise need yet.
 - Dependencies: `serde_json` (plus `serde`, already a transitive dependency, used for the 4-space printer) and
-  `getrandom` for the token and ids, plus the workspace crate `orcadeck-plugman` for installing packages. No new
+  `getrandom` for the token and ids, plus the workspace crate `abac-plugman` for installing packages. No new
   external crates: `Cargo.lock` gains one path-dependency line, no packages.
 - Frontend: `web/` (`index.html`, `app.js`, `app.css`, `icon.svg`) is embedded with `include_str!`. Plain DOM
   and CSS, no build step, no web fonts, 44 KB in total.
 
 ```rust
-let store = Arc::new(orcadeck_web::FsStore {
+let store = Arc::new(abac_web::FsStore {
     profiles: data.join("profiles"),        // <id>.sdProfile/manifest.json, written on save
     plugins: data.join("plugins"),          // installed plugins: reads, and writes by install/remove
     builtin_plugins: vec![streamdock_install.join("plugins")], // read only
@@ -25,7 +25,7 @@ let store = Arc::new(orcadeck_web::FsStore {
     downloads: None,                        // None = %USERPROFILE%\Downloads, scanned on demand
     inspector: None,                        // the daemon fills this while `run` is active
 });
-let server = orcadeck_web::Server::start(store, 0)?; // 0 = any free port
+let server = abac_web::Server::start(store, 0)?; // 0 = any free port
 open_browser(&server.url());                          // http://127.0.0.1:<port>/?token=<64 hex>
 ```
 
@@ -41,7 +41,7 @@ cargo run --example serve -- <copy-root> --plugins %APPDATA%\HotSpot\StreamDock\
 | Threat | Defence |
 |---|---|
 | Other machines | Binds `127.0.0.1` only. |
-| Any web page in the browser calling the API | Random 256-bit token per server start, required on every `/api/*` call as the `X-OrcaDeck-Token` header or the `orcadeck_<port>` cookie. Constant-time compare. |
+| Any web page in the browser calling the API | Random 256-bit token per server start, required on every `/api/*` call as the `X-ABAC-Token` header or the `abac_<port>` cookie. Constant-time compare. |
 | Token left in the address bar or history | `GET /?token=…` answers `303 → /` with `Set-Cookie: HttpOnly; SameSite=Strict`. |
 | DNS rebinding | `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`, on every request including static files. |
 | CSRF | `Origin`, when present, must be `http://127.0.0.1:<port>` or `http://localhost:<port>`. `Sec-Fetch-Site: cross-site` is refused. `POST`/`PUT` need `Content-Type: application/json` (an HTML form cannot send that). The cookie is `SameSite=Strict`. |
@@ -65,17 +65,17 @@ All bodies are JSON. Errors are `{"error": "..."}` with a 4xx/5xx status.
 | `PUT /api/scenes/order` | `[id, …]` | The device's ordered scene list. Scenes left out stay on disk as "other scenes". |
 | `PUT /api/scenes/current` | `{id}` | Scene the device shows. |
 | `GET /api/scenes/{id}` | | The scene `manifest.json` as is. |
-| `PUT /api/scenes/{id}` | full manifest | Validates, then writes atomically (`.tmp` + rename) and keeps the previous file as `manifest.json.orcadeck.bak`. Full replace: send back what you read and unknown fields survive. |
+| `PUT /api/scenes/{id}` | full manifest | Validates, then writes atomically (`.tmp` + rename) and keeps the previous file as `manifest.json.abac.bak`. Full replace: send back what you read and unknown fields survive. |
 | `PUT /api/scenes/{id}/cells/{c,r}` | action | Sets a cell. A body with `ActionID` is stored as given. A body without one (for example `{"UUID": "…"}` dropped from the list) is a new action, built like `tools/streamdock/profiles.mjs` does: new `ActionID`, `Controller: ""`, and `Name`, `Settings` and `States` from the plugin manifest. Other fields in the body override those. |
 | `DELETE /api/scenes/{id}/cells/{c,r}` | | Removes the action and returns it. |
 | `POST /api/scenes/{id}/cells/{c,r}/move` | `{to: "c,r", scene?, copy?}` | Moves to `to`, in this scene or in `scene`. A move onto an occupied cell swaps the two. A copy overwrites the target and gets a new `ActionID`. |
 | `GET /api/actions` | | Plugins whose status is `ok`, each with `actions: [{uuid, name, tooltip, icon, controllers}]`. Actions with `VisibleInActionsList: false` are left out. |
-| `GET /api/plugins` | | `[{uuid, name, version, author, description, category, icon, status, encrypted, overlay, builtin, runtime, origin, removable, actions, dir}]`. `status` is `ok`, `needs-manifest` (Elgato-encrypted with no overlay) or `invalid`. `runtime` is `exe`, `node`, `html`, `builtin`, `other` or `unknown`. `origin` is `builtin`, `streamdock` (already present before OrcaDeck) or `orcadeck`; only the latter has `removable: true`. |
+| `GET /api/plugins` | | `[{uuid, name, version, author, description, category, icon, status, encrypted, overlay, builtin, runtime, origin, removable, actions, dir}]`. `status` is `ok`, `needs-manifest` (Elgato-encrypted with no overlay) or `invalid`. `runtime` is `exe`, `node`, `html`, `builtin`, `other` or `unknown`. `origin` is `builtin`, `streamdock` (already present before ABAC) or `abac`; only the latter has `removable: true`. |
 | `GET /api/plugins/{uuid}/manifest` | | The manifest in use (the overlay if there is one), with `en.json` names applied. |
 | `GET /api/plugins/inbox` | | `{dir, items: [{name, path, kind, size, modified}]}`. One scan of `downloads` when called: `.streamDeckPlugin`/`.zip` files and `.sdPlugin` folders with a manifest, modified in the last 30 days, newest first, at most 20. Nothing watches the folder. |
 | `POST /api/plugins/inspect` | `{path}` | What the package contains, before installing: `{path, kind, uuid, name, version, author, description, actions, encrypted, confidence, needsManifest, installed}`. `path` must resolve (after `canonicalize`) inside `downloads`. |
-| `POST /api/plugins/install` | `{path, force?}` | `{uuid, dir, overlay, needsManifest, replaced}`. Inspects first to validate the UUID, then `plugman::install_package`; `force: true` replaces an existing install and leaves a `<uuid>.sdPlugin.bak-<timestamp>` backup. `409` when it already exists and `force` is not set. Recorded in `state.json` as installed by OrcaDeck. |
-| `DELETE /api/plugins/{uuid}` | | Removes the plugin folder and its overlay, only when OrcaDeck installed it. `403` for built-ins and for plugins that were already there. |
+| `POST /api/plugins/install` | `{path, force?}` | `{uuid, dir, overlay, needsManifest, replaced}`. Inspects first to validate the UUID, then `plugman::install_package`; `force: true` replaces an existing install and leaves a `<uuid>.sdPlugin.bak-<timestamp>` backup. `409` when it already exists and `force` is not set. Recorded in `state.json` as installed by ABAC. |
+| `DELETE /api/plugins/{uuid}` | | Removes the plugin folder and its overlay, only when ABAC installed it. `403` for built-ins and for plugins that were already there. |
 | `GET /api/image?scene=&uuid=&img=&state=` | | Image bytes. A bare `img` name is looked up in `<scene>/Images/`. Otherwise it is taken relative to the plugin that owns `uuid` (an action or plugin uuid), trying `""`, `.png`, `@2x.png`, `.svg`, `.gif`, `.jpg` and `.jpeg`. An empty `img` falls back to the manifest's state image, then its `Icon`. |
 | `GET /api/device` | | `{connected, model, serial, brightness, stub}` |
 | `PUT /api/device` | `{brightness: 0..100}` | Updated device object. |
@@ -106,8 +106,8 @@ Installing is the only write into the plugins folder. `GET /api/plugins` only re
 The chosen package is inspected (read-only, zip-bomb limits in `plugman`) and shown before the user confirms;
 `POST /api/plugins/install` does the copy. `state.json` keeps an `installed` array: only those UUIDs get
 `removable: true`, so the DELETE endpoint can never remove a built-in or a plugin Stream Dock installed
-itself. `state.json` is ours; losing it only makes old installs non-removable. `orcadeck edit` resolves
-`plugins` to Stream Dock's own plugins folder, because that is where `orcadeck run` discovers plugins:
+itself. `state.json` is ours; losing it only makes old installs non-removable. `abac edit` resolves
+`plugins` to Stream Dock's own plugins folder, because that is where `abac run` discovers plugins:
 installs and removals are visible to both apps.
 
 ## Tests

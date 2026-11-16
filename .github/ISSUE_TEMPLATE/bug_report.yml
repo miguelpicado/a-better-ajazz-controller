@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem with OrcaDeck
+description: Report a reproducible problem with ABAC
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -14,7 +14,7 @@ body:
     id: device
     attributes:
       label: Device model and firmware version
-      description: OrcaDeck is designed and tested only on the AJAZZ AKP153E, firmware v1.
+      description: ABAC is designed and tested only on the AJAZZ AKP153E, firmware v1.
       placeholder: AKP153E, firmware v1
     validations:
       required: true
@@ -28,8 +28,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: OrcaDeck version
-      description: Release tag or the commit you built from. `orcadeck help` lists the available commands.
+      label: ABAC version
+      description: Release tag or the commit you built from. `abac help` lists the available commands.
       placeholder: v0.1.0, or commit abc1234
     validations:
       required: true
@@ -40,7 +40,7 @@ body:
       description: The exact commands and the scene or plugin involved.
       placeholder: |
         1. Stop Stream Dock with `schtasks /end /tn StreamDock`
-        2. Run `orcadeck.exe run <profile>`
+        2. Run `abac.exe run <profile>`
         3. Press key ...
     validations:
       required: true
@@ -61,7 +61,7 @@ body:
     attributes:
       label: Logs and diagnostics
       description: |
-        Run with `$env:ORCADECK_TRACE=1` and paste the relevant output. Include `orcadeck help`
+        Run with `$env:ABAC_TRACE=1` and paste the relevant output. Include `abac help`
         output if the command set is unclear.
       render: shell
     validations:

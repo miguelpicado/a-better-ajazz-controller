@@ -16,8 +16,8 @@ report on **press** (`state = 1`) and another on **release** (`state = 0`).
 | Report on release | `state = 0` | `state = 0` (unchanged) |
 | Key LED/line effect | on press | on press (unchanged) |
 
-OrcaDeck detects the patched firmware by itself (`state 1` = down, `0` = up) and keeps treating `0` alone as a click on stock firmware.
-The **official AJAZZ app ignores `state`, so with the patch every action fires twice**: use OrcaDeck (or your own HID code).
+ABAC detects the patched firmware by itself (`state 1` = down, `0` = up) and keeps treating `0` alone as a click on stock firmware.
+The **official AJAZZ app ignores `state`, so with the patch every action fires twice**: use ABAC (or your own HID code).
 
 ## How it works
 
@@ -33,7 +33,7 @@ No checksum or signature inside the image needs updating. Details, emulation and
   `%APPDATA%\HotSpot\StreamDock\update\AKP153E.bin` (96 496 bytes, SHA-256
   `15e03f5b5a593d665a382d500d8acf23b7e5aed87f64e4b7da450d1a36f54f6f`). The patcher refuses any other file. **Keep a copy of it**: it is your way back.
 - The official updater `FirmwareUpgradeTool.exe` (ships with Stream Dock AJAZZ).
-- OrcaDeck (`orcadeck.exe`) for `bootwatch`.
+- ABAC (`abac.exe`) for `bootwatch`.
 
 ## Patch
 
@@ -47,8 +47,8 @@ The expected SHA-256 of the output is `dd2fa325216ff8e09ab90fecc4ffbe543b4b75201
 
 ## Flash
 
-1. Close the official app and OrcaDeck (they hold the device).
-2. `orcadeck bootwatch 25` — sends the update command; the device re-enumerates as `EEEF:2929` (the bootloader) and stays there.
+1. Close the official app and ABAC (they hold the device).
+2. `abac bootwatch 25` — sends the update command; the device re-enumerates as `EEEF:2929` (the bootloader) and stays there.
 3. Run the updater **from its own folder, with quoted paths** (otherwise it closes at 0 %):
    ```powershell
    $d = 'C:\Program Files (x86)\Stream Dock AJAZZ Global'
@@ -64,4 +64,4 @@ Repeat steps 1-4 with the original `AKP153E.bin`. If a flash is interrupted the 
 ## Important: the firmware needs `STP`
 
 After every replug the firmware reports **no keys** until it receives its first `STP` command (a RAM flag), and the screen blanks on a key
-press. OrcaDeck sends one when it opens the session. If you write your own host, send `STP` once after init, before drawing.
+press. ABAC sends one when it opens the session. If you write your own host, send `STP` once after init, before drawing.

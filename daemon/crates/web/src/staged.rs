@@ -1,4 +1,4 @@
-//! One-shot staging for plugin packages opened from the OS shell (double click / `orcadeck install`).
+//! One-shot staging for plugin packages opened from the OS shell (double click / `abac install`).
 //!
 //! The shell hands over a path; the editor page must never receive it. The path stays in this
 //! process-wide registry behind a random token and is consumed by the first successful install.
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn only_plugin_packages_are_staged_and_tokens_are_one_use() {
-        let dir = std::env::temp_dir().join(format!("orcadeck-staged-unit-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("abac-staged-unit-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("com.test.one.sdPlugin")).unwrap();
         std::fs::write(dir.join("com.test.one.sdPlugin/manifest.json"), "{}").unwrap();

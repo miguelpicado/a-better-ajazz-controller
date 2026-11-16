@@ -1,11 +1,11 @@
 [package]
-name = "orcadeck-host"
+name = "abac-host"
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
-description = "Stream Deck SDK v2 compatible plugin host for the OrcaDeck daemon"
+description = "Stream Deck SDK v2 compatible plugin host for the ABAC daemon"
 
 
 # Sync tungstenite + std threads: a blocking accept thread plus one blocking reader thread per

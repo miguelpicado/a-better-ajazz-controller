@@ -16,7 +16,7 @@ if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
 $exePath = (Resolve-Path -LiteralPath $Exe).Path
 
 $tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
-$tempRoot = Join-Path $tempBase ("orcadeck-smoke-" + [guid]::NewGuid().ToString('N'))
+$tempRoot = Join-Path $tempBase ("abac-smoke-" + [guid]::NewGuid().ToString('N'))
 $profilesDir = Join-Path $tempRoot 'profiles'
 $pluginsDir = Join-Path $tempRoot 'plugins'
 $dataDir = Join-Path $tempRoot 'data'
@@ -52,20 +52,20 @@ try {
 '@ | Set-Content -LiteralPath (Join-Path $profileDir 'manifest.json') -Encoding utf8
 
     # Isolate every daemon path; QUOTA_DIR keeps built-in actions away from %APPDATA% too.
-    $env:ORCADECK_PROFILES = $profilesDir
-    $env:ORCADECK_PLUGINS = $pluginsDir
-    $env:ORCADECK_DATA = $dataDir
+    $env:ABAC_PROFILES = $profilesDir
+    $env:ABAC_PLUGINS = $pluginsDir
+    $env:ABAC_DATA = $dataDir
     $env:QUOTA_DIR = Join-Path $tempRoot 'quota'
 
     # 1) help exits 0 and prints the usage.
     $help = (& $exePath help 2>&1 | Out-String)
-    Assert-True ($LASTEXITCODE -eq 0) "orcadeck help exited $LASTEXITCODE"
-    Assert-True ($help -match 'uso: orcadeck') 'orcadeck help did not print the usage banner'
-    Assert-True ($help -match 'render <perfil>') 'orcadeck help did not list render'
+    Assert-True ($LASTEXITCODE -eq 0) "abac help exited $LASTEXITCODE"
+    Assert-True ($help -match 'uso: abac') 'abac help did not print the usage banner'
+    Assert-True ($help -match 'render <perfil>') 'abac help did not list render'
 
     # 2) render the synthetic scene: 15 keys (3 actions + black fill), all valid JPEGs.
     $render = (& $exePath render $profileDir $outDir 2>&1 | Out-String)
-    Assert-True ($LASTEXITCODE -eq 0) "orcadeck render exited ${LASTEXITCODE}: $render"
+    Assert-True ($LASTEXITCODE -eq 0) "abac render exited ${LASTEXITCODE}: $render"
     $jpegs = @(Get-ChildItem -LiteralPath $outDir -Filter 'key*.jpg' -File | Sort-Object Name)
     Assert-True ($jpegs.Count -eq 15) "expected 15 JPEGs, found $($jpegs.Count)"
     foreach ($jpeg in $jpegs) {
@@ -104,7 +104,7 @@ try {
     if (-not $ready) {
         $tail = Get-Content -LiteralPath $editErr -Raw -ErrorAction SilentlyContinue
         $tail += Get-Content -LiteralPath $editOut -Raw -ErrorAction SilentlyContinue
-        throw "orcadeck edit did not accept TCP on 127.0.0.1:$port within 10 s (exited=$($editProc.HasExited)): $tail"
+        throw "abac edit did not accept TCP on 127.0.0.1:$port within 10 s (exited=$($editProc.HasExited)): $tail"
     }
 
     $root = Invoke-WebRequest -Uri "http://127.0.0.1:$port/" -TimeoutSec 5
@@ -114,7 +114,7 @@ try {
 
     Stop-Process -Id $editProc.Id -Force -ErrorAction SilentlyContinue
     [void]$editProc.WaitForExit(5000)
-    Assert-True (-not (Get-Process -Id $editProc.Id -ErrorAction SilentlyContinue)) "orcadeck edit process $($editProc.Id) is still running"
+    Assert-True (-not (Get-Process -Id $editProc.Id -ErrorAction SilentlyContinue)) "abac edit process $($editProc.Id) is still running"
 } catch {
     $failure = $_.Exception.Message
 } finally {
@@ -126,7 +126,7 @@ try {
                 [void]$editProc.WaitForExit(5000)
             }
             if (Get-Process -Id $editProc.Id -ErrorAction SilentlyContinue) {
-                throw "orcadeck edit process $($editProc.Id) survived Stop-Process"
+                throw "abac edit process $($editProc.Id) survived Stop-Process"
             }
         }
     } catch {

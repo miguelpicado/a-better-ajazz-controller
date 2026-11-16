@@ -5,14 +5,14 @@ Punto de entrada para retomar: [`HANDOFF.md`](HANDOFF.md). Qué falta, en orden:
 
 ## Actualización 2026-11-16 (vigente sobre lo de abajo)
 
-El modo DRA (`ORCADECK_DRA=1`) está en uso diario: teclas 1-15 a 98×98 con calibración por tecla, barra lateral continua
+El modo DRA (`ABAC_DRA=1`) está en uso diario: teclas 1-15 a 98×98 con calibración por tecla, barra lateral continua
 (reloj, CPU, GPU, RAM, temperaturas), tecla de resumen que enfoca el agente en espera más antiguo. Firmware sin parchear (decisión del
 usuario). Lo que este fichero dice más abajo sobre DRA o sobre el panel de 3 celdas está superado; ver `../guide/USAGE.md` §4b y
 [`HANDOFF.md`](HANDOFF.md).
 
 ## Dónde estamos
 
-Sustituto en Rust de «Stream Dock AJAZZ» para el AKP153E: un único binario (`orcadeck.exe`) hace de
+Sustituto en Rust de «Stream Dock AJAZZ» para el AKP153E: un único binario (`abac.exe`) hace de
 driver HID, host de plugins del SDK v2 y, bajo demanda, servidor del editor web. Sin admin, sin UI
 residente y sin runtime async. El workspace, `run`, `edit`, Scene Shift, la instalación de plugins y
 el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue pendiente.
@@ -26,7 +26,7 @@ el Property Inspector están mergeados en `main`; la prueba en dispositivo sigue
 | Property Inspector | servidor en `host` + iframe en `edit`: sandbox sin `allow-same-origin`, token de un solo uso por `postMessage`, CSP sin red externa y `Origin: null` solo con sesión de PI abierta |
 | `edit` dentro de `run` | canal de control `ctl.rs` (named pipe) con fallback standalone; recarga en caliente de una tecla; `RunInspector` como `InspectorBridge` |
 | Tests | **141 verdes** con `cargo test --release --workspace` (medido 2026-11-11; 0 fallos) |
-| Binario | `orcadeck.exe` = **3 725 824 B** (~3,55 MiB) recompilado el 2026-11-11 |
+| Binario | `abac.exe` = **3 725 824 B** (~3,55 MiB) recompilado el 2026-11-11 |
 
 ## Limpieza hecha
 
@@ -80,14 +80,14 @@ No es todo lo ligera que podría. Sin medir aún `run` con dispositivo; solo `ed
 - El `Title`/`ShowTitle` del manifiesto no se dibuja en `run` (solo el `setTitle` de plugins);
   decisión del usuario: no hace falta.
 - `crates/web/tests/real_folders.rs` (comparaba con el perfil real del usuario, frágil) eliminado.
-- Editor permanente (2026-11-12): acceso «OrcaDeck Editor» en el menú Inicio (`orcadeck-task.ps1 editor`,
+- Editor permanente (2026-11-12): acceso «ABAC Editor» en el menú Inicio (`abac-task.ps1 editor`,
   `conhost --headless`, sin ventana; PowerToys Run lo encuentra). El editor arranca en ~80 ms y termina solo
   ~5 s después de cerrar la pestaña: la página hace long-poll a `/api/live` y el servidor se cierra cuando
   deja de recibirlo (`Server::wait_idle`; 30 s si la pestaña nunca llega). Ese mismo `/api/live` entrega al
   editor los JPEG que `run` envía al dispositivo (`InspectorBridge::mirror`), así que la rejilla muestra en
   tiempo real lo mismo que el panel; la UI los gira 90° (el panel recibe las imágenes giradas 270°).
-- Calidad (2026-11-12): imágenes del pipeline a 2× (`WORK_SCALE`, 170 px) y JPEG del dispositivo q85 (probado q92: perdía fotogramas; antes q75; `ORCADECK_JPEG_Q` lo cambia sin recompilar). El espejo del editor usa la imagen 2× (q88, sin giro). Vigilar pulsaciones perdidas y fps con 4 teclas animando: los fotogramas pesan más por USB.
-- Editor lento al abrir (2026-11-12): NO es de OrcaDeck. `edit` tarda 14 ms hasta lanzar el navegador (`%LOCALAPPDATA%\OrcaDeck\edit-timing.log`). `ShellExecute` (acceso directo, `orcadeck.exe` o `cmd.exe` firmado) tarda ~21 s a veces (no siempre; no reproducido tras 330 s de inactividad en la última prueba) y justo después ~50 ms; `CreateProcess` directo (conhost/orcadeck) siempre <250 ms. Causa sin identificar (no AppXSvc, no Defender, no el .lnk). Siguiente: capturar una apertura lenta con Process Monitor/WPR (requiere admin) o probar una exclusión de Defender para `%LOCALAPPDATA%\OrcaDeckin`.
+- Calidad (2026-11-12): imágenes del pipeline a 2× (`WORK_SCALE`, 170 px) y JPEG del dispositivo q85 (probado q92: perdía fotogramas; antes q75; `ABAC_JPEG_Q` lo cambia sin recompilar). El espejo del editor usa la imagen 2× (q88, sin giro). Vigilar pulsaciones perdidas y fps con 4 teclas animando: los fotogramas pesan más por USB.
+- Editor lento al abrir (2026-11-12): NO es de ABAC. `edit` tarda 14 ms hasta lanzar el navegador (`%LOCALAPPDATA%\ABAC\edit-timing.log`). `ShellExecute` (acceso directo, `abac.exe` o `cmd.exe` firmado) tarda ~21 s a veces (no siempre; no reproducido tras 330 s de inactividad en la última prueba) y justo después ~50 ms; `CreateProcess` directo (conhost/abac) siempre <250 ms. Causa sin identificar (no AppXSvc, no Defender, no el .lnk). Siguiente: capturar una apertura lenta con Process Monitor/WPR (requiere admin) o probar una exclusión de Defender para `%LOCALAPPDATA%\ABACin`.
 - Sin medir: reposo real (ningún agente trabajando) y 4 agentes tras la caché; depende de
   que los agentes de Orca estén parados, no se puede forzar desde aquí.
 

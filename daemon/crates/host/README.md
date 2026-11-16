@@ -1,6 +1,6 @@
-# orcadeck-host
+# abac-host
 
-Host de plugins para OrcaDeck. Habla el protocolo del SDK v2 de Elgato/Stream Dock: escucha en un
+Host de plugins para ABAC. Habla el protocolo del SDK v2 de Elgato/Stream Dock: escucha en un
 WebSocket de loopback, lanza los procesos de los plugins, les envía eventos y entrega al demonio lo
 que piden (imágenes, títulos, estados, ajustes, URLs).
 
@@ -10,7 +10,7 @@ resto.
 ## Uso
 
 ```rust
-use orcadeck_host::{discover, Config, Host, Instance, Output};
+use abac_host::{discover, Config, Host, Instance, Output};
 
 let host = Host::start(Config::default(), |out: Output| eprintln!("{out:?}"))?;
 for plugin in discover(&["C:/plugins".into()], None) {
@@ -116,7 +116,7 @@ navegador no puede conectar todavía.
 
 ```powershell
 cd daemon
-cargo test --release -p orcadeck-host
+cargo test --release -p abac-host
 ```
 
 - `tests/fake_plugin.rs`: WebSocket de loopback real con un plugin falso; cubre registro,

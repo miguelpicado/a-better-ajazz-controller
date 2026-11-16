@@ -1,5 +1,5 @@
 [package]
-name = "orcadeck"
+name = "abac"
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
@@ -23,9 +23,9 @@ base64 = "0.23"
 getrandom = "0.4"
 
 [dependencies]
-orcadeck-host = { path = "crates/host" }
-orcadeck-builtin = { path = "crates/builtin" }
-orcadeck-web = { path = "crates/web" }
+abac-host = { path = "crates/host" }
+abac-builtin = { path = "crates/builtin" }
+abac-web = { path = "crates/web" }
 base64 = { workspace = true }
 hidapi = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

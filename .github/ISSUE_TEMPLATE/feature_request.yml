@@ -1,12 +1,12 @@
 name: Feature request
-description: Suggest an improvement or a new capability for OrcaDeck
+description: Suggest an improvement or a new capability for ABAC
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Describe the problem first. OrcaDeck targets a small Windows-only binary for the AKP153E;
+        Describe the problem first. ABAC targets a small Windows-only binary for the AKP153E;
         features that need an async runtime, a resident UI or admin rights are unlikely to be
         accepted.
   - type: textarea

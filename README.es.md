@@ -1,9 +1,9 @@
-# A Better AJazz Controller (OrcaDeck)
+# A Better AJazz Controller (ABAC)
 
 > Versión en español. English: [README.md](README.md).
 
 Sustituto ligero de «Stream Dock AJAZZ» para el teclado **AKP153E**. Un único ejecutable Rust
-(`orcadeck.exe`) hace de driver HID, host de plugins del SDK v2 y, solo bajo demanda, servidor del
+(`abac.exe`) hace de driver HID, host de plugins del SDK v2 y, solo bajo demanda, servidor del
 editor web. Sin Qt, CEF, Electron ni runtime async; sin admin; sin UI residente.
 
 El objetivo es la misma funcionalidad útil que la app oficial —y las teclas de Orca— con una fracción
@@ -14,16 +14,16 @@ mientras se edita.
 
 Todo gratis y de código abierto, con el hardware de serie:
 
-- **Modo de pintado DRA** (`ORCADECK_DRA=1`, experimental): teclas a **98×98 px** en vez de 85×85, con calibración por tecla en el editor, redibujado parcial (solo se envían las teclas que cambian) y el **panel lateral como una barra continua** (reloj, CPU, GPU, RAM, temperatura de CPU/GPU) en lugar de tres celdas sueltas. Ver [Uso §4b](docs/guide/USAGE.md).
+- **Modo de pintado DRA** (`ABAC_DRA=1`, experimental): teclas a **98×98 px** en vez de 85×85, con calibración por tecla en el editor, redibujado parcial (solo se envían las teclas que cambian) y el **panel lateral como una barra continua** (reloj, CPU, GPU, RAM, temperatura de CPU/GPU) en lugar de tres celdas sueltas. Ver [Uso §4b](docs/guide/USAGE.md).
 - **Parche de firmware pulsar/soltar**: el firmware de serie solo informa al soltar. El [parcheador](docs/guide/FIRMWARE-PATCH.md) hace que el AKP153E envíe un informe al **pulsar** y otro al **soltar**, y así el software tiene pulsación corta y larga reales. Lo flasheas tú desde tu propia copia del firmware; no se distribuye ningún binario de AJAZZ.
 
 ## Estado
 
 | Pieza | Estado |
 |---|---|
-| `orcadeck run` (driver + host + acciones integradas) | probado en vivo con el perfil Orca (2026-11-10): pintado, spinner, pulsaciones y cuota |
+| `abac run` (driver + host + acciones integradas) | probado en vivo con el perfil Orca (2026-11-10): pintado, spinner, pulsaciones y cuota |
 | Acciones integradas: agente, cuota, reloj, resumen | funcionando; mismas UUID que el plugin Node |
-| Editor web `orcadeck edit` | funcionando en loopback; escenas, celdas, plugins, brillo y Property Inspector; `edit` corre dentro de `run` si está vivo (con fallback) |
+| Editor web `abac edit` | funcionando en loopback; escenas, celdas, plugins, brillo y Property Inspector; `edit` corre dentro de `run` si está vivo (con fallback) |
 | Scene Shift (`profile.rotate`) | mergeado en `main` (`scenes.rs`); pendiente la prueba física en el dispositivo |
 | Instalación de plugins (`.streamDeckPlugin`, `.sdPlugin`) | funcionando desde `edit`, con escaneo de Descargas bajo demanda; reconstruye manifests cifrados sin descifrarlos |
 | Property Inspector en el editor | servidor y iframe integrados en `edit`; pendiente la prueba con plugins reales |
@@ -50,13 +50,13 @@ cargo build --release
 schtasks /end /tn StreamDock
 
 # 3. Comprobar el teclado (solo lectura)
-.\target\release\orcadeck.exe probe
+.\target\release\abac.exe probe
 
 # 4. Arrancar con tu perfil
-.\target\release\orcadeck.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\<ID>.sdProfile"
+.\target\release\abac.exe run "$env:APPDATA\HotSpot\StreamDock\profiles\<ID>.sdProfile"
 
 # 5. Editar escenas en el navegador (si `run` está vivo, dentro de `run`)
-.\target\release\orcadeck.exe edit
+.\target\release\abac.exe edit
 ```
 
 Al terminar: Ctrl+C en `run` y `schtasks /run /tn StreamDock` para devolver el control a la app
@@ -76,7 +76,7 @@ oficial. No ejecutes las dos a la vez.
 | `poll [input\|feature]` | `GET_REPORT` periódico (experimental) |
 | `hidwatch` | enumera HID y marca el bootloader (solo lectura) |
 
-Sintaxis, variables `ORCADECK_*` y flujos completos: [docs/guide/USAGE.md](docs/guide/USAGE.md).
+Sintaxis, variables `ABAC_*` y flujos completos: [docs/guide/USAGE.md](docs/guide/USAGE.md).
 
 ## Qué pinta
 
@@ -93,7 +93,7 @@ Sintaxis, variables `ORCADECK_*` y flujos completos: [docs/guide/USAGE.md](docs/
 ## Estructura
 
 ```text
-daemon/                 workspace Rust y binario orcadeck
+daemon/                 workspace Rust y binario abac
   src/                  CLI, HID, render, perfiles, escenas, run, edit
   crates/host/          host de plugins (WebSocket 18618)
   crates/builtin/       acciones Orca integradas
@@ -122,14 +122,14 @@ vendor/                 paquetes de terceros del usuario (gitignorado)
 ## Reglas
 
 - **Flashear el firmware es bajo tu responsabilidad**: `FirmwareUpgradeTool.exe` con 4 argumentos flashea al instante y `CRT\0\0APP NEW` pone la unidad en el bootloader. Sigue la guía [FIRMWARE-PATCH](docs/guide/FIRMWARE-PATCH.md) y conserva tu `AKP153E.bin` original.
-- **No ejecutar Stream Dock y OrcaDeck a la vez**: mismo HID y puerto 18618.
+- **No ejecutar Stream Dock y ABAC a la vez**: mismo HID y puerto 18618.
 - Los paquetes de terceros del usuario (zips, `.rar`, instalador y carpeta del driver) están en
   `vendor/`, fuera de git: no se tocan ni se commitean.
 
 ## Legado y créditos
 
 `tools/legacy/com.miguelpicado.orcadock.sdPlugin/` es el plugin Node original para la app oficial
-(agente, cuota, reloj y resumen). Sus acciones se migraron a `orcadeck-builtin`; el plugin sigue en
+(agente, cuota, reloj y resumen). Sus acciones se migraron a `abac-builtin`; el plugin sigue en
 el repo como referencia y para usar con Stream Dock. `tools/legacy/deploy.ps1` lo copia a la app
 oficial y `node tools/legacy/com.miguelpicado.orcadock.sdPlugin/test.js` ejecuta sus tests.
 `tools/streamdock/` contiene el alta puntual del perfil y los manifiestos de ejemplo;

@@ -37,7 +37,7 @@ impl Ctx {
     }
 
     fn cookie_name(&self) -> String {
-        format!("orcadeck_{}", self.port)
+        format!("abac_{}", self.port)
     }
 
     fn host_ok(&self, h: &str) -> bool {
@@ -115,7 +115,7 @@ pub fn handle(ctx: &Ctx, req: Request) -> Response {
         ("GET", "/icon.svg") => page("image/svg+xml", ICON),
         (_, p) if p.starts_with("/api/") => {
             let given = req
-                .header("x-orcadeck-token")
+                .header("x-abac-token")
                 .or_else(|| req.cookie(&ctx.cookie_name()));
             if !ctx.token_ok(given) {
                 return Response::error(401, "missing or bad session token");

@@ -15,8 +15,8 @@ y otro al **soltar** (`state = 0`).
 | Informe al pulsar | no | `state = 1` |
 | Informe al soltar | `state = 0` | `state = 0` (igual) |
 
-OrcaDeck detecta el firmware parcheado solo (`state 1` = pulsar, `0` = soltar) y con el de serie sigue tratando `0` como un clic.
-**La app oficial de AJAZZ ignora `state`, así que con el parche cada acción se dispara dos veces**: usa OrcaDeck (o tu propio código HID).
+ABAC detecta el firmware parcheado solo (`state 1` = pulsar, `0` = soltar) y con el de serie sigue tratando `0` como un clic.
+**La app oficial de AJAZZ ignora `state`, así que con el parche cada acción se dispara dos veces**: usa ABAC (o tu propio código HID).
 
 ## Cómo funciona
 
@@ -31,7 +31,7 @@ dentro de la imagen. Detalles, emulación y riesgos: [`docs/research/firmware/`]
 - **Tu propia copia del firmware original**; aquí no se distribuye (copyright de AJAZZ). Con la app oficial instalada está en
   `%APPDATA%\HotSpot\StreamDock\update\AKP153E.bin` (96 496 bytes, SHA-256
   `15e03f5b5a593d665a382d500d8acf23b7e5aed87f64e4b7da450d1a36f54f6f`). El parcheador rechaza cualquier otro fichero. **Guarda una copia**: es tu vuelta atrás.
-- El actualizador oficial `FirmwareUpgradeTool.exe` (viene con Stream Dock AJAZZ) y `orcadeck.exe` (para `bootwatch`).
+- El actualizador oficial `FirmwareUpgradeTool.exe` (viene con Stream Dock AJAZZ) y `abac.exe` (para `bootwatch`).
 
 ## Parchear
 
@@ -44,8 +44,8 @@ El SHA-256 esperado de la salida es `dd2fa325216ff8e09ab90fecc4ffbe543b4b752016b
 
 ## Flashear
 
-1. Cierra la app oficial y OrcaDeck (retienen el dispositivo).
-2. `orcadeck bootwatch 25`: envía la orden de actualización; la unidad reaparece como `EEEF:2929` (bootloader) y se queda ahí.
+1. Cierra la app oficial y ABAC (retienen el dispositivo).
+2. `abac bootwatch 25`: envía la orden de actualización; la unidad reaparece como `EEEF:2929` (bootloader) y se queda ahí.
 3. Lanza el actualizador **desde su carpeta y con las rutas entre comillas** (si no, se cierra en el 0 %):
    ```powershell
    $d = 'C:\Program Files (x86)\Stream Dock AJAZZ Global'
@@ -61,4 +61,4 @@ Repite los pasos 1-4 con el `AKP153E.bin` original. Si un flasheo se interrumpe,
 ## Importante: el firmware necesita `STP`
 
 Tras cada reenchufe el firmware **no reporta ninguna tecla** hasta recibir su primer `STP` (un flag en RAM), y la pantalla se apaga al pulsar.
-OrcaDeck envía uno al abrir la sesión. Si escribes tu propio host, envía `STP` una vez tras el init y antes de pintar.
+ABAC envía uno al abrir la sesión. Si escribes tu propio host, envía `STP` una vez tras el init y antes de pintar.

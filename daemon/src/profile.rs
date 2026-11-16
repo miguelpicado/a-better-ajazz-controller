@@ -137,7 +137,7 @@ pub fn save_action_settings(
         return Ok(false);
     }
     action.insert("Settings".into(), settings.clone());
-    orcadeck_web::store::atomic_write(manifest, &orcadeck_web::store::to_pretty(&doc), true)
+    abac_web::store::atomic_write(manifest, &abac_web::store::to_pretty(&doc), true)
         .map_err(|e| e.to_string())?;
     Ok(true)
 }
@@ -149,7 +149,7 @@ mod tests {
 
     fn tmp(name: &str) -> PathBuf {
         let d =
-            std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("abac-profile-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(doc["Custom"], json!({"a": 2, "z": 1}));
         assert_eq!(
             fs::read(&path).unwrap(),
-            orcadeck_web::store::to_pretty(&doc),
+            abac_web::store::to_pretty(&doc),
             "4-space, sorted keys"
         );
 
@@ -208,7 +208,7 @@ mod manifest_image_containment {
 
     fn tmp(name: &str) -> PathBuf {
         let d =
-            std::env::temp_dir().join(format!("orcadeck-profile-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("abac-profile-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d

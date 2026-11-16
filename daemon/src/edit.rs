@@ -1,5 +1,5 @@
 use crate::ctl;
-use orcadeck_web::{FsStore, Server};
+use abac_web::{FsStore, Server};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -29,17 +29,17 @@ where
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
 
-    let profiles = get_env("ORCADECK_PROFILES")
+    let profiles = get_env("ABAC_PROFILES")
         .map(PathBuf::from)
         .unwrap_or_else(|| appdata.join("HotSpot").join("StreamDock").join("profiles"));
 
-    let plugins = get_env("ORCADECK_PLUGINS")
+    let plugins = get_env("ABAC_PLUGINS")
         .map(PathBuf::from)
         .unwrap_or_else(|| appdata.join("HotSpot").join("StreamDock").join("plugins"));
 
-    let data = get_env("ORCADECK_DATA")
+    let data = get_env("ABAC_DATA")
         .map(PathBuf::from)
-        .unwrap_or_else(|| appdata.join("OrcaDeck"));
+        .unwrap_or_else(|| appdata.join("ABAC"));
 
     let legacy_config = {
         let cand = appdata.join("HotSpot").join("StreamDock").join("config");
@@ -51,7 +51,7 @@ where
     };
 
     let mut builtin_plugins = Vec::new();
-    if let Some(extra) = get_env("ORCADECK_BUILTIN_PLUGINS") {
+    if let Some(extra) = get_env("ABAC_BUILTIN_PLUGINS") {
         for p in extra.split(';').map(str::trim).filter(|s| !s.is_empty()) {
             let path = PathBuf::from(p);
             if dir_exists(&path) {
@@ -211,7 +211,7 @@ fn editor_store(paths: EditPaths) -> FsStore {
     }
 }
 
-/// Appends `<unix ms> +<ms since start> <what>` to `%LOCALAPPDATA%\OrcaDeck\edit-timing.log`, to find out where
+/// Appends `<unix ms> +<ms since start> <what>` to `%LOCALAPPDATA%\ABAC\edit-timing.log`, to find out where
 /// a slow editor open spends its time (launcher, pipe, browser). Best effort; never fails the editor.
 fn tlog(t0: std::time::Instant, what: &str) {
     use std::io::Write;
@@ -224,7 +224,7 @@ fn tlog(t0: std::time::Instant, what: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(PathBuf::from(dir).join("OrcaDeck").join("edit-timing.log"))
+        .open(PathBuf::from(dir).join("ABAC").join("edit-timing.log"))
     {
         let _ = writeln!(f, "{ms} +{}ms {what}", t0.elapsed().as_millis());
     }
@@ -251,13 +251,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 no_open = true;
             }
             "-h" | "--help" => {
-                println!("Uso: orcadeck edit [--port <N>] [--no-open]");
+                println!("Uso: abac edit [--port <N>] [--no-open]");
                 println!("Sirve el editor web en 127.0.0.1 y lo abre en el navegador.");
                 return Ok(());
             }
             other => {
                 return Err(format!(
-                    "opción desconocida para edit: '{other}'. Uso: orcadeck edit [--port <N>] [--no-open]"
+                    "opción desconocida para edit: '{other}'. Uso: abac edit [--port <N>] [--no-open]"
                 ));
             }
         }
@@ -278,7 +278,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     match reply {
         Some(Ok(session)) => {
             println!(
-                "OrcaDeck editor (dentro de orcadeck run): {}",
+                "ABAC editor (dentro de abac run): {}",
                 session.url()
             );
             println!("Presiona Ctrl+C para detener el servidor.");
@@ -296,7 +296,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             tlog(t0, "session closed");
             return Ok(());
         }
-        Some(Err(e)) => return Err(format!("orcadeck run no pudo iniciar el editor: {e}")),
+        Some(Err(e)) => return Err(format!("abac run no pudo iniciar el editor: {e}")),
         None => {}
     }
 
@@ -307,7 +307,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .map_err(|e| format!("no se pudo iniciar el servidor web: {e}"))?;
 
     let url = server.url();
-    println!("OrcaDeck editor: {url}");
+    println!("ABAC editor: {url}");
     println!("Presiona Ctrl+C para detener el servidor.");
 
     if !no_open {
@@ -321,15 +321,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// `orcadeck install <paquete>`: opens the editor with the package staged. Inside a live `run` the
+/// `abac install <paquete>`: opens the editor with the package staged. Inside a live `run` the
 /// package is staged there over the ctl pipe; otherwise this process serves its own editor.
 pub fn run_install(raw: &str) -> Result<(), String> {
-    let pkg = orcadeck_web::validate_package(raw).map_err(|e| format!("{raw}: {e}"))?;
+    let pkg = abac_web::validate_package(raw).map_err(|e| format!("{raw}: {e}"))?;
     let path = pkg.to_string_lossy().to_string();
 
     if let Some(res) = ctl::request_install(&path) {
-        let session = res.map_err(|e| format!("orcadeck run no pudo abrir el editor: {e}"))?;
-        println!("OrcaDeck: instala el plugin en el navegador (dentro de orcadeck run).");
+        let session = res.map_err(|e| format!("abac run no pudo abrir el editor: {e}"))?;
+        println!("ABAC: instala el plugin en el navegador (dentro de abac run).");
         println!("{}", session.url());
         println!("Presiona Ctrl+C para cerrar el editor.");
         if let Err(e) = open_browser(session.url()) {
@@ -342,12 +342,12 @@ pub fn run_install(raw: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    let token = orcadeck_web::stage_package(&path)
+    let token = abac_web::stage_package(&path)
         .map_err(|e| format!("no se pudo preparar el paquete: {e}"))?;
     let server = Server::start(Arc::new(editor_store(resolve_paths())), 0)
         .map_err(|e| format!("no se pudo iniciar el servidor web: {e}"))?;
     let url = format!("{}&install={token}", server.url());
-    println!("OrcaDeck: instala el plugin en el navegador.");
+    println!("ABAC: instala el plugin en el navegador.");
     println!("{url}");
     println!("Presiona Ctrl+C para cerrar el editor.");
     if let Err(e) = open_browser(&url) {
@@ -401,7 +401,7 @@ mod tests {
         );
         assert_eq!(
             paths.data,
-            PathBuf::from(r"C:\Users\test\AppData\Roaming\OrcaDeck")
+            PathBuf::from(r"C:\Users\test\AppData\Roaming\ABAC")
         );
         assert_eq!(
             paths.legacy_config,
@@ -415,10 +415,10 @@ mod tests {
     fn test_resolve_paths_overrides() {
         let env_map = |k: &str| match k {
             "APPDATA" => Some(r"C:\Users\test\AppData\Roaming".into()),
-            "ORCADECK_PROFILES" => Some(r"D:\custom\profiles".into()),
-            "ORCADECK_PLUGINS" => Some(r"D:\custom\plugins".into()),
-            "ORCADECK_DATA" => Some(r"D:\custom\data".into()),
-            "ORCADECK_BUILTIN_PLUGINS" => Some(r"D:\custom\builtin1;D:\custom\builtin2".into()),
+            "ABAC_PROFILES" => Some(r"D:\custom\profiles".into()),
+            "ABAC_PLUGINS" => Some(r"D:\custom\plugins".into()),
+            "ABAC_DATA" => Some(r"D:\custom\data".into()),
+            "ABAC_BUILTIN_PLUGINS" => Some(r"D:\custom\builtin1;D:\custom\builtin2".into()),
             _ => None,
         };
         let exists = |p: &Path| {

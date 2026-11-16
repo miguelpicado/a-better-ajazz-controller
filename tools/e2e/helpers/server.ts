@@ -14,21 +14,21 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 
 export function resolveOrkaDeckBin(): string {
-  const envBin = process.env.ORCADECK_BIN;
+  const envBin = process.env.ABAC_BIN;
   if (envBin) {
     const resolved = path.isAbsolute(envBin) ? envBin : path.resolve(REPO_ROOT, envBin);
     if (fs.existsSync(resolved)) return resolved;
-    throw new Error(`ORCADECK_BIN set to '${envBin}', but binary does not exist at '${resolved}'`);
+    throw new Error(`ABAC_BIN set to '${envBin}', but binary does not exist at '${resolved}'`);
   }
 
-  const defaultBin = path.join(REPO_ROOT, 'daemon', 'target', 'release', 'orcadeck.exe');
+  const defaultBin = path.join(REPO_ROOT, 'daemon', 'target', 'release', 'abac.exe');
   if (fs.existsSync(defaultBin)) return defaultBin;
 
-  const fallbackBin = path.join(REPO_ROOT, 'daemon', 'target-e2e', 'release', 'orcadeck.exe');
+  const fallbackBin = path.join(REPO_ROOT, 'daemon', 'target-e2e', 'release', 'abac.exe');
   if (fs.existsSync(fallbackBin)) return fallbackBin;
 
   throw new Error(
-    `orcadeck binary not found at '${defaultBin}' or '${fallbackBin}'. Please build with 'cargo build --release' or set ORCADECK_BIN.`
+    `abac binary not found at '${defaultBin}' or '${fallbackBin}'. Please build with 'cargo build --release' or set ABAC_BIN.`
   );
 }
 
@@ -44,7 +44,7 @@ export interface TempFolders {
 
 export function createTempFolders(tag: string): TempFolders {
   const { profileDir } = ensureFixturesExist();
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `orcadeck-e2e-${tag}-`));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `abac-e2e-${tag}-`));
   const profilesDir = path.join(tempDir, 'profiles');
   const pluginsDir = path.join(tempDir, 'plugins');
   const dataDir = path.join(tempDir, 'data');
@@ -111,9 +111,9 @@ export async function spawnEditor(options: {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: newPath,
-    ORCADECK_PROFILES: options.profilesDir,
-    ORCADECK_PLUGINS: options.pluginsDir,
-    ORCADECK_DATA: options.dataDir,
+    ABAC_PROFILES: options.profilesDir,
+    ABAC_PLUGINS: options.pluginsDir,
+    ABAC_DATA: options.dataDir,
   };
 
   const child = spawn(bin, ['edit', '--port', String(port), '--no-open'], {
@@ -136,7 +136,7 @@ export async function spawnEditor(options: {
 
     const onData = (data: Buffer) => {
       output += data.toString();
-      const match = output.match(/OrcaDeck editor:\s+(http:\/\/127\.0\.0\.1:(\d+)\/\?token=([0-9a-f]+))/i);
+      const match = output.match(/ABAC editor:\s+(http:\/\/127\.0\.0\.1:(\d+)\/\?token=([0-9a-f]+))/i);
       if (match && !resolved) {
         resolved = true;
         clearTimeout(timeout);
@@ -218,9 +218,9 @@ export async function spawnInstall(
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: newPath,
-    ORCADECK_PROFILES: options.profilesDir,
-    ORCADECK_PLUGINS: options.pluginsDir,
-    ORCADECK_DATA: options.dataDir,
+    ABAC_PROFILES: options.profilesDir,
+    ABAC_PLUGINS: options.pluginsDir,
+    ABAC_DATA: options.dataDir,
   };
 
   const child = spawn(bin, ['install', packagePath], {

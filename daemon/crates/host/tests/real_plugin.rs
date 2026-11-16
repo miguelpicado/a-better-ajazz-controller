@@ -4,7 +4,7 @@
 //! QUOTA_DIR point at that temp dir so the plugin cannot reach Orca or the real quota file.
 //! Override the source with ORCADOCK_PLUGIN=<path to com.miguelpicado.orcadock.sdPlugin>.
 
-use orcadeck_host::{Config, Device, Host, Instance, Output};
+use abac_host::{Config, Device, Host, Instance, Output};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::channel;
@@ -43,7 +43,7 @@ fn orcadock_plugin_paints_and_reacts() {
         return;
     }
 
-    let tmp = std::env::temp_dir().join(format!("orcadeck-host-real-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("abac-host-real-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let dir = tmp.join("com.miguelpicado.orcadock.sdPlugin");
     copy_dir(&src, &dir).unwrap();
@@ -69,7 +69,7 @@ fn orcadock_plugin_paints_and_reacts() {
     })
     .unwrap();
 
-    let plugin = orcadeck_host::load(&dir, None).unwrap();
+    let plugin = abac_host::load(&dir, None).unwrap();
     assert_eq!(plugin.id, "com.miguelpicado.orcadock");
     let mut clock = Instance::new(&plugin.id, "com.miguelpicado.orcadock.clock", "DEV", 5, 0);
     clock.controller = "Information".into();

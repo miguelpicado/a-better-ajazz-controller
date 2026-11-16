@@ -1,6 +1,6 @@
 //! Storage behind the editor API. `FsStore` works on plain folders, so tests point it at a temp dir and the
 //! daemon points it at its own data root. Stream Dock's files (`legacy_config`, built-in plugins) are only read.
-use orcadeck_plugman::{inspect_package, install_package, Confidence, InstallOptions};
+use abac_plugman::{inspect_package, install_package, Confidence, InstallOptions};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::{
@@ -60,7 +60,7 @@ pub struct Plugin {
     pub overlay: bool,
     /// Lives in a read-only built-in plugin folder.
     pub builtin: bool,
-    /// `builtin`, `streamdock` (already there before this editor) or `orcadeck` (installed here).
+    /// `builtin`, `streamdock` (already there before this editor) or `abac` (installed here).
     pub origin: &'static str,
     /// Installed through this editor, so it is the only kind this API may delete.
     pub removable: bool,
@@ -182,7 +182,7 @@ pub fn to_pretty(v: &Value) -> Vec<u8> {
     buf
 }
 
-/// Write via `<file>.tmp` + rename. With `backup`, the previous content is kept as `<file>.orcadeck.bak`.
+/// Write via `<file>.tmp` + rename. With `backup`, the previous content is kept as `<file>.abac.bak`.
 pub fn atomic_write(path: &Path, bytes: &[u8], backup: bool) -> io::Result<()> {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
     let tmp = path.with_file_name(format!("{name}.tmp"));
@@ -192,7 +192,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8], backup: bool) -> io::Result<()> {
         f.sync_all()?;
     }
     if backup && path.is_file() {
-        fs::copy(path, path.with_file_name(format!("{name}.orcadeck.bak")))?;
+        fs::copy(path, path.with_file_name(format!("{name}.abac.bak")))?;
     }
     fs::rename(&tmp, path)
 }
@@ -654,7 +654,7 @@ impl Store for FsStore {
         }
         for p in &mut out {
             if !p.builtin && installed.iter().any(|i| i == &p.uuid) {
-                p.origin = "orcadeck";
+                p.origin = "abac";
                 p.removable = true;
             }
         }
@@ -771,7 +771,7 @@ impl Store for FsStore {
         if !ids.iter().any(|i| i == uuid) {
             return Err(Error::new(
                 403,
-                "solo se pueden quitar plugins instalados por OrcaDeck",
+                "solo se pueden quitar plugins instalados por ABAC",
             ));
         }
         let root = self

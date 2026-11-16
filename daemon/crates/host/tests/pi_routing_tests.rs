@@ -1,6 +1,6 @@
 //! End-to-end property-inspector routing from a sandboxed iframe: a PI with `Origin: null` (no
 //! `allow-same-origin`) still registers with its single-use token and exchanges settings/messages.
-use orcadeck_host::{Config, Device, Host, Instance, Output, Plugin};
+use abac_host::{Config, Device, Host, Instance, Output, Plugin};
 use serde_json::{json, Value};
 use std::{
     net::TcpStream,

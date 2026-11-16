@@ -1,5 +1,5 @@
 //! Property inspector endpoint + static file serving over a real loopback socket.
-use orcadeck_web::{FsStore, InspectorBridge, InspectorSession, Server};
+use abac_web::{FsStore, InspectorBridge, InspectorSession, Server};
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -19,7 +19,7 @@ fn w(p: impl AsRef<Path>, b: impl AsRef<[u8]>) {
 }
 
 fn fixture(name: &str) -> PathBuf {
-    let t = std::env::temp_dir().join(format!("orcadeck-web-pi-{name}-{}", std::process::id()));
+    let t = std::env::temp_dir().join(format!("abac-web-pi-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&t);
     w(t.join(format!("profiles/{SCENE}.sdProfile/manifest.json")), json!({
         "Name": "PI", "DeviceUUID": "AKP153E",
@@ -126,7 +126,7 @@ fn raw(s: &Server, req: &str) -> Resp {
 fn call(s: &Server, method: &str, path: &str, body: Option<Value>) -> Resp {
     let b = body.map(|b| b.to_string()).unwrap_or_default();
     raw(s, &format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-OrcaDeck-Token: {}\r\nContent-Type: application/json\r\n\
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-ABAC-Token: {}\r\nContent-Type: application/json\r\n\
          Content-Length: {}\r\n\r\n{b}", s.addr.port(), s.token(), b.len()))
 }
 
@@ -236,7 +236,7 @@ fn pi_static_serves_files_and_injects_the_bootstrap() {
     assert!(html.has("default-src 'none'"));
     assert!(!html.has("https:") && !html.text().contains("https:"));
     assert!(
-        html.text().contains("orcadeck-pi-ready"),
+        html.text().contains("abac-pi-ready"),
         "bootstrap injected"
     );
 
@@ -248,7 +248,7 @@ fn pi_static_serves_files_and_injects_the_bootstrap() {
     assert_eq!(js.status, 200);
     assert!(js.has("content-type: text/javascript"));
     assert!(
-        !js.text().contains("orcadeck-pi-ready"),
+        !js.text().contains("abac-pi-ready"),
         "no bootstrap in assets"
     );
 

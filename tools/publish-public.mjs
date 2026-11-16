@@ -140,7 +140,7 @@ export function publish({
   const noreply = noreplyEmail ?? githubNoreply();
   const denylist = loadDenylist(denylistPath);
 
-  const tmpRoot = mkdtempSync(join(tmpdir(), 'orcadeck-publish-'));
+  const tmpRoot = mkdtempSync(join(tmpdir(), 'abac-publish-'));
   const cloneDir = join(tmpRoot, 'clone');
   log(`source:   ${sourceRepo}`);
   log(`target:   ${repo} (main)`);

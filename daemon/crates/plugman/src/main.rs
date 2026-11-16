@@ -1,15 +1,15 @@
-//! CLI for orcadeck-plugman, same commands as tools/plugin-install/install.mjs.
+//! CLI for abac-plugman, same commands as tools/plugin-install/install.mjs.
 
-use orcadeck_plugman::*;
+use abac_plugman::*;
 use std::path::PathBuf;
 
 const USAGE: &str = "\
 Usage:
-  orcadeck-plugman inspect <pluginDir|package> [--json]
-  orcadeck-plugman install <package> --plugins <dir> [--data <dir>] [--manifest <json>] [--force]
-  orcadeck-plugman watch <inboxDir> --plugins <dir> [--data <dir>] [--once]
-  orcadeck-plugman export --data <dir> --out <dir>
-  orcadeck-plugman import <dir> --data <dir>";
+  abac-plugman inspect <pluginDir|package> [--json]
+  abac-plugman install <package> --plugins <dir> [--data <dir>] [--manifest <json>] [--force]
+  abac-plugman watch <inboxDir> --plugins <dir> [--data <dir>] [--once]
+  abac-plugman export --data <dir> --out <dir>
+  abac-plugman import <dir> --data <dir>";
 
 fn main() {
     if let Err(e) = run() {

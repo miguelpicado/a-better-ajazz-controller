@@ -1,7 +1,7 @@
-# orcadeck-plugman
+# abac-plugman
 
 Instalador de plugins de Stream Deck/Stream Dock sin la app de Elgato. Es el port a Rust de
-`tools/legacy/plugin-install/install.mjs` y lo usan el editor web y el binario `orcadeck-plugman`.
+`tools/legacy/plugin-install/install.mjs` y lo usan el editor web y el binario `abac-plugman`.
 
 No descifra manifests del Marketplace. Cuando `manifest.json` empieza por `ELGATO`, reconstruye el
 manifest funcional desde los ficheros en claro del plugin y lo guarda como **overlay** aparte; el
@@ -12,17 +12,17 @@ paquete original queda intacto.
 | Fichero | Responsabilidad |
 |---|---|
 | `src/lib.rs` | inspección, reconstrucción, instalación, overlays, watcher, límites de zip |
-| `src/main.rs` | CLI `orcadeck-plugman` |
+| `src/main.rs` | CLI `abac-plugman` |
 | `tests/plugman.rs` | fixtures de zip, manifests cifrados/planos, overlay, backup, traversal, límites |
 
 ## CLI
 
 ```text
-orcadeck-plugman inspect <pluginDir|paquete> [--json]
-orcadeck-plugman install <paquete> --plugins <dir> [--data <dir>] [--manifest <json>] [--force]
-orcadeck-plugman watch <inboxDir> --plugins <dir> [--data <dir>] [--once]
-orcadeck-plugman export --data <dir> --out <dir>
-orcadeck-plugman import <dir> --data <dir>
+abac-plugman inspect <pluginDir|paquete> [--json]
+abac-plugman install <paquete> --plugins <dir> [--data <dir>] [--manifest <json>] [--force]
+abac-plugman watch <inboxDir> --plugins <dir> [--data <dir>] [--once]
+abac-plugman export --data <dir> --out <dir>
+abac-plugman import <dir> --data <dir>
 ```
 
 - `--plugins` es la carpeta destino (`<uuid>.sdPlugin`).
@@ -75,7 +75,7 @@ El editor web no ejecuta el binario: llama a las funciones de la librería a tra
 
 ```powershell
 cd daemon
-cargo test --release -p orcadeck-plugman
+cargo test --release -p abac-plugman
 ```
 
 Cubren zips de fixture, manifests cifrados y planos, reconstrucción, overlay, `force`/backup, overlay

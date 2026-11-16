@@ -86,14 +86,14 @@ pub const KEY_PX: u32 = DEFAULT_DEVICE.key_px;
 pub const SIDE_PX: u32 = DEFAULT_DEVICE.side_px;
 
 pub fn select_device() -> Result<&'static DeviceSpec, String> {
-    if let Ok(name) = std::env::var("ORCADECK_DEVICE") {
+    if let Ok(name) = std::env::var("ABAC_DEVICE") {
         let name = name.trim();
         if let Some(spec) = DEVICES.iter().find(|d| d.name.eq_ignore_ascii_case(name)) {
             Ok(spec)
         } else {
             let known: Vec<&str> = DEVICES.iter().map(|d| d.name).collect();
             Err(format!(
-                "unknown device '{name}' in ORCADECK_DEVICE; known: {}",
+                "unknown device '{name}' in ABAC_DEVICE; known: {}",
                 known.join(", ")
             ))
         }

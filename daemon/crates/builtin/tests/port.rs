@@ -1,6 +1,6 @@
 //! Every assertion of the Node plugin's test.js, ported, plus registry (mocked Orca) and raster tests.
-use orcadeck_builtin::core::*;
-use orcadeck_builtin::{
+use abac_builtin::core::*;
+use abac_builtin::{
     frame, raster, Deck, Feedback, Key, Orca, Registry, POLL_MS, QUOTA_MS, SPIN_MS, WORKERS_MS,
 };
 use serde_json::{json, Value};
@@ -267,7 +267,7 @@ fn registry_with_mocked_orca() {
         ("terminal.focus".to_string(), json!({})),
     ])));
     let calls = Arc::new(Mutex::new(Vec::new()));
-    let dir = std::env::temp_dir().join(format!("orcadeck-builtin-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("abac-builtin-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("quota-status.json"),
@@ -478,11 +478,11 @@ fn question_done_white_ring_alternation() {
     }
 
     // Blinking window durations.
-    assert_eq!(orcadeck_builtin::blink_ms(State::Question), Some(300_000));
-    assert_eq!(orcadeck_builtin::blink_ms(State::Done), Some(300_000));
-    assert_eq!(orcadeck_builtin::blink_ms(State::Working), None);
-    assert_eq!(orcadeck_builtin::blink_ms(State::Idle), None);
-    assert_eq!(orcadeck_builtin::blink_ms(State::Error), None);
+    assert_eq!(abac_builtin::blink_ms(State::Question), Some(300_000));
+    assert_eq!(abac_builtin::blink_ms(State::Done), Some(300_000));
+    assert_eq!(abac_builtin::blink_ms(State::Working), None);
+    assert_eq!(abac_builtin::blink_ms(State::Idle), None);
+    assert_eq!(abac_builtin::blink_ms(State::Error), None);
 }
 
 #[test]
@@ -579,7 +579,7 @@ fn registry_tick_repaints_only_changed_keys() {
         ("orchestration.runList".to_string(), json!({ "runs": [] })),
     ])));
 
-    let dir = std::env::temp_dir().join(format!("orcadeck-tick-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("abac-tick-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let mut reg = Registry::new(Deck::new(
@@ -696,7 +696,7 @@ fn registry_next_timeout_cadence() {
         ("orchestration.runList".to_string(), json!({ "runs": [] })),
     ])));
 
-    let dir = std::env::temp_dir().join(format!("orcadeck-timeout-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("abac-timeout-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let mut reg = Registry::new(Deck::new(

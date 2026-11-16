@@ -2,7 +2,7 @@
 //! legacy scene order cleanly: no panic, no blocking, and a later read still works
 //! (REPO-AUDIT.md §4.2). The reader parses the file directly, so "locked" on Windows means another
 //! process holds the file without sharing.
-use orcadeck_web::{FsStore, Store};
+use abac_web::{FsStore, Store};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -16,7 +16,7 @@ const ZZZ: &str = "ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ";
 
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
-        "orcadeck-sqlite-busy-{name}-{}",
+        "abac-sqlite-busy-{name}-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&d);

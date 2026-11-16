@@ -146,7 +146,7 @@ mod tests {
     use std::fs;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("orcadeck-host-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("abac-host-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d

@@ -1,4 +1,4 @@
-﻿# Inspector de Propiedades (Property Inspector) y Arquitectura de `orcadeck edit`
+﻿# Inspector de Propiedades (Property Inspector) y Arquitectura de `abac edit`
 
 > **Nota (2026-11-10, implementado):** la versión mergeada usa iframe con sandbox **sin**
 > `allow-same-origin`, token de un solo uso por `postMessage`, CSP sin red externa y aceptación de
@@ -6,7 +6,7 @@
 > y CSP con `https:` quedan superadas; se conservan como registro. El estado real está en
 > [`../project/STATUS.md`](../project/STATUS.md).
 
-Investigación y propuesta de diseño para `orcadeck edit` y su integración con `orcadeck run`.  
+Investigación y propuesta de diseño para `abac edit` y su integración con `abac run`.  
 Fecha: 2026-11-10. Autor: Worker de investigación (`task_68efc43b2e65`).  
 Etiquetas:
 - **OBSERVED**: verificado directamente en el código fuente, binarios o trazas del repositorio.
@@ -18,10 +18,10 @@ Etiquetas:
 
 ## 1. Resumen Ejecutivo (Recomendación en 5 líneas)
 
-1. **Decisión de proceso**: Cuando `run` está en marcha, `edit` debe correr **DENTRO de `run` bajo demanda** (activado por el CLI `orcadeck edit`), con **fallback a proceso autónomo** cuando `run` está apagado.
+1. **Decisión de proceso**: Cuando `run` está en marcha, `edit` debe correr **DENTRO de `run` bajo demanda** (activado por el CLI `abac edit`), con **fallback a proceso autónomo** cuando `run` está apagado.
 2. **Puerto 18618**: El `Host` de plugins ya posee `127.0.0.1:18618`; correr dentro de `run` elimina colisiones de puerto y permite que el PI conecte directamente con los plugins vivos.
-3. **Persistencia de Settings**: Reutilizar al 100 % `orcadeck_host::Host` (que ya implementa `open_inspector`, `registerPropertyInspector`, `didReceiveSettings`, `setSettings` y `sendToPlugin`), sin puentes artificiales.
-4. **Recarga en caliente**: Canal Rust local en memoria (`mpsc::Sender<SceneUpdate>`), repintando solo la tecla cambiada respetando `ORCADECK_GAP_MS` (125 ms), sin reiniciar `run` ni tocar el bus HID.
+3. **Persistencia de Settings**: Reutilizar al 100 % `abac_host::Host` (que ya implementa `open_inspector`, `registerPropertyInspector`, `didReceiveSettings`, `setSettings` y `sendToPlugin`), sin puentes artificiales.
+4. **Recarga en caliente**: Canal Rust local en memoria (`mpsc::Sender<SceneUpdate>`), repintando solo la tecla cambiada respetando `ABAC_GAP_MS` (125 ms), sin reiniciar `run` ni tocar el bus HID.
 5. **Seguridad**: Iframe con `sandbox="allow-scripts allow-forms allow-same-origin"` sirviendo el HTML del PI desde `/api/plugins/<uuid>/pi/*`, token CSPRNG de un solo uso y lista blanca estricta de `Origin` en el WebSocket.
 
 ---
@@ -30,10 +30,10 @@ Etiquetas:
 
 - **Stream Dock / Elgato SDK v2 (OBSERVED en `docs/research/plugins/plugin-host-protocol.md:277-307`)**:
   Los plugins suministran su interfaz de configuración mediante páginas HTML locales (`PropertyInspectorPath` en `manifest.json`). La aplicación anfitriona embebe dicha página y evalúa `connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, "registerPropertyInspector", inInfo, inActionInfo)`. La página abre un WebSocket a `ws://127.0.0.1:<inPort>` e intercambia ajustes en tiempo real (`setSettings`, `sendToPlugin`, `sendToPropertyInspector`).
-- **Estado actual en OrcaDeck**:
-  - `daemon/src/app.rs`: Subcomando `run`. Posee el handle HID exclusivo del AKP153E (`app.rs:534`), gestiona el pintado en lotes cada 400 ms (`app.rs:32`) y arranca `orcadeck_host::Host` en `127.0.0.1:18618` (`app.rs:433-440`).
+- **Estado actual en ABAC**:
+  - `daemon/src/app.rs`: Subcomando `run`. Posee el handle HID exclusivo del AKP153E (`app.rs:534`), gestiona el pintado en lotes cada 400 ms (`app.rs:32`) y arranca `abac_host::Host` en `127.0.0.1:18618` (`app.rs:433-440`).
   - `daemon/crates/host/src/host.rs`: Ya implementa la mitad servidora del Property Inspector: `Host::open_inspector` (`host.rs:452`), handshake `registerPropertyInspector` con tokens de un solo uso (`host.rs:606-616`), routing de `setSettings` / `getSettings` (`host.rs:700-710`), `sendToPlugin` / `sendToPropertyInspector` (`host.rs:711-718`) y eventos de ciclo de vida `propertyInspectorDidAppear` / `Disappear`.
-  - `daemon/src/edit.rs` y `daemon/crates/web`: Subcomando `edit`. Servidor web HTTP ultraligero (`orcadeck_web::Server`, `lib.rs:51-101`) que sirve una SPA en loopback con token de sesión, consumiendo 7 MB RSS y 0 s de CPU en reposo (`HANDOFF.md:106-112`). En el momento del diseño, `app.js:379-450` ofrecía un inspector estático básico con inputs para títulos y JSON crudo, sin cargar el HTML del plugin.
+  - `daemon/src/edit.rs` y `daemon/crates/web`: Subcomando `edit`. Servidor web HTTP ultraligero (`abac_web::Server`, `lib.rs:51-101`) que sirve una SPA en loopback con token de sesión, consumiendo 7 MB RSS y 0 s de CPU en reposo (`HANDOFF.md:106-112`). En el momento del diseño, `app.js:379-450` ofrecía un inspector estático básico con inputs para títulos y JSON crudo, sin cargar el HTML del plugin.
 
 ---
 
@@ -43,7 +43,7 @@ Etiquetas:
 
 | Dimensión | `edit` DENTRO de `run` (bajo demanda) | `edit` como PROCESO APARTE |
 |---|---|---|
-| **Memoria (RSS)** | **MEASURED / ESTIMATED**: En reposo normal de `run`, **0 MB extra** (servidor web inactivo). Al editar, levanta `orcadeck_web::Server` en hilos efímeros compartiendo el heap de `run` (+1,5 a 2 MB temporales). Al cerrar, vuelve al baseline. | **MEASURED**: `edit.rs` consume **~7 MB RSS** (`ROADMAP.md:A.4`). Si ambos corren separados: ~15 MB (`run`) + ~7 MB (`edit`) = **~22 MB total** (+30 % de consumo). |
+| **Memoria (RSS)** | **MEASURED / ESTIMATED**: En reposo normal de `run`, **0 MB extra** (servidor web inactivo). Al editar, levanta `abac_web::Server` en hilos efímeros compartiendo el heap de `run` (+1,5 a 2 MB temporales). Al cerrar, vuelve al baseline. | **MEASURED**: `edit.rs` consume **~7 MB RSS** (`ROADMAP.md:A.4`). Si ambos corren separados: ~15 MB (`run`) + ~7 MB (`edit`) = **~22 MB total** (+30 % de consumo). |
 | **CPU en reposo** | **0 % CPU** (OBSERVED). El hilo HID duerme en `read_timeout(30)` (`app.rs:544`) y el listener web duerme en `TcpListener.incoming()` (`lib.rs:69`). | **0 % CPU** mientras ambos duermen; pero si requieren sincronización de ficheros por polling o IPC continuo, aumenta el riesgo de consumo espurio. |
 | **Conflicto puerto 18618** | **CERO conflicto** (OBSERVED). `Host` en `run` ya escucha en `127.0.0.1:18618` (`host.rs:26-28`). El Property Inspector conecta directamente al host que tiene a los plugins vivos. | **CONFLICTO CRÍTICO**. Dos procesos no pueden hacer `bind` a `127.0.0.1:18618` (`WSAEADDRINUSE`). `edit` no puede hospedar plugins en 18618. Si el PI conecta al 18618 de `run`, `edit` no tiene forma de generar el token sin un IPC externo. |
 | **Conflicto del HID** | **CERO conflicto** (OBSERVED). `run` mantiene el handle exclusivo de `hidapi` (`app.rs:534`). `edit` no toca el HID (`store.rs:357`). | Cero conflicto directo de handle, pero `edit` no puede forzar un repintado sin pedirlo a `run`. |
@@ -51,15 +51,15 @@ Etiquetas:
 
 ### Recomendación clara
 **Adoptar la arquitectura híbrida: "Daemon-Hosted bajo demanda con Fallback Standalone"**:
-1. **Modo Primario (cuando `run` está en marcha)**: `orcadeck edit` actúa como comando disparador cliente. Detecta que `run` está activo (vía ping local a `\\.\pipe\orcadeck-ctl` o un puerto de control efímero); `run` arranca `orcadeck_web::Server` dentro de su propio proceso, le entrega la URL con el token a `edit`, y abre el navegador. Al pulsar Ctrl+C en la terminal de `edit`, `run` detiene el servidor web.
-2. **Modo Fallback (cuando `run` NO está en marcha)**: `orcadeck edit` se ejecuta de forma autónoma (exactamente como hoy en `daemon/src/edit.rs`), permitiendo editar escenas, celdas y JSON de ajustes en disco sin necesidad del hardware ni de plugins en ejecución.
+1. **Modo Primario (cuando `run` está en marcha)**: `abac edit` actúa como comando disparador cliente. Detecta que `run` está activo (vía ping local a `\\.\pipe\abac-ctl` o un puerto de control efímero); `run` arranca `abac_web::Server` dentro de su propio proceso, le entrega la URL con el token a `edit`, y abre el navegador. Al pulsar Ctrl+C en la terminal de `edit`, `run` detiene el servidor web.
+2. **Modo Fallback (cuando `run` NO está en marcha)**: `abac edit` se ejecuta de forma autónoma (exactamente como hoy en `daemon/src/edit.rs`), permitiendo editar escenas, celdas y JSON de ajustes en disco sin necesidad del hardware ni de plugins en ejecución.
 
 ---
 
 ## 4. (b) Protocolo y Flujo de Settings del Property Inspector
 
 ### Reutilización del Host vs Puente Mínimo
-**Veredicto: REUTILIZAR `orcadeck_host::Host` al 100 %.**  
+**Veredicto: REUTILIZAR `abac_host::Host` al 100 %.**  
 No debe crearse ningún "puente websocket mínimo". Toda la infraestructura ya existe en `daemon/crates/host/src/host.rs`:
 
 1. **Apertura e Identificación**:
@@ -78,7 +78,7 @@ No debe crearse ningún "puente websocket mínimo". Toda la infraestructura ya e
    - `Host::register` (`host.rs:606-616`) valida el token, lo consume (token de un solo uso), asigna el rol `Role::Pi(ctx)`, envía `propertyInspectorDidAppear` al proceso del plugin y emite `didReceiveSettings` al PI con los ajustes vigentes (`inst.settings`).
 3. **Persistencia y Sincronización bidireccional**:
    - **Settings de Acción**: Cuando el usuario modifica un valor en el PI, este envía `{"event": "setSettings", "context": ctx, "payload": { ... }}`. `Host` (`host.rs:700-709`) actualiza `inst.settings` en memoria, notifica al plugin vía `didReceiveSettings`, y emite `Output::Settings`. `Runtime` en `app.rs:308-335` lo encola con debounce de 1 segundo y lo guarda atómicamente en `manifest.json`.
-   - **GlobalSettings**: El PI envía `{"event": "setGlobalSettings", "payload": { ... }}`. `Host` (`host.rs:650-665`) lo almacena en `slot.global`, emite `Output::GlobalSettings` que `app.rs:343-353` guarda en `%APPDATA%\OrcaDeck\globals\<plugin>.json`, y reenvía `didReceiveGlobalSettings` tanto al plugin como a otros PIs del mismo plugin.
+   - **GlobalSettings**: El PI envía `{"event": "setGlobalSettings", "payload": { ... }}`. `Host` (`host.rs:650-665`) lo almacena en `slot.global`, emite `Output::GlobalSettings` que `app.rs:343-353` guarda en `%APPDATA%\ABAC\globals\<plugin>.json`, y reenvía `didReceiveGlobalSettings` tanto al plugin como a otros PIs del mismo plugin.
    - **Mensajería directa**: `sendToPlugin` (`host.rs:715-718`) se enruta al proceso hijo del plugin; si el plugin responde con `sendToPropertyInspector` (`host.rs:711-714`), `Host` lo reenvía al socket del PI.
 4. **Cierre**:
    - Al deseleccionar la tecla o cambiar de escena, el iframe se desmonta del DOM.
@@ -138,7 +138,7 @@ daemon/
 | **1** | **Servicio de Estáticos del PI con anti-traversal** | `daemon/crates/web/src/pi_static.rs` (nuevo), `daemon/crates/web/src/api.rs` | **S** (~70 líneas) | Endpoint `GET /api/plugins/<uuid>/pi/*`. Resuelve ficheros en el directorio del plugin. Valida con `safe_id` y canonicalización para impedir `../`. Sirve con `Content-Security-Policy` permisivo para recursos locales pero aislado del editor. |
 | **2** | **Ajuste de Cabecera X-Frame-Options** | `daemon/crates/web/src/http.rs` | **S** (~15 líneas) | Permitir `X-Frame-Options: SAMEORIGIN` (o suprimirla en favor de CSP `frame-ancestors 'self'`) únicamente para rutas bajo `/api/plugins/*/pi/*`, manteniendo `DENY` en el resto de la aplicación. |
 | **3** | **Endpoint de Emisión de Token de Inspector** | `daemon/crates/web/src/api.rs`, `daemon/crates/web/src/store.rs` | **S** (~40 líneas) | Endpoint `POST /api/scenes/<id>/cells/<key>/inspector`. Invoca un trait o callback `InspectorBridge` implementado por `app.rs` que llama a `Host::open_inspector(ctx)` y devuelve el token y puerto. |
-| **4** | **Canal de Control Local CLI <-> Daemon (`ctl.rs`)** | `daemon/src/ctl.rs` (nuevo), `daemon/src/edit.rs`, `daemon/src/app.rs` | **M** (~120 líneas) | Named Pipe en Windows (`\\.\pipe\orcadeck-ctl`) o socket loopback. `edit.rs` consulta si `run` está activo; si lo está, solicita el arranque del servidor web en `run` y espera hasta Ctrl+C. Si no, arranca en modo standalone. |
+| **4** | **Canal de Control Local CLI <-> Daemon (`ctl.rs`)** | `daemon/src/ctl.rs` (nuevo), `daemon/src/edit.rs`, `daemon/src/app.rs` | **M** (~120 líneas) | Named Pipe en Windows (`\\.\pipe\abac-ctl`) o socket loopback. `edit.rs` consulta si `run` está activo; si lo está, solicita el arranque del servidor web en `run` y espera hasta Ctrl+C. Si no, arranca en modo standalone. |
 | **5** | **Canal de Recarga en Caliente de Tecla** | `daemon/src/app.rs` | **M** (~80 líneas) | Almacena un canal `mpsc::channel::<ReloadCmd>` en `Runtime`. Al recibir actualización de celda, repinta la tecla si coincide con la escena actual sin reiniciar el bucle ni el dispositivo HID. |
 | **6** | **UI: Integración de Iframe en la SPA Web** | `daemon/crates/web/web/app.js`, `daemon/crates/web/web/app.css` | **M** (~110 líneas) | En `actionInspector()`, comprobar si el manifiesto tiene `PropertyInspectorPath`. Si existe, renderizar el `<iframe>` sandboxed, inyectar llamada bootstrap a `connectElgatoStreamDeckSocket`, y mantener fallback al editor de JSON. |
 | **7** | **Tests Unitarios y de Integración** | `daemon/crates/web/tests/pi_static_tests.rs`, `daemon/crates/host/tests/pi_routing_tests.rs` | **S** (~90 líneas) | Pruebas de path-traversal en `/pi/`, verificación del ciclo de tokens, y routing completo de `setSettings` / `sendToPlugin` en `Host`. |
@@ -159,8 +159,8 @@ El Property Inspector ejecuta código HTML, JavaScript y CSS provisto por tercer
    - `allow-scripts` y `allow-forms`: Necesarios para que el UI del plugin funcione e interactúe.
    - `allow-same-origin`: Necesario para que el iframe pueda abrir el WebSocket local sin ser marcado con `Origin: null` (lo que violaría la comprobación de origen de `host.rs`).
    - **Barrera de protección contra manipulación del editor**:
-     - Las cookies de sesión de OrcaDeck (`orcadeck_<port>`) están marcadas como `HttpOnly` (`api.rs:68`). JavaScript en el iframe NO puede leer la cookie.
-     - Todas las mutaciones del editor requieren la cabecera `x-orcadeck-token` o la cookie `HttpOnly`.
+     - Las cookies de sesión de ABAC (`abac_<port>`) están marcadas como `HttpOnly` (`api.rs:68`). JavaScript en el iframe NO puede leer la cookie.
+     - Todas las mutaciones del editor requieren la cabecera `x-abac-token` o la cookie `HttpOnly`.
      - El objeto global `api()` de `app.js` no se expone al frame hijo.
 2. **Token de Inspector de Un Solo Uso (CSPRNG)**:
    - Implementado en `Host::open_inspector` (`host.rs:457`).

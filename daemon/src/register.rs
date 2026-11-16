@@ -1,6 +1,6 @@
 //! Per-user file association for plugin packages (HKCU, no admin).
 //!
-//! `register` writes a `OrcaDeck.Plugin` ProgID whose open command is `"<exe>" install "%1"` and
+//! `register` writes a `ABAC.Plugin` ProgID whose open command is `"<exe>" install "%1"` and
 //! points `.streamDeckPlugin`/`.sdPlugin` at it. `unregister` removes those entries and restores the
 //! default each extension had before the first register; that value is kept under the ProgID key as
 //! `PreviousDefault.<ext>` so a later register never overwrites it with our own ProgID.
@@ -8,7 +8,7 @@
 //! The plan is built by pure functions (unit-tested); `apply` only runs `reg.exe` on it.
 use std::process::Command;
 
-pub const PROGID: &str = "OrcaDeck.Plugin";
+pub const PROGID: &str = "ABAC.Plugin";
 pub const EXTENSIONS: [&str; 2] = ["streamDeckPlugin", "sdPlugin"];
 const CLASSES: &str = r"Software\Classes";
 
@@ -42,7 +42,7 @@ fn previous_name(ext: &str) -> String {
 
 pub fn register_ops(exe: &str, state: &[ExtState]) -> Vec<Op> {
     let mut ops = vec![
-        Op::SetDefault(PROGID.into(), "Plugin de OrcaDeck".into()),
+        Op::SetDefault(PROGID.into(), "Plugin de ABAC".into()),
         Op::SetDefault(format!("{PROGID}\\DefaultIcon"), format!("\"{exe}\",0")),
         Op::SetDefault(format!("{PROGID}\\shell\\open\\command"), command(exe)),
     ];
@@ -92,7 +92,7 @@ pub fn unregister_ops(state: &[ExtState]) -> Vec<Op> {
 
 pub fn register() -> Result<(), String> {
     let exe = std::env::current_exe()
-        .map_err(|e| format!("no se pudo resolver la ruta de orcadeck.exe: {e}"))?
+        .map_err(|e| format!("no se pudo resolver la ruta de abac.exe: {e}"))?
         .to_string_lossy()
         .into_owned();
     let state: Vec<ExtState> = EXTENSIONS
@@ -104,9 +104,9 @@ pub fn register() -> Result<(), String> {
         })
         .collect();
     apply(&register_ops(&exe, &state))?;
-    println!("OrcaDeck: .streamDeckPlugin y .sdPlugin abren el editor para instalar el plugin.");
+    println!("ABAC: .streamDeckPlugin y .sdPlugin abren el editor para instalar el plugin.");
     println!("  comando: {}", command(&exe));
-    println!("  deshacer: orcadeck unregister");
+    println!("  deshacer: abac unregister");
     Ok(())
 }
 
@@ -123,7 +123,7 @@ pub fn unregister() -> Result<(), String> {
     for s in &state {
         match &s.stored {
             Some(prev) => println!("  .{} vuelve a «{prev}»", s.ext),
-            None => println!("  .{} queda sin la asociación de OrcaDeck", s.ext),
+            None => println!("  .{} queda sin la asociación de ABAC", s.ext),
         }
     }
     Ok(())
@@ -239,8 +239,8 @@ mod tests {
     #[test]
     fn the_open_command_quotes_the_exe_and_the_file() {
         assert_eq!(
-            command(r"C:\Tools\Orca Deck\orcadeck.exe"),
-            r#""C:\Tools\Orca Deck\orcadeck.exe" install "%1""#
+            command(r"C:\Tools\Orca Deck\abac.exe"),
+            r#""C:\Tools\Orca Deck\abac.exe" install "%1""#
         );
     }
 
@@ -250,7 +250,7 @@ mod tests {
             state("streamDeckPlugin", Some("StreamDock.Plugin"), None),
             state("sdPlugin", None, None),
         ];
-        let ops = register_ops(r"C:\orca\orcadeck.exe", &st);
+        let ops = register_ops(r"C:\orca\abac.exe", &st);
 
         assert!(ops.contains(&Op::SetValue(
             PROGID.into(),
@@ -270,11 +270,11 @@ mod tests {
         }
         assert!(ops.contains(&Op::SetDefault(
             format!(r"{PROGID}\shell\open\command"),
-            r#""C:\orca\orcadeck.exe" install "%1""#.into()
+            r#""C:\orca\abac.exe" install "%1""#.into()
         )));
         assert!(ops.contains(&Op::SetDefault(
             format!(r"{PROGID}\DefaultIcon"),
-            r#""C:\orca\orcadeck.exe",0"#.into()
+            r#""C:\orca\abac.exe",0"#.into()
         )));
     }
 
@@ -285,7 +285,7 @@ mod tests {
             Some(PROGID),
             Some("StreamDock.Plugin"),
         )];
-        let ops = register_ops(r"C:\orca\orcadeck.exe", &st);
+        let ops = register_ops(r"C:\orca\abac.exe", &st);
         assert!(!ops.iter().any(|o| matches!(o, Op::SetValue(k, n, _) if k == PROGID && n.starts_with("PreviousDefault"))));
         assert!(ops.contains(&Op::SetDefault(".streamDeckPlugin".into(), PROGID.into())));
     }

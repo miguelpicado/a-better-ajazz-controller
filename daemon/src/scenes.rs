@@ -1,9 +1,9 @@
 //! Scene order for the built-in `com.hotspot.streamdock.profile.rotate` key (Scene Shift).
-//! [`orcadeck_web::FsStore`] already reads the editor's `state.json` and seeds it from Stream
+//! [`abac_web::FsStore`] already reads the editor's `state.json` and seeds it from Stream
 //! Dock's DataCache/ini, so this only picks the device's listed scenes, steps through them and
 //! loads the chosen manifest. Everything happens on a key press: no polling, no server.
 use crate::profile;
-use orcadeck_web::store::{safe_id, FsStore, Store};
+use abac_web::store::{safe_id, FsStore, Store};
 use std::path::{Path, PathBuf};
 
 /// Action the app implements itself (`PrivateAPI`, no `CodePath`).
@@ -164,7 +164,7 @@ mod tests {
 
     fn fixture(name: &str) -> (PathBuf, PathBuf) {
         let root =
-            std::env::temp_dir().join(format!("orcadeck-scenes-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("abac-scenes-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let (profiles, data) = (root.join("profiles"), root.join("data"));
         std::fs::create_dir_all(&data).unwrap();

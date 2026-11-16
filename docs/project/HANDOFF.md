@@ -1,5 +1,7 @@
 # Handoff 2026-11-16 (léelo primero)
 
+> **Actualización (misma noche):** pulsación larga hecha (commit `19b50d1`, probada en tests y editor, SIN probar en dispositivo). Renombrado a «ABAC Editor» hecho en el código y los docs: `abac.exe`, crates `abac*`, carpetas `%LOCALAPPDATA%\ABAC` y `%APPDATA%\ABAC`, tarea `ABAC`, `ABAC_*` (las `ORCADECK_*` se copian a `ABAC_*` al arrancar, `legacy_env` en `main.rs`). Los nombres antiguos de esta página y de `docs/research` son históricos. **Pendiente:** ejecutar la migración en esta máquina (`tools\autostart\abac-task.ps1 install` mueve las carpetas con `calibration.json`, quita la tarea `OrcaDeck`, `unregister` y el acceso del menú Inicio; después `enable`, `editor`, `abac register`), probar la larga con el dispositivo, y republicar con `tools/publish-public.mjs`.
+
 Rama `dra-experiment`. DRA en producción para el usuario: teclas 98×98 calibradas, barra lateral continua, tecla de resumen que
 salta al agente en espera más antiguo. Todo compilado e instalado (`%LOCALAPPDATA%\OrcaDeck\bin`, tarea `OrcaDeck`) y confirmado
 en el dispositivo. Guía de uso: `docs/guide/USAGE.md` §4b. Las secciones de más abajo (2026-11-11/12/13) son históricas: lo que dicen

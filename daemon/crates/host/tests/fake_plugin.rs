@@ -1,6 +1,6 @@
 //! A fake plugin (and property inspector) talking to the host over a real WebSocket.
 
-use orcadeck_host::{Config, Device, Host, Instance, Key, Output, Plugin};
+use abac_host::{Config, Device, Host, Instance, Key, Output, Plugin};
 use serde_json::{json, Value};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
@@ -430,7 +430,7 @@ fn origins() {
 }
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("orcadeck-host-{name}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("abac-host-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d

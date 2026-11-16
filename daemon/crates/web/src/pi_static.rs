@@ -12,7 +12,7 @@ use std::{fs, path::Path};
 /// Injected into PI HTML: waits for the editor's `postMessage` (port, single-use token, info) and
 /// performs the Stream Deck bootstrap. Keeping credentials out of the URL avoids them leaking through
 /// redirects or logs.
-const BOOTSTRAP: &str = r#"<script>(function(){function h(e){if(e.source!==parent||!e.data||e.data.type!=='orcadeck-pi-credentials')return;var d=e.data;if(typeof window.connectElgatoStreamDeckSocket!=='function')return;removeEventListener('message',h);window.connectElgatoStreamDeckSocket(d.port,d.token,'registerPropertyInspector',JSON.stringify(d.info||{}),JSON.stringify(d.actionInfo||{}));}addEventListener('message',h);parent.postMessage({type:'orcadeck-pi-ready'},'*');})();</script>"#;
+const BOOTSTRAP: &str = r#"<script>(function(){function h(e){if(e.source!==parent||!e.data||e.data.type!=='abac-pi-credentials')return;var d=e.data;if(typeof window.connectElgatoStreamDeckSocket!=='function')return;removeEventListener('message',h);window.connectElgatoStreamDeckSocket(d.port,d.token,'registerPropertyInspector',JSON.stringify(d.info||{}),JSON.stringify(d.actionInfo||{}));}addEventListener('message',h);parent.postMessage({type:'abac-pi-ready'},'*');})();</script>"#;
 
 /// Matches `/api/plugins/<uuid>/pi/<file...>`; `None` means "not a PI request".
 pub fn route(store: &dyn Store, req: &Request, editor_port: u16) -> Option<Response> {

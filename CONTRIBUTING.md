@@ -1,6 +1,6 @@
-# Contributing to OrcaDeck
+# Contributing to ABAC
 
-OrcaDeck is a small, Windows-only Rust project for the AJAZZ AKP153E. Contributions are welcome:
+ABAC is a small, Windows-only Rust project for the AJAZZ AKP153E. Contributions are welcome:
 bug reports, fixes, documentation and carefully tested hardware work. Keep changes small and focused.
 
 ## Before you start
@@ -33,12 +33,12 @@ its `lint` job. Clippy is also reported there, but it is non-blocking.
 The HID is only needed for `probe`, `scene`, `bright`, `watch`, `poll` and `run`. Without a keyboard:
 
 1. Run the unit and integration tests: `cargo test --release --workspace`.
-2. Render a profile offline: `orcadeck render <profile.sdProfile> .\out`. This writes `keyNN.jpg`
+2. Render a profile offline: `abac render <profile.sdProfile> .\out`. This writes `keyNN.jpg`
    files without opening the HID.
-3. Run the editor against copies, never your real profiles, using `ORCADECK_PROFILES`,
-   `ORCADECK_PLUGINS` and `ORCADECK_DATA` as shown in
+3. Run the editor against copies, never your real profiles, using `ABAC_PROFILES`,
+   `ABAC_PLUGINS` and `ABAC_DATA` as shown in
    [docs/guide/DEVELOPMENT.md](docs/guide/DEVELOPMENT.md) (§5).
-4. Exercise the installer with `orcadeck-plugman inspect` and a temporary
+4. Exercise the installer with `abac-plugman inspect` and a temporary
    `--plugins`/`--data` folder.
 
 Tests that need real Stream Dock data print `skipped` and pass when it is absent. The real paint,
@@ -57,7 +57,7 @@ validation you did not perform.
 - Small pull requests, one concern each.
 - No new dependency without a measured need. The project targets a small binary with no async
   runtime and no resident UI.
-- Do not lower `ORCADECK_GAP_MS` or reintroduce polling; see the rules in
+- Do not lower `ABAC_GAP_MS` or reintroduce polling; see the rules in
   [docs/guide/DEVELOPMENT.md](docs/guide/DEVELOPMENT.md) (§6).
 - Add a small test for new non-trivial logic.
 

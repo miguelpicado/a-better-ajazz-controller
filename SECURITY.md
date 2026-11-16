@@ -23,12 +23,12 @@ Do not attach firmware dumps, vendor installers or a live editor URL containing 
 
 In scope:
 
-- The loopback web editor (`orcadeck edit`), its session token and its API.
-- The control named pipe between `edit` and `run` (`\\.\pipe\orcadeck-ctl`).
+- The loopback web editor (`abac edit`), its session token and its API.
+- The control named pipe between `edit` and `run` (`\\.\pipe\abac-ctl`).
 - The plugin host WebSocket on `127.0.0.1:18618`: Origin checks, Property Inspector tokens and
   message limits.
 - The Property Inspector sandbox.
-- The plugin install flow (`orcadeck-plugman`, `register`, `install`).
+- The plugin install flow (`abac-plugman`, `register`, `install`).
 
 Out of scope:
 
@@ -36,12 +36,12 @@ Out of scope:
   unsupported, and the patch has never been flashed by the author; flashing can permanently brick
   the device.
 - The behaviour of third-party plugins themselves. They are separate programs; report their bugs to
-  their authors. OrcaDeck only controls how they are launched and connected.
+  their authors. ABAC only controls how they are launched and connected.
 - The official Stream Dock app, AJAZZ hardware and firmware, and other vendor software.
 
 ## Security model
 
-OrcaDeck's local services are loopback-only: the editor binds `127.0.0.1` and the plugin host binds
+ABAC's local services are loopback-only: the editor binds `127.0.0.1` and the plugin host binds
 `127.0.0.1:18618`, so neither is reachable from another machine. The editor issues a fresh random
 session token per start, exchanges it for an `HttpOnly; SameSite=Strict` cookie and requires it on
 every `/api/*` call. Property Inspector sessions and staged plugin installs use separate one-use

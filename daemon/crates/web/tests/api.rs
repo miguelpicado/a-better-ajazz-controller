@@ -1,5 +1,5 @@
 //! End-to-end tests over a real loopback socket against `FsStore` on a temp dir.
-use orcadeck_web::{FsStore, InspectorBridge, Server};
+use abac_web::{FsStore, InspectorBridge, Server};
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -23,7 +23,7 @@ fn w(p: impl AsRef<Path>, b: impl AsRef<[u8]>) {
 /// Temp copy of the real layout (synthetic content): 3 device scenes + 1 old AKP815 scene, a plain plugin with
 /// `en.json`, an encrypted one with overlay, an encrypted one without, a broken one, legacy ini + DataCache.db.
 fn fixture(name: &str) -> PathBuf {
-    let t = std::env::temp_dir().join(format!("orcadeck-web-{name}-{}", std::process::id()));
+    let t = std::env::temp_dir().join(format!("abac-web-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&t);
     let scene = |id: &str, name: &str, actions: Value| {
         let mut m = json!({ "Name": name, "Version": "1.0", "DeviceUUID": "AKP153E", "DeviceModel": "20GBA9901",
@@ -179,7 +179,7 @@ fn raw(s: &Server, req: &str) -> Resp {
 fn call(s: &Server, method: &str, path: &str, body: Option<Value>) -> Resp {
     let b = body.map(|b| b.to_string()).unwrap_or_default();
     raw(s, &format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-OrcaDeck-Token: {}\r\nContent-Type: application/json\r\n\
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-ABAC-Token: {}\r\nContent-Type: application/json\r\n\
          Content-Length: {}\r\n\r\n{b}", s.addr.port(), s.token(), b.len()))
 }
 
@@ -202,7 +202,7 @@ fn security_gate() {
     assert_eq!(get(&format!("Host: 127.0.0.1:{port}\r\n")).status, 401);
     assert_eq!(
         get(&format!(
-            "Host: 127.0.0.1:{port}\r\nX-OrcaDeck-Token: {}\r\n",
+            "Host: 127.0.0.1:{port}\r\nX-ABAC-Token: {}\r\n",
             &tok[..63]
         ))
         .status,
@@ -210,21 +210,21 @@ fn security_gate() {
     );
     assert_eq!(
         get(&format!(
-            "Host: 127.0.0.1:{port}\r\nX-OrcaDeck-Token: {tok}\r\n"
+            "Host: 127.0.0.1:{port}\r\nX-ABAC-Token: {tok}\r\n"
         ))
         .status,
         200
     );
     assert_eq!(
         get(&format!(
-            "Host: localhost:{port}\r\nCookie: a=b; orcadeck_{port}={tok}\r\n"
+            "Host: localhost:{port}\r\nCookie: a=b; abac_{port}={tok}\r\n"
         ))
         .status,
         200
     );
     assert_eq!(
         get(&format!(
-            "Host: localhost:{port}\r\nCookie: orcadeck_1={tok}\r\n"
+            "Host: localhost:{port}\r\nCookie: abac_1={tok}\r\n"
         ))
         .status,
         401
@@ -233,23 +233,23 @@ fn security_gate() {
     // DNS rebinding: a foreign Host is refused even with the right token; so is a missing Host.
     assert_eq!(
         get(&format!(
-            "Host: evil.example:{port}\r\nX-OrcaDeck-Token: {tok}\r\n"
+            "Host: evil.example:{port}\r\nX-ABAC-Token: {tok}\r\n"
         ))
         .status,
         403
     );
     assert_eq!(
-        get(&format!("Host: 127.0.0.1:1\r\nX-OrcaDeck-Token: {tok}\r\n")).status,
+        get(&format!("Host: 127.0.0.1:1\r\nX-ABAC-Token: {tok}\r\n")).status,
         403
     );
-    assert_eq!(get(&format!("X-OrcaDeck-Token: {tok}\r\n")).status, 403);
+    assert_eq!(get(&format!("X-ABAC-Token: {tok}\r\n")).status, 403);
     assert_eq!(
         raw(&s, "GET / HTTP/1.1\r\nHost: evil.example\r\n\r\n").status,
         403
     );
 
     // CSRF: foreign Origin / cross-site fetch refused; same origin accepted.
-    let h = format!("Host: 127.0.0.1:{port}\r\nX-OrcaDeck-Token: {tok}\r\n");
+    let h = format!("Host: 127.0.0.1:{port}\r\nX-ABAC-Token: {tok}\r\n");
     assert_eq!(
         get(&format!("{h}Origin: http://evil.example\r\n")).status,
         403
@@ -296,7 +296,7 @@ fn security_gate() {
     );
     assert_eq!(r.status, 303);
     assert!(r.has(&format!(
-        "set-cookie: orcadeck_{port}={tok}; Path=/; HttpOnly; SameSite=Strict"
+        "set-cookie: abac_{port}={tok}; Path=/; HttpOnly; SameSite=Strict"
     )));
     assert!(r.has("location: /\r") || r.head.to_ascii_lowercase().ends_with("location: /"));
     // A staged package token survives the token->cookie redirect; it is never a path.
@@ -392,7 +392,7 @@ fn scenes_order_current_and_put() {
         ),
         (Some("Orca 2"), &json!({ "keep": [1, 2] }), &json!(7))
     );
-    assert!(fs::read_to_string(dir.join("manifest.json.orcadeck.bak"))
+    assert!(fs::read_to_string(dir.join("manifest.json.abac.bak"))
         .unwrap()
         .contains("\"Orca\""));
     assert!(!dir.join("manifest.json.tmp").exists());
@@ -798,7 +798,7 @@ fn plugins_inbox_install_remove() {
             find(u)["removable"].as_bool().unwrap(),
         )
     };
-    assert_eq!(origin("com.test.inbox"), ("orcadeck".into(), true));
+    assert_eq!(origin("com.test.inbox"), ("abac".into(), true));
     assert_eq!(origin("com.test.demo"), ("streamdock".into(), false));
     assert_eq!(
         origin("com.hotspot.streamdock.profile.rotate"),
@@ -840,9 +840,9 @@ fn staged_package_is_token_addressed_and_single_use() {
     let pkg = t.join("outside/com.test.evil.sdPlugin");
 
     // Outside Downloads on purpose: the shell can hand over any path, the page gets only a token.
-    assert!(orcadeck_web::stage_package(&t.join("downloads/notes.txt").to_string_lossy()).is_err());
-    assert!(orcadeck_web::stage_package(&t.join("downloads/nope.zip").to_string_lossy()).is_err());
-    let token = orcadeck_web::stage_package(&pkg.to_string_lossy()).unwrap();
+    assert!(abac_web::stage_package(&t.join("downloads/notes.txt").to_string_lossy()).is_err());
+    assert!(abac_web::stage_package(&t.join("downloads/nope.zip").to_string_lossy()).is_err());
+    let token = abac_web::stage_package(&pkg.to_string_lossy()).unwrap();
 
     let r = call(
         &s,
@@ -906,7 +906,7 @@ fn staged_package_is_token_addressed_and_single_use() {
     assert_eq!(install(false, &token).status, 404);
 
     // A conflict keeps the token alive so the page can retry with force; success then spends it.
-    let token = orcadeck_web::stage_package(&pkg.to_string_lossy()).unwrap();
+    let token = abac_web::stage_package(&pkg.to_string_lossy()).unwrap();
     assert_eq!(install(false, &token).status, 409);
     assert_eq!(
         call(
@@ -939,7 +939,7 @@ fn staged_package_is_token_addressed_and_single_use() {
 struct CalBridge(std::sync::Mutex<Vec<Value>>);
 
 impl InspectorBridge for CalBridge {
-    fn open(&self, _: &str, _: &str) -> Result<orcadeck_web::InspectorSession, String> {
+    fn open(&self, _: &str, _: &str) -> Result<abac_web::InspectorSession, String> {
         Err("unused".into())
     }
     fn calibration(&self) -> Option<Value> {
