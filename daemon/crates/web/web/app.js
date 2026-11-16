@@ -154,7 +154,7 @@ function geometry(doc) {
 
 function cellLabel(key) {
   const [c, r] = key.split(',').map(Number);
-  return c === 5 && isAkp(S.scene) ? `Panel lateral ${r + 1}` : `Fila ${r + 1}, columna ${c + 1}`;
+  return c === 5 && isAkp(S.scene) ? (/\.panel_strip$/.test(S.scene.Actions?.['5,0']?.UUID || '') ? 'Panel lateral (barra)' : `Panel lateral ${r + 1}`) : `Fila ${r + 1}, columna ${c + 1}`;
 }
 
 function renderDeck(landed) {
@@ -164,7 +164,10 @@ function renderDeck(landed) {
   keys.style.gridTemplateRows = `repeat(${g.rows}, var(--k))`;
   keys.replaceChildren();
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) keys.append(cell(`${c},${r}`));
-  side.replaceChildren(...(g.side ? [0, 1, 2].map((r) => cell(`5,${r}`)) : []));
+  // panel_strip at (5,0) is ONE bar over the whole side panel: a single tall cell, no (5,1)/(5,2)
+  const bar = g.side && /\.panel_strip$/.test((doc.Actions || {})['5,0']?.UUID || '');
+  side.classList.toggle('one', bar);
+  side.replaceChildren(...(g.side ? (bar ? [cell('5,0')] : [0, 1, 2].map((r) => cell(`5,${r}`))) : []));
   side.hidden = !g.side;
   $('#model').textContent = doc.DeviceUUID || 'Dispositivo sin modelo';
   if (landed) {

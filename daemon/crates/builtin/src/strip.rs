@@ -132,21 +132,23 @@ fn fill_of(l: Level) -> &'static str {
     }
 }
 
-/// One usage block (38 k tall): label + value row and a bar. `pct` None = N/D. Danger paints the block red.
+/// One usage block: label + value row, then a `bh` tall bar (height 19 k + bh, returned). `pct` None = N/D.
+/// Danger paints the block red.
 #[allow(clippy::too_many_arguments)]
-fn meter(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, pct: Option<f64>, warn: f64, danger: f64) {
+fn meter(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, pct: Option<f64>, warn: f64, danger: f64, bh: f64) -> f64 {
     let lv = pct.map(|p| level(p, warn, danger));
     let red = lv == Some(Level::Danger);
+    let h = 19.0 * k + bh;
     if red {
-        sc.rect(2.0, top - 3.0 * k, sc.dw - 4.0, 38.0 * k + 6.0 * k, 6.0 * k, "#991b1b");
+        sc.rect(2.0, top - 3.0 * k, sc.dw - 4.0, h + 6.0 * k, 6.0 * k, "#991b1b");
     }
     let (value, vcol) = match pct {
         Some(p) => (format!("{}%", p.clamp(0.0, 100.0).round() as i64), "#ffffff"),
         None => ("N/D".to_string(), DIM),
     };
     let (x0, x1) = (m, sc.dw - m);
-    sc.row(x0, x1, top + 14.0 * k, name, 11.0 * k, if red { "#fecaca" } else { MUTED }, &value, 17.0 * k, vcol);
-    let (bw, bh, by) = (x1 - x0, 9.0 * k, top + 22.0 * k);
+    sc.row(x0, x1, top + 13.0 * k, name, 11.0 * k, if red { "#fecaca" } else { MUTED }, &value, 17.0 * k, vcol);
+    let (bw, by) = (x1 - x0, top + 19.0 * k);
     sc.rect(x0, by, bw, bh, bh / 2.0, if red { "#450a0a" } else { TRACK });
     if let Some(p) = pct {
         let f = (p / 100.0).clamp(0.0, 1.0);
@@ -154,53 +156,51 @@ fn meter(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, pct: Option<f64>,
             sc.rect(x0, by, (bw * f).round().max(bh), bh, bh / 2.0, fill_of(lv.unwrap_or(Level::Ok)));
         }
     }
+    h
+}
+
+/// Temperature row: `name` (with its unit) at the left, the number at the right, coloured by level. Height 18 k.
+#[allow(clippy::too_many_arguments)]
+fn temp(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, t: Option<f64>, warn: f64, danger: f64) -> f64 {
+    let (v, c) = match t {
+        Some(t) => (
+            format!("{}", t.round() as i64),
+            match level(t, warn, danger) {
+                Level::Ok => "#e5e7eb",
+                Level::Warn => "#f59e0b",
+                Level::Danger => "#fca5a5",
+            },
+        ),
+        None => ("N/D".to_string(), DIM),
+    };
+    sc.row(m, sc.dw - m, top + 13.0 * k, name, 11.0 * k, MUTED, &v, 17.0 * k, c);
+    18.0 * k
 }
 
 const WD: [&str; 7] = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 const MO: [&str; 12] = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
 
-fn clock(sc: &mut Scene, top: f64, k: f64, m: f64, t: LocalTime) {
+/// Clock block drawn from `top` (time, weekday + day, month, tight); returns its height.
+fn clock(sc: &mut Scene, top: f64, k: f64, m: f64, t: LocalTime) -> f64 {
     let (cx, avail) = (sc.dw / 2.0, sc.dw - 2.0 * m);
     let hm = format!("{:02}:{:02}", t.hour, t.minute);
     let day = format!("{} {}", WD[t.weekday as usize % 7], t.day);
     let mon = MO[(t.month as usize + 11) % 12];
     let fit = |s: &str, max: f64| max.min(avail / em(s));
     let (f1, f2, f3) = (fit(&hm, 34.0 * k), fit(&day, 16.0 * k), fit(mon, 12.0 * k));
-    // cap height ~0.72 em; stack the three lines with fixed gaps and centre the stack in the 80 k block
-    let ch = 0.72 * (f1 + f2 + f3) + 13.0 * k;
-    let y1 = top + (80.0 * k - ch) / 2.0 + 0.72 * f1;
+    // cap height ~0.72 em; the three lines stacked with fixed gaps, starting at the very top of the block
+    let y1 = top + 0.72 * f1;
     let y2 = y1 + 8.0 * k + 0.72 * f2;
     let y3 = y2 + 5.0 * k + 0.72 * f3;
     sc.text(cx, y1, f1, 'm', &hm, "#ffffff", true);
     sc.text(cx, y2, f2, 'm', &day, "#d4d4d4", true);
     sc.text(cx, y3, f3, 'm', mon, MUTED, true);
+    y3 + 0.25 * f3 - top
 }
 
-/// GPU: usage meter, then two micro rows (temperature, VRAM). Block is 68 k tall.
-fn gpu(sc: &mut Scene, top: f64, k: f64, m: f64, s: &Sample) {
-    meter(sc, top, k, m, "GPU", s.gpu.map(|g| g.util), 70.0, 90.0);
-    let (x0, x1) = (m, sc.dw - m);
-    let y = top + 38.0 * k + 2.0 * k;
-    match s.gpu {
-        Some(g) => {
-            let f = g.mem_used as f64 / g.mem_total.max(1) as f64;
-            let col = |l: Level| match l {
-                Level::Ok => "#e5e7eb",
-                Level::Warn => "#f59e0b",
-                Level::Danger => "#fca5a5",
-            };
-            let vram = format!("{:.1}/{:.0}G", g.mem_used as f64 / 1e9, g.mem_total as f64 / 1e9);
-            sc.row(x0, x1, y + 11.0 * k, "TEMP", 11.0 * k, MUTED, &format!("{}°", g.temp.round() as i64), 12.0 * k, col(level(g.temp, 70.0, 83.0)));
-            sc.row(x0, x1, y + 25.0 * k, "VRAM", 11.0 * k, MUTED, &vram, 12.0 * k, col(level(f, 0.8, 0.92)));
-        }
-        None => {
-            sc.row(x0, x1, y + 11.0 * k, "TEMP", 11.0 * k, MUTED, "--", 12.0 * k, DIM);
-            sc.row(x0, x1, y + 25.0 * k, "VRAM", 11.0 * k, MUTED, "--", 12.0 * k, DIM);
-        }
-    }
-}
-
-/// Builds the bar for a `dw` x `dh` device canvas. `bat` aligns the content to the three BAT cells.
+/// Builds the bar for a `dw` x `dh` device canvas, top to bottom: clock, CPU, GPU, RAM, CPU temp, GPU temp.
+/// `bat` aligns the content to the three BAT cells; otherwise the bar is continuous and the spare height goes
+/// to thicker bars and even gaps (width, not height, limits the text size).
 pub fn build(t: LocalTime, s: &Sample, dw: u32, dh: u32, bat: bool) -> Scene {
     let (dw, dh) = ((dw as f64).clamp(DW.0, DW.1), (dh as f64).clamp(DH.0, DH.1));
     // Scale from width (text is the limit), capped by height; BAT cells are fixed 80 px, so no growing there.
@@ -208,26 +208,42 @@ pub fn build(t: LocalTime, s: &Sample, dw: u32, dh: u32, bat: bool) -> Scene {
     if bat {
         k = k.min(1.0);
     }
-    let m = 6.0 * k;
+    let m = 5.0 * k;
     let mut sc = Scene { dw, dh, items: vec![Rect { x: 0.0, y: 0.0, w: dw, h: dh, rx: 0.0, fill: "#000000" }.into()] };
-    let (hc, hm, hg) = (80.0 * k, 38.0 * k, 68.0 * k);
-    let tops = if bat {
+    let (cpu_t, gpu_t) = (s.hw.cpu_temp, s.gpu.map(|g| g.temp));
+    let bh0 = 9.0 * k;
+    if bat {
+        // cell 0: clock; cell 1: CPU + GPU; cell 2: RAM + both temperatures
+        let mut ch = Scene { dw, dh, items: vec![] };
+        let hc = clock(&mut ch, 0.0, k, m, t);
+        clock(&mut sc, (CELL - hc) / 2.0, k, m, t);
+        let hm = 19.0 * k + bh0;
         let c1 = PITCH + (CELL - (2.0 * hm + 4.0 * k)) / 2.0;
-        [0.0, c1, c1 + hm + 4.0 * k, 2.0 * PITCH + (CELL - hg) / 2.0]
-    } else {
-        // one continuous bar: equal gaps, half a gap at the ends, thin dividers in the middle of the gaps
-        let g = (dh - (hc + 2.0 * hm + hg)) / 4.0;
-        let (c0, c1) = (g / 2.0, g / 2.0 + hc + g);
-        let c2 = c1 + hm + g;
-        for y in [c0 + hc + g / 2.0, c1 + hm + g / 2.0, c2 + hm + g / 2.0] {
-            sc.rect(m, y - 0.5, dw - 2.0 * m, 1.0, 0.0, TRACK);
-        }
-        [c0, c1, c2, c2 + hm + g]
-    };
-    clock(&mut sc, tops[0], k, m, t);
-    meter(&mut sc, tops[1], k, m, "CPU", s.cpu, 70.0, 90.0);
-    meter(&mut sc, tops[2], k, m, "RAM", s.ram.map(|r| r.0), 80.0, 92.0);
-    gpu(&mut sc, tops[3], k, m, s);
+        meter(&mut sc, c1, k, m, "CPU", s.cpu, 70.0, 90.0, bh0);
+        meter(&mut sc, c1 + hm + 4.0 * k, k, m, "GPU", s.gpu.map(|g| g.util), 70.0, 90.0, bh0);
+        let c2 = 2.0 * PITCH + (CELL - (hm + 2.0 * 18.0 * k + 2.0 * k)) / 2.0;
+        meter(&mut sc, c2, k, m, "RAM", s.ram.map(|r| r.0), 80.0, 92.0, bh0);
+        let y = c2 + hm + 2.0 * k;
+        temp(&mut sc, y, k, m, "CPU °C", cpu_t, 75.0, 90.0);
+        temp(&mut sc, y + 18.0 * k, k, m, "GPU °C", gpu_t, 70.0, 83.0);
+        return sc;
+    }
+    // continuous bar: measure the clock, then spread what is left over 5 even gaps (a little goes into thicker bars)
+    let edge = 3.0 * k;
+    let mut probe = Scene { dw, dh, items: vec![] };
+    let hc = clock(&mut probe, 0.0, k, m, t);
+    let free = dh - 2.0 * edge - hc - 3.0 * (19.0 * k + bh0) - 2.0 * 18.0 * k;
+    let grow = (free * 0.45 / 3.0).clamp(0.0, 1.5 * k);
+    let bh = bh0 + grow;
+    let g = ((free - 3.0 * grow) / 5.0).max(0.0);
+    let mut y = edge;
+    clock(&mut sc, y, k, m, t);
+    y += hc + g;
+    for (name, pct, warn, danger) in [("CPU", s.cpu, 70.0, 90.0), ("GPU", s.gpu.map(|g| g.util), 70.0, 90.0), ("RAM", s.ram.map(|r| r.0), 80.0, 92.0)] {
+        y += meter(&mut sc, y, k, m, name, pct, warn, danger, bh) + g;
+    }
+    y += temp(&mut sc, y, k, m, "CPU °C", cpu_t, 75.0, 90.0) + g;
+    temp(&mut sc, y, k, m, "GPU °C", gpu_t, 70.0, 83.0);
     sc
 }
 
@@ -397,7 +413,7 @@ mod tests {
     fn unavailable_metrics_say_nd() {
         let sc = build(T, &Sample::default(), 80, 378, false);
         let nd = texts(&sc).iter().filter(|t| t.s == "N/D").count();
-        assert_eq!(nd, 3, "CPU, RAM, GPU");
+        assert_eq!(nd, 5, "CPU, GPU, RAM, CPU temp, GPU temp");
         assert!(!sc.svg().contains("#991b1b"));
     }
 

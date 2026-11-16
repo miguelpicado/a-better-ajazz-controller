@@ -204,10 +204,9 @@ fn paint_dra_one<W: DockWriter>(
     let strip = strip_get().filter(|_| calib::with(|s| s.selected()).is_none_or(|k| k < 16));
     if let Some(strip) = strip {
         for k in 16..=18u8 {
-            if let Some((img, _)) = pending.remove(&k) {
-                mirror_put(k, &render::mirror_jpeg(&img));
-            }
+            pending.remove(&k);
         }
+        mirror_put(16, &render::mirror_jpeg(&strip)); // the editor shows the whole bar as one tall cell
         let c = calib::with(|s| s.eff(16));
         for (i, (r, j)) in render::dra_strip_jpegs(&strip, c.h.min(200), (c.dx, c.dy)).iter().enumerate() {
             if i > 0 {

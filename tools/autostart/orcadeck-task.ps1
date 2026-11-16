@@ -31,7 +31,7 @@ switch ($Action) {
         $sdProfile = Join-Path $env:APPDATA "HotSpot\StreamDock\profiles\$Profile.sdProfile"
         if (-not (Test-Path $sdProfile)) { throw "profile not found: $sdProfile" }
         # conhost --headless runs the .cmd without a visible console window.
-        $cmd = "@echo off`r`nset PATH=%~dp0;%PATH%`r`nset QUOTA_DIR=$Quota`r`n`"%~dp0orcadeck.exe`" run `"$sdProfile`" 2>> `"$root\orcadeck.log`"`r`n"
+        $cmd = "@echo off`r`nset PATH=%~dp0;%PATH%`r`nset QUOTA_DIR=$Quota`r`nset ORCADECK_DRA=1`r`n`"%~dp0orcadeck.exe`" run `"$sdProfile`" 2>> `"$root\orcadeck.log`"`r`n"
         Set-Content -Path (Join-Path $bin 'orcadeck-run.cmd') -Value $cmd -Encoding ascii
         $act = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless `"$bin\orcadeck-run.cmd`""
         $trg = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"

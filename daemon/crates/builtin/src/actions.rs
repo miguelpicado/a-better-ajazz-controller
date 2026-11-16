@@ -256,6 +256,22 @@ pub fn frame(now: i64) -> u32 {
     (now.rem_euclid(2000) / 100 * 100) as u32
 }
 
+fn focus_agent(ctx: &mut Ctx, a: &core::Agent) -> Feedback {
+    ctx.deck.blinking.remove(&a.key);
+    ctx.deck.orca.raise();
+    match ctx
+        .deck
+        .orca
+        .call("terminal.focus", json!({ "terminal": a.handle }))
+    {
+        Ok(_) => Feedback::None,
+        Err(e) => {
+            ctx.deck.last_error = Some(format!("focus failed {}: {e}", a.label));
+            Feedback::Alert
+        }
+    }
+}
+
 /// One main Orca agent per key; press = focus its pane.
 #[derive(Default)]
 pub struct AgentAction {
@@ -285,19 +301,7 @@ impl BuiltinAction for AgentAction {
         else {
             return Feedback::None;
         };
-        ctx.deck.blinking.remove(&a.key);
-        ctx.deck.orca.raise();
-        match ctx
-            .deck
-            .orca
-            .call("terminal.focus", json!({ "terminal": a.handle }))
-        {
-            Ok(_) => Feedback::None,
-            Err(e) => {
-                ctx.deck.last_error = Some(format!("focus failed {}: {e}", a.label));
-                Feedback::Alert
-            }
-        }
+        focus_agent(ctx, &a)
     }
     fn activity(&self, deck: &Deck, context: &str, now: i64) -> (bool, bool) {
         let Some(k) = self.slots.get(context) else {
@@ -365,6 +369,20 @@ impl BuiltinAction for SummaryAction {
     }
     fn render(&self, ctx: &Ctx, _context: &str) -> String {
         core::render_summary(&ctx.deck.counts)
+    }
+    /// Press = focus the agent waiting longest (oldest `since`); nothing if none waits.
+    fn on_key(&mut self, ctx: &mut Ctx, _context: &str) -> Feedback {
+        let Some(a) = ctx
+            .deck
+            .agents
+            .iter()
+            .filter(|a| a.state == core::State::Question)
+            .min_by_key(|a| a.since.filter(|s| *s != 0).unwrap_or(i64::MAX))
+            .cloned()
+        else {
+            return Feedback::None;
+        };
+        focus_agent(ctx, &a)
     }
 }
 
