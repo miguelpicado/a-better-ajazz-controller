@@ -7,7 +7,7 @@ dispositivo**: no se abrió el HID, no se ejecutó `orcadeck` ni se escribió en
 **OBSERVED** = leído en el desensamblado o en un fichero local. **INFERRED** = deducción. **UNKNOWN** = no resuelto.
 
 Scripts (todos en el scratchpad, corren limpios; no están en el repo):
-`C:\Users\migue\AppData\Local\Temp\claude\2c80c354be5b99aa\09cb1bdf-317d-4661-a18d-fe850b88a054\scratchpad\`
+`<scratchpad de la sesión>`
 `fwdis.py` (desensamblador Thumb-2 con literales), `callers.py` (llamadores bl/b.w), `regseq.py` y `allregs.py`
 (secuencias índice/valor hacia `0x08007878`/`0x080076C4`), `litref.py` (quién carga un literal de RAM),
 `x64dis.py`, `x64callers.py`, `xrefstr.py`, `strs.py` (lado app).

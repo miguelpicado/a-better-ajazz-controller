@@ -11,8 +11,8 @@
 param(
     [ValidateSet('install', 'enable', 'editor', 'disable', 'uninstall', 'status')][string]$Action = 'status',
     [string]$Profile = 'R0KZ54Z0-063U-947X-31BI-GG95R8F4HT88',
-    # Quota keys read this folder; without it they stay empty.
-    [string]$Quota = $(if ($env:QUOTA_DIR) { $env:QUOTA_DIR } else { 'C:\Users\migue\Github\quota-monitor' }),
+    # Quota keys read this folder (QUOTA_DIR); empty = the app default %APPDATA%\OrcaDeck\quota.
+    [string]$Quota = $(if ($env:QUOTA_DIR) { $env:QUOTA_DIR } else { '' }),
     [string]$Build = (Join-Path $PSScriptRoot '..\..\daemon\target\release')
 )
 $ErrorActionPreference = 'Stop'
@@ -31,7 +31,7 @@ switch ($Action) {
         $sdProfile = Join-Path $env:APPDATA "HotSpot\StreamDock\profiles\$Profile.sdProfile"
         if (-not (Test-Path $sdProfile)) { throw "profile not found: $sdProfile" }
         # conhost --headless runs the .cmd without a visible console window.
-        $cmd = "@echo off`r`nset PATH=%~dp0;%PATH%`r`nset QUOTA_DIR=$Quota`r`nset ORCADECK_DRA=1`r`n`"%~dp0orcadeck.exe`" run `"$sdProfile`" 2>> `"$root\orcadeck.log`"`r`n"
+        $cmd = "@echo off`r`nset PATH=%~dp0;%PATH%`r`n$(if ($Quota) { "set QUOTA_DIR=$Quota`r`n" })set ORCADECK_DRA=1`r`n`"%~dp0orcadeck.exe`" run `"$sdProfile`" 2>> `"$root\orcadeck.log`"`r`n"
         Set-Content -Path (Join-Path $bin 'orcadeck-run.cmd') -Value $cmd -Encoding ascii
         $act = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless `"$bin\orcadeck-run.cmd`""
         $trg = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
