@@ -2007,6 +2007,9 @@ fn session(
     let api = HidApi::new().map_err(|e| e.to_string())?;
     let mut dock = Dock::open_with_n(&api, spec, n)?;
     dock.init(80)?;
+    // The firmware reports keys only after its first STP (flag 0x2000010c, RAM: lost on every replug). BAT mode gets it
+    // from the batch flush; DRA mode never sends STP, so send one now, before anything is drawn (STP wipes the screen).
+    dock.flush()?;
     eprintln!("device ready, N = {}", dock.n);
     send_brightness(&mut dock)?;
     let mut pending = view_paints(rt);
