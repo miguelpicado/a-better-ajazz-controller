@@ -1,3 +1,32 @@
+# Handoff 2026-11-16 (léelo primero)
+
+Rama `dra-experiment`. DRA en producción para el usuario: teclas 98×98 calibradas, barra lateral continua, tecla de resumen que
+salta al agente en espera más antiguo. Todo compilado e instalado (`%LOCALAPPDATA%\OrcaDeck\bin`, tarea `OrcaDeck`) y confirmado
+en el dispositivo. Guía de uso: `docs/guide/USAGE.md` §4b. Las secciones de más abajo (2026-11-11/12/13) son históricas: lo que dicen
+sobre DRA sin dibujar o sobre el panel en 3 celdas está superado.
+
+## Decisiones
+- **Firmware: no se parchea** (2026-11-16, usuario). Ni pulsar/soltar (solo daría el cuadro amarillo) ni el parche de la tira.
+  Detalle y ruta de recuperación en `docs/research/firmware/README.md`. No hay soporte host para state=1 (probado y revertido).
+- Ya no hay «dos imágenes y solapes»: la barra continua con DRA lo cubre; no hay nada pendiente de preguntar.
+
+## Compilar / instalar (esta máquina)
+```powershell
+$env:PATH='C:\Tools\llvm-mingw-20261104-ucrt-x86_64\bin;'+$env:PATH   # el toolchain gnullvm sale de daemon/rust-toolchain.toml
+cd daemon; cargo build --release
+Stop-ScheduledTask OrcaDeck; Get-Process orcadeck | Stop-Process -Force
+..\tools\autostart\orcadeck-task.ps1 install; ..\tools\autostart\orcadeck-task.ps1 enable; Start-ScheduledTask OrcaDeck
+```
+El editor va embebido (`include_str!`): cambios en `daemon/crates/web/web/*` exigen recompilar + reinstalar.
+
+## Pendiente
+- Tests: `cargo test --release --workspace -- --test-threads=1` con `ORCADECK_CALIBRATION=C:\nonexistent\cal.json` pasa; en paralelo 5 tests de `app::tests::*` fallan/cuelgan (estado global compartido: `STRIP`, `MIRROR`, calibración). No comprobado si ya pasaba antes.
+- Temp CPU de la barra necesita HWiNFO64 con «Shared Memory Support» (activo en esta máquina).
+- `AGENTS.md` y los `__pycache__` de `docs/research/firmware/work` siguen sin trackear.
+- Diagnósticos del IDE sobre `status` deprecated en `app.js`: preexistentes, ignorar.
+
+---
+
 # HANDOFF (2026-11-12)
 
 ## Estado actual (2026-11-12): OrcaDeck ya sustituye a Stream Dock

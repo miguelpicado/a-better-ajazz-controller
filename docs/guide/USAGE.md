@@ -108,7 +108,7 @@ fichero de configuración para ellas.
 | `ORCADECK_DATA` | `%APPDATA%\OrcaDeck` | `state.json` y overlays **solo para `edit`**. `run` usa siempre `%APPDATA%\OrcaDeck`. | [`edit.rs`](../../daemon/src/edit.rs) |
 | `ORCADECK_BUILTIN_PLUGINS` | vacío; se añaden las carpetas `plugins` de Stream Dock si existen | Raíces de plugins de solo lectura extra para `edit`, separadas por `;`. | [`edit.rs`](../../daemon/src/edit.rs) |
 | `ORCADECK_GAP_MS` | `250` | Mínimo de milisegundos entre lotes de pintado. Se lee al abrir cada sesión del dispositivo. **No bajar.** | [`app.rs`](../../daemon/src/app.rs) |
-| acción `com.miguelpicado.orcadock.panel_strip` | _(escena)_ | **Experimental.** Panel lateral como UNA barra (hora/fecha, CPU, RAM, GPU). Colócala en la celda (5,0): con `ORCADECK_DRA=1` se dibuja entera (alto = `h` de la ranura 16 de calibración, largo 378); sin DRA se trocea en las 3 celdas de 80 px. Ver [`dra-render-notes.md`](../research/hid/dra-render-notes.md). | [`strip.rs`](../../daemon/crates/builtin/src/strip.rs) |
+| acción `com.miguelpicado.orcadock.panel_strip` | _(escena)_ | **Experimental.** Panel lateral como UNA barra (hora/fecha, CPU, GPU, RAM, temperaturas; ver §4b). Colócala en la celda (5,0): con `ORCADECK_DRA=1` se dibuja entera (alto = `h` de la ranura 16 de calibración, largo 378); sin DRA se trocea en las 3 celdas de 80 px. Ver [`dra-render-notes.md`](../research/hid/dra-render-notes.md). | [`strip.rs`](../../daemon/crates/builtin/src/strip.rs) |
 | `ORCADECK_DRA` | _(sin definir)_ | **Experimental.** `1` = pintar con `DRA` (rectángulos en vivo, sin BAT/STP) en vez de BAT. Todas las teclas cambiadas en una pasada. Ver [`dra-render-notes.md`](../research/hid/dra-render-notes.md). Otras: `ORCADECK_DRA_GAP_MS` (50, pausa entre DRA), `ORCADECK_CALIBRATION` (ruta de `calibration.json`; por defecto `%LOCALAPPDATA%\OrcaDeck\calibration.json`), `ORCADECK_CALIB_GAP_MS` (150), `ORCADECK_DRA_TILE_PX` (98, máx. 384), `ORCADECK_DRA_SIDE_PX` (80), `ORCADECK_DRA_OFFSETS` (`tecla:dx,dy;…` en píxeles de panel). | [`app.rs`](../../daemon/src/app.rs) |
 | `ORCADECK_TRACE` | desactivado (cualquier valor lo activa) | Escribe a stderr cada entrada HID y la duración de cada lote. | [`app.rs`](../../daemon/src/app.rs) |
 | `ORCADECK_CMD` | desactivado | Hook de experimento de `watch`: `VERBO:0a=01,0b=00` (offsets y valores en hexadecimal). Envía un `CRT` y sigue. | [`main.rs`](../../daemon/src/main.rs) |
@@ -118,6 +118,35 @@ fichero de configuración para ellas.
 
 `ORCADECK_CMD` y `ORCADECK_SCENE` son herramientas de sondeo, no opciones de uso normal. `watch`
 también hace `init`, así que pueden aparecer imágenes o limpieza de pantalla.
+
+## 4b. Modo DRA: teclas a 98 px y barra lateral (estado 2026-11-16)
+
+Con `ORCADECK_DRA=1` (el autoarranque ya lo pone en `orcadeck-run.cmd`) o `"enabled": true` en `calibration.json`, `run` deja
+de usar `BAT`/`STP` y pinta cada tecla como un rectángulo `DRA` en vivo. Cambios visibles frente al modo clásico:
+
+| | Clásico (BAT) | DRA (actual) |
+|---|---|---|
+| Teclas 1-15 | 85×85 px | **98×98 px** por defecto (calibrable por tecla, máx. 384 de ancho) |
+| Panel lateral | 3 celdas de 80×80 con huecos | **una barra continua** (alto = `h` de la ranura 16, 80 por defecto, largo 378) |
+| Envío | un lote con `STP` | solo las teclas que cambian, `ORCADECK_DRA_GAP_MS` (50 ms) entre ellas |
+| Pulsar/soltar | solo un clic al soltar | igual (el firmware no se ha parcheado; ver abajo) |
+
+**Calibración por tecla.** En el editor, pestaña **Calibración**: pulsa físicamente una tecla (queda seleccionada y su acción
+no se ejecuta), mueve el cuadro con las flechas y ajusta ancho/alto; se guarda en
+`%LOCALAPPDATA%\OrcaDeck\calibration.json` (`{"enabled":true,"keys":{"1":{"dx":0,"dy":-4,"w":98,"h":98},…}}`, píxeles de panel,
+desplazamiento desde el centro de la celda BAT). Las teclas 16-18 comparten la ranura 16 (la barra se dibuja entera).
+Sin fichero: 98×98 sin desplazamiento y barra de 80.
+
+**Barra lateral** (`com.miguelpicado.orcadock.panel_strip`, colócala en la celda (5,0) y deja (5,1)/(5,2) vacías). De arriba abajo:
+reloj/fecha, CPU, GPU, RAM, temperatura de CPU («CPU °C») y de GPU («GPU °C»), cada una con etiqueta, valor a la derecha y barra
+de color (verde/ámbar/rojo según los umbrales de `sys.rs`). Sin HWiNFO64 («Shared Memory Support» activo) la temperatura de CPU
+muestra «N/D». En el editor, con `panel_strip` en (5,0) el panel lateral se ve como UNA celda alta y el espejo recibe la barra completa.
+
+**Tecla de resumen** (`com.miguelpicado.orcadock.summary`, «activos / espera / hechos»): al pulsarla enfoca el agente de Orca
+que lleva más tiempo en espera (el único, si solo hay uno); sin agentes en espera no hace nada.
+
+**Firmware.** No se parchea: el parche pulsar/soltar solo añadiría el cuadro amarillo de «tecla pulsada» y el parche de la barra
+continua ya no hace falta con DRA. Decisión del usuario, 2026-11-16 (ver `docs/research/firmware/README.md`).
 
 ## 5. `run` en detalle
 

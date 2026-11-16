@@ -3,6 +3,13 @@
 Punto de entrada para retomar: [`HANDOFF.md`](HANDOFF.md). Qué falta, en orden:
 [`ROADMAP.md`](ROADMAP.md). Arquitectura vigente: [`../design/ARCHITECTURE.md`](../design/ARCHITECTURE.md).
 
+## Actualización 2026-11-16 (vigente sobre lo de abajo)
+
+El modo DRA (`ORCADECK_DRA=1`) está en uso diario: teclas 1-15 a 98×98 con calibración por tecla, barra lateral continua
+(reloj, CPU, GPU, RAM, temperaturas), tecla de resumen que enfoca el agente en espera más antiguo. Firmware sin parchear (decisión del
+usuario). Lo que este fichero dice más abajo sobre DRA o sobre el panel de 3 celdas está superado; ver `../guide/USAGE.md` §4b y
+[`HANDOFF.md`](HANDOFF.md).
+
 ## Dónde estamos
 
 Sustituto en Rust de «Stream Dock AJAZZ» para el AKP153E: un único binario (`orcadeck.exe`) hace de

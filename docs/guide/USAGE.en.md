@@ -119,6 +119,31 @@ no configuration file for them.
 `ORCADECK_CMD` and `ORCADECK_SCENE` are probing tools, not normal usage options. `watch` also runs
 `init`, so images or screen clearing may appear.
 
+## 4b. DRA mode: 98 px keys and side bar (state 2026-11-16)
+
+With `ORCADECK_DRA=1` (autostart already sets it in `orcadeck-run.cmd`) or `"enabled": true` in `calibration.json`, `run` stops
+using `BAT`/`STP` and paints every key as a live `DRA` rectangle.
+
+| | Classic (BAT) | DRA (current) |
+|---|---|---|
+| Keys 1-15 | 85×85 px | **98×98 px** by default (per-key calibration, max 384 wide) |
+| Side panel | 3 cells of 80×80 with gaps | **one continuous bar** (height = `h` of slot 16, default 80, length 378) |
+| Sending | one batch plus `STP` | only changed keys, `ORCADECK_DRA_GAP_MS` (50 ms) apart |
+
+**Per-key calibration:** editor tab **Calibración** (press a physical key to select it, its action does not run; arrows move the
+square, width/height resize). Saved to `%LOCALAPPDATA%\OrcaDeck\calibration.json` (panel pixels, offset from the BAT cell centre).
+Keys 16-18 share slot 16. No file: 98×98, no offset, 80 px bar.
+
+**Side bar** (`com.miguelpicado.orcadock.panel_strip` in cell (5,0), leave (5,1)/(5,2) empty), top to bottom: clock/date, CPU, GPU, RAM,
+CPU temperature, GPU temperature. CPU temperature needs HWiNFO64 with Shared Memory Support, else «N/D». The editor shows the side
+panel as one tall cell.
+
+**Summary key** («activos / espera / hechos»): focuses the Orca agent that has waited longest (the only one if there is one);
+does nothing when none is waiting.
+
+**Firmware:** not patched (decision 2026-11-16): the press/release patch would only add the yellow «pressed» frame, and the
+side-strip patch is unnecessary with DRA. See `docs/research/firmware/README.md`.
+
 ## 5. `run` in detail
 
 - **Port**: 18618 fixed, no option. If it is busy, `run` fails when starting the host.

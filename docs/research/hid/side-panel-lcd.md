@@ -140,3 +140,10 @@ y el resto de comandos convivan, y el parche de pulsar/soltar (prioridad 1).
 3. Para arreglar `DRA`: reconstruir la inicialización del LCD (registros `0x20..0x5D` vía `0x08007878`, índice/dato por
    `0x080076C4`/`0x080076CC`) y compararla con lo que hace `CLE ff` (`0x08006480`). Es trabajo de emulación (ver
    `docs/research/firmware/work/emu`), no de pruebas ciegas: cada fallo cuelga el firmware.
+
+## 7. Resolución final (2026-11-16)
+
+Resuelto con `DRA` estado 3, sin firmware nuevo: teclas 1-15 a **98×98** (calibradas una a una, `%LOCALAPPDATA%\OrcaDeck\calibration.json`),
+barra lateral continua de 80 px de alto y 378 de largo en las teclas 16-18 (un solo `DRA`). Los puntos 1-3 de §6 ya no se persiguen.
+El parche de pulsar/soltar se descartó (solo daría el cuadro amarillo). La barra lleva reloj, CPU, GPU, RAM y temperaturas de CPU/GPU;
+ver `docs/guide/USAGE.md` §4b.
