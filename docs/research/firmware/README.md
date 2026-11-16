@@ -12,7 +12,7 @@ publican: están en `.gitignore` y se conservan solo en el disco del autor. Los 
 (`make_patch*.py`, `emu/`) esperan encontrarlos en esas rutas; sin ellos solo se puede leer la documentación.
 Si hace falta reproducir el análisis, vuelca el firmware de tu propia unidad.
 
-## Decisión 2026-11-16: no se parchea el firmware
+## Decisión 2026-11-16 (matizada): no se parchea la tira; pulsar/soltar sigue en investigación
 
 El usuario descartó flashear. Con `DRA` (teclas 98×98 y barra lateral continua, ver `../hid/side-panel-lcd.md` §5.4-5.5) el
 resultado gráfico es el deseado, así que el parche de la tira (`AKP153E_sidestrip_NO_PROBADO.bin`) no hace falta. El parche

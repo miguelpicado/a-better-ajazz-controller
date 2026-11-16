@@ -290,7 +290,7 @@ pub enum Input {
     Ack,
     Error,
     Mode(u8),
-    /// key 1..18, raw state byte (press/release meaning unconfirmed on AKP153E)
+    /// key 1..18, state byte: stock firmware sends only 0 (on release); the press/release patch sends 1 on press and 0 on release
     Key {
         key: u8,
         state: u8,

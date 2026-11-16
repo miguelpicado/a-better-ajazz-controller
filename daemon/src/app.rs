@@ -1764,35 +1764,76 @@ fn handle_input_packet<W: DockWriter>(
     }
     match parse_input(buf) {
         Input::Handshake => dock.send(&handshake_reply(dock.report_n()))?,
-        // calibration mode: the press only selects the key, no action runs
-        Input::Key { key, .. }
-            if (1..=15).contains(&key)
-                && dra_cfg().is_some()
-                && calib::with(|s| s.on() && s.select(key).is_ok()) => {}
-        Input::Key { key, .. } if (1..=15).contains(&key) => match by_key.get(&key).cloned() {
-            Some(Target::Builtin(ctx)) => {
-                let _ = msg_tx.send(BuiltinMsg::Press(ctx));
+        Input::Key { key, state } if (1..=15).contains(&key) => {
+            let phase = key_phase(&mut HELD.lock().unwrap(), key, state, Instant::now());
+            let fire = matches!(phase, Phase::Click | Phase::Down);
+            // calibration mode: the press only selects the key, no action runs
+            if fire && dra_cfg().is_some() && calib::with(|s| s.on() && s.select(key).is_ok()) {
+                return Ok(());
             }
-            Some(Target::Plugin(ctx)) => {
-                host.key(&ctx, true);
-                host.key(&ctx, false);
-            }
-            Some(Target::Scene(target)) => {
-                match switch_scene(
-                    scenes, &target, plugins, by_key, host, found, running, msg_tx, rt, builtins,
-                ) {
-                    Ok(paints) => {
-                        let gen = rt.gen.load(Ordering::Relaxed);
-                        pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
+            match (by_key.get(&key).cloned(), phase) {
+                (_, Phase::Ignore) | (None, _) => {}
+                // plugins get the real edges when the firmware reports them
+                (Some(Target::Plugin(ctx)), Phase::Up) => {
+                    host.key(&ctx, false);
+                }
+                (Some(Target::Plugin(ctx)), Phase::Down) => {
+                    host.key(&ctx, true);
+                }
+                (Some(Target::Plugin(ctx)), Phase::Click) => {
+                    host.key(&ctx, true);
+                    host.key(&ctx, false);
+                }
+                // builtins and scene switches act on the press, never on the release
+                (_, Phase::Up) => {}
+                (Some(Target::Builtin(ctx)), _) => {
+                    let _ = msg_tx.send(BuiltinMsg::Press(ctx));
+                }
+                (Some(Target::Scene(target)), _) => {
+                    match switch_scene(
+                        scenes, &target, plugins, by_key, host, found, running, msg_tx, rt, builtins,
+                    ) {
+                        Ok(paints) => {
+                            let gen = rt.gen.load(Ordering::Relaxed);
+                            pending.extend(paints.into_iter().map(|(key, img)| (key, (img, gen))));
+                        }
+                        Err(e) => eprintln!("scene: {e}"),
                     }
-                    Err(e) => eprintln!("scene: {e}"),
                 }
             }
-            None => {}
-        },
+        }
         _ => {}
     }
     Ok(())
+}
+
+/// What a key report means. The stock firmware only reports a release (state 0 = a click); the press/release
+/// firmware patch (docs/research/firmware) also reports the press (state 1) before it.
+#[derive(Debug, PartialEq)]
+enum Phase {
+    Click,
+    Down,
+    Up,
+    Ignore,
+}
+
+/// Keys with a press seen and no release yet. A lost release must not block the key forever.
+static HELD: LazyLock<Mutex<HashMap<u8, Instant>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+const HELD_MAX: Duration = Duration::from_secs(10);
+
+fn key_phase(held: &mut HashMap<u8, Instant>, key: u8, state: u8, now: Instant) -> Phase {
+    if state == 1 {
+        // a repeated state 1 (ACK sent by the USB ISR while the key is down) is not a new press
+        if held.get(&key).is_some_and(|t| now.duration_since(*t) < HELD_MAX) {
+            return Phase::Ignore;
+        }
+        held.insert(key, now);
+        Phase::Down
+    } else if held.remove(&key).is_some() {
+        Phase::Up
+    } else {
+        Phase::Click
+    }
 }
 
 fn process_paints<W: DockWriter>(
@@ -2138,6 +2179,21 @@ mod tests {
     fn settings_at(path: &Path) -> Value {
         let doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         doc["Actions"]["2,1"]["Settings"].clone()
+    }
+
+    #[test]
+    fn key_phase_handles_stock_and_press_release_firmware() {
+        let (mut h, t) = (HashMap::new(), Instant::now());
+        // stock firmware: state 0 only = a click
+        assert_eq!(key_phase(&mut h, 3, 0, t), Phase::Click);
+        // patched firmware: press, duplicate press (ISR ACK), release
+        assert_eq!(key_phase(&mut h, 3, 1, t), Phase::Down);
+        assert_eq!(key_phase(&mut h, 3, 1, t), Phase::Ignore);
+        assert_eq!(key_phase(&mut h, 4, 1, t), Phase::Down);
+        assert_eq!(key_phase(&mut h, 3, 0, t), Phase::Up);
+        assert_eq!(key_phase(&mut h, 3, 0, t), Phase::Click);
+        // a lost release does not block the key forever
+        assert_eq!(key_phase(&mut h, 4, 1, t + HELD_MAX), Phase::Down);
     }
 
     #[test]
