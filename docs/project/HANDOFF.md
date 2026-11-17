@@ -4,6 +4,8 @@ Hecho hoy (tests verdes, SIN probar en dispositivo ni reinstalado):
 - **Pulsación larga en teclas de agente** (sin `Long` propio): enfoca el agente y, si está en pregunta, `terminal.send {terminal, enter:true}` (OK rápido). `long_of` (`app.rs`) da `c,r:L` sin registrar; `Registry::key_down` lo enruta a `BuiltinAction::on_long`.
 - **Zoom en Grabación sin imagen**: esas 5 teclas tienen `States[].Image` vacío en el perfil (Stream Dock usa la del plugin). `Scene::image_at` (`profile.rs`) cae al `States[i].Image` del manifest del plugin y prefiere `@2x`.
 - **Barra `panel_weather`** (`weather.rs`): hora España (CET/CEST calculado, no depende del PC) y Colombia (UTC-5) sobre el tiempo de Sada (Open-Meteo vía `curl`, 20 min). Añadida en (5,0) de Grabación y Monitorización (copias: `%LOCALAPPDATA%\ABAC\scene-*-20261117.bak.json`). Vista previa: `ABAC_WX_DUMP=<dir> cargo test -p abac-builtin dump_previews -- --ignored`.
+- Barra del tiempo rehecha con aspecto más realista (nubes con ruido fractal e iluminación, sol con halo, mar de la ría con reflejos, costa, luces del pueblo de noche, cristal empañado con gotas). Render ~150-300 ms una vez por minuto.
+- Barras laterales con sobrebarrido `ABAC_STRIP_PAD` (16 px por extremo; el usuario veía la barra cortada abajo). Sin confirmar en el dispositivo si basta.
 - Migración ABAC ejecutada en esta máquina (2026-11-17): `install` + `enable` + `editor` + `abac register`, tarea `ABAC` corriendo, `OrcaDeck` quitada, `calibration.json` en `%LOCALAPPDATA%\ABAC`.
 - Pendiente: probar en dispositivo (larga sobre agente preguntando, Zoom, barra) y republicar con `tools/publish-public.mjs`.
 

@@ -363,7 +363,7 @@ mod tests {
     const T: LocalTime = LocalTime { hour: 14, minute: 37, day: 13, month: 11, weekday: 5 };
 
     fn strip(t: LocalTime, s: &Sample, w: u16, h: u16, bat: bool) -> DynamicImage {
-        let svg = render_strip(t, s, StripCfg { w, h, bat });
+        let svg = render_strip(t, s, StripCfg { w, h, bat, pad: 0 });
         let (dw, dh) = strip_dims(&svg).expect("strip marker");
         assert_eq!((dw, dh), (h as u32, w as u32));
         strip_image(&svg, dw, dh).expect("raster")

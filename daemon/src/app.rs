@@ -115,7 +115,14 @@ fn strip_get() -> Option<DynamicImage> {
 fn strip_cfg() -> bi::StripCfg {
     match dra_cfg() {
         None => bi::StripCfg::default(),
-        Some(_) => bi::StripCfg { w: 378, h: calib::with(|s| s.eff(16)).h.min(200), bat: false },
+        Some(_) => {
+            // overscan at each end of the bar (the panel showed it cut), `ABAC_STRIP_PAD` px, default 16
+            static PAD: LazyLock<u16> = LazyLock::new(|| {
+                std::env::var("ABAC_STRIP_PAD").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(16u16).min(40)
+            });
+            let pad = *PAD;
+            bi::StripCfg { w: 378 + 2 * pad, h: calib::with(|s| s.eff(16)).h.min(200), bat: false, pad }
+        }
     }
 }
 

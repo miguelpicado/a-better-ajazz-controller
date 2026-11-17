@@ -19,11 +19,13 @@ pub struct StripCfg {
     pub h: u16,
     /// BAT mode: layout aligned to the three 80 px cells (pitch 149) so slicing loses nothing.
     pub bat: bool,
+    /// Overscan at each end, included in `w`: the layout uses `w - 2 pad`, the ends repeat the edge colour.
+    pub pad: u16,
 }
 
 impl Default for StripCfg {
     fn default() -> Self {
-        StripCfg { w: 378, h: 80, bat: true }
+        StripCfg { w: 378, h: 80, bat: true, pad: 0 }
     }
 }
 
@@ -294,7 +296,27 @@ impl Scene {
 
 /// SVG of the bar for a panel-px request (`cfg.w` x `cfg.h`); the canvas is device-oriented (`h` x `w`).
 pub fn render_strip(t: LocalTime, s: &Sample, cfg: StripCfg) -> String {
-    build(t, s, cfg.h as u32, cfg.w as u32, cfg.bat).svg()
+    let pad = cfg.pad as u32;
+    let inner = build(t, s, cfg.h as u32, (cfg.w as u32).saturating_sub(2 * pad), cfg.bat).svg();
+    pad_svg(&inner, pad, "#000", "#000")
+}
+
+/// Wraps a strip SVG into one `pad` px longer at each end, the ends filled with `top` / `bottom` (overscan: the
+/// panel shows a little more than the length the layout is made for, so nothing looks cut).
+pub fn pad_svg(inner: &str, pad: u32, top: &str, bottom: &str) -> String {
+    let (Some((dw, dh)), Some((_, body))) = (strip_dims(inner), inner.split_once("-->")) else {
+        return inner.to_string();
+    };
+    if pad == 0 {
+        return inner.to_string();
+    }
+    let full = dh + 2 * pad;
+    format!(
+        r##"<!--strip {dw}x{full}--><svg xmlns="http://www.w3.org/2000/svg" width="{dw}" height="{full}" viewBox="0 0 {dw} {full}"><rect width="{dw}" height="{}" fill="{top}"/><rect y="{}" width="{dw}" height="{}" fill="{bottom}"/><g transform="translate(0 {pad})">{body}</g></svg>"##,
+        pad + 1,
+        pad + dh - 1,
+        pad + 1
+    )
 }
 
 /// `(dw, dh)` of a strip SVG made by [`Scene::svg`]; None for every other SVG (keys are square 144).
@@ -439,9 +461,12 @@ mod tests {
 
     #[test]
     fn marker_round_trips_and_other_svgs_are_not_strips() {
-        let svg = render_strip(T, &full(), StripCfg { w: 480, h: 95, bat: false });
+        let svg = render_strip(T, &full(), StripCfg { w: 480, h: 95, bat: false, pad: 0 });
         assert_eq!(strip_dims(&svg), Some((95, 480)));
         assert_eq!(strip_dims(&render_strip(T, &full(), StripCfg::default())), Some((80, 378)));
+        let padded = render_strip(T, &full(), StripCfg { w: 410, h: 80, bat: false, pad: 16 });
+        assert_eq!(strip_dims(&padded), Some((80, 410)));
+        assert!(padded.contains(r#"translate(0 16)"#) && padded.contains(r#"<!--strip 80x410-->"#));
         assert_eq!(strip_dims("<svg width=\"144\"/>"), None);
         assert_eq!(strip_dims("<!--strip axb-->"), None);
     }

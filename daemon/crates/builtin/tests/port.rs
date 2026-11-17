@@ -338,13 +338,11 @@ fn registry_with_mocked_orca() {
     reg.tick(t1 + 2000);
     calls.lock().unwrap().clear();
     assert_eq!(reg.key_down("a2:L", t1 + 2000), Feedback::Ok);
+    // key order of the params depends on serde_json's preserve_order (on in the workspace build): build it the same way
+    let send = format!("terminal.send {}", json!({ "terminal": "h1", "enter": true }));
     assert_eq!(
         *calls.lock().unwrap(),
-        [
-            "raise",
-            r#"terminal.focus {"terminal":"h1"}"#,
-            r#"terminal.send {"enter":true,"terminal":"h1"}"#
-        ]
+        ["raise", r#"terminal.focus {"terminal":"h1"}"#, send.as_str()]
     );
     replies.lock().unwrap().remove("terminal.focus");
     assert_eq!(
