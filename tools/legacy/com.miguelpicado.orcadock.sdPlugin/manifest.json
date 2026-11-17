@@ -62,6 +62,14 @@
       "States": [{ "Image": "imgs/action", "ShowTitle": false }]
     },
     {
+      "UUID": "com.miguelpicado.orcadock.panel_weather",
+      "Name": "Side bar (Spain/Colombia time, Sada weather)",
+      "Tooltip": "Whole side panel as one bar: Spain and Colombia clocks over a picture of the weather in Sada. Place it at the top side cell (5,0).",
+      "Icon": "imgs/action",
+      "Controllers": ["Information", "Keypad"],
+      "States": [{ "Image": "imgs/action", "ShowTitle": false }]
+    },
+    {
       "UUID": "com.miguelpicado.orcadock.quota",
       "Name": "AI quota",
       "Tooltip": "Fills itself with the next account from quota-status.json. Press to refresh.",

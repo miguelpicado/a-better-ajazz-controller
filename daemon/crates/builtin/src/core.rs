@@ -637,7 +637,7 @@ pub fn render_quota(item: Option<&QuotaItem>, stale: bool, now: i64) -> String {
 }
 
 /// Days since 1970-01-01 of a proleptic Gregorian date (Howard Hinnant's algorithm).
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+pub(crate) fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -709,6 +709,18 @@ pub fn parse_iso_ms(s: &str) -> Option<i64> {
 /// ms since the epoch to an ISO-8601 UTC string, like JS `toISOString()`.
 pub fn iso_utc(ms: i64) -> String {
     let (days, rem) = (ms.div_euclid(86_400_000), ms.rem_euclid(86_400_000));
+    let (y, m, d) = civil_from_days(days);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z",
+        rem / 3_600_000,
+        rem / 60_000 % 60,
+        rem / 1000 % 60,
+        rem % 1000
+    )
+}
+
+/// (year, month, day) of a day count since 1970-01-01 (inverse of `days_from_civil`).
+pub(crate) fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719468;
     let era = z.div_euclid(146097);
     let doe = z - era * 146097;
@@ -717,12 +729,5 @@ pub fn iso_utc(ms: i64) -> String {
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
-    format!(
-        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z",
-        rem / 3_600_000,
-        rem / 60_000 % 60,
-        rem / 1000 % 60,
-        rem % 1000
-    )
+    (yoe + era * 400 + if m <= 2 { 1 } else { 0 }, m, d)
 }

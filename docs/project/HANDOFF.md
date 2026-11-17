@@ -1,4 +1,13 @@
-# Handoff 2026-11-16 (léelo primero)
+# Handoff 2026-11-17 (léelo primero)
+
+Hecho hoy (tests verdes, SIN probar en dispositivo ni reinstalado):
+- **Pulsación larga en teclas de agente** (sin `Long` propio): enfoca el agente y, si está en pregunta, `terminal.send {terminal, enter:true}` (OK rápido). `long_of` (`app.rs`) da `c,r:L` sin registrar; `Registry::key_down` lo enruta a `BuiltinAction::on_long`.
+- **Zoom en Grabación sin imagen**: esas 5 teclas tienen `States[].Image` vacío en el perfil (Stream Dock usa la del plugin). `Scene::image_at` (`profile.rs`) cae al `States[i].Image` del manifest del plugin y prefiere `@2x`.
+- **Barra `panel_weather`** (`weather.rs`): hora España (CET/CEST calculado, no depende del PC) y Colombia (UTC-5) sobre el tiempo de Sada (Open-Meteo vía `curl`, 20 min). Añadida en (5,0) de Grabación y Monitorización (copias: `%LOCALAPPDATA%\ABAC\scene-*-20261117.bak.json`). Vista previa: `ABAC_WX_DUMP=<dir> cargo test -p abac-builtin dump_previews -- --ignored`.
+- Migración ABAC ejecutada en esta máquina (2026-11-17): `install` + `enable` + `editor` + `abac register`, tarea `ABAC` corriendo, `OrcaDeck` quitada, `calibration.json` en `%LOCALAPPDATA%\ABAC`.
+- Pendiente: probar en dispositivo (larga sobre agente preguntando, Zoom, barra) y republicar con `tools/publish-public.mjs`.
+
+# Handoff 2026-11-16
 
 > **Actualización (misma noche):** pulsación larga hecha (commit `19b50d1`, probada en tests y editor, SIN probar en dispositivo). Renombrado a «ABAC Editor» hecho en el código y los docs: `abac.exe`, crates `abac*`, carpetas `%LOCALAPPDATA%\ABAC` y `%APPDATA%\ABAC`, tarea `ABAC`, `ABAC_*` (las `ORCADECK_*` se copian a `ABAC_*` al arrancar, `legacy_env` en `main.rs`). Los nombres antiguos de esta página y de `docs/research` son históricos. **Pendiente:** ejecutar la migración en esta máquina (`tools\autostart\abac-task.ps1 install` mueve las carpetas con `calibration.json`, quita la tarea `OrcaDeck`, `unregister` y el acceso del menú Inicio; después `enable`, `editor`, `abac register`), probar la larga con el dispositivo, y republicar con `tools/publish-public.mjs`.
 

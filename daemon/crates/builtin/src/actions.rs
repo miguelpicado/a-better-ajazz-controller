@@ -244,6 +244,11 @@ pub trait BuiltinAction: Send {
     fn on_key(&mut self, _ctx: &mut Ctx, _context: &str) -> Feedback {
         Feedback::None
     }
+    /// Long press on a key whose scene sets no `Long` destination; only reached for actions the daemon
+    /// gives a built-in long press (see `long_of` in the daemon). Default: same as a short press.
+    fn on_long(&mut self, ctx: &mut Ctx, context: &str) -> Feedback {
+        self.on_key(ctx, context)
+    }
     /// Returns (has_working_or_blinking, has_timer) for this key context.
     fn activity(&self, _deck: &Deck, _context: &str, _now: i64) -> (bool, bool) {
         (false, false)
@@ -302,6 +307,33 @@ impl BuiltinAction for AgentAction {
             return Feedback::None;
         };
         focus_agent(ctx, &a)
+    }
+    /// Long press = quick OK: focus the agent and, only while it asks something, press Enter in its terminal
+    /// (accepts the option it has selected).
+    fn on_long(&mut self, ctx: &mut Ctx, context: &str) -> Feedback {
+        let Some(a) = self
+            .slots
+            .get(context)
+            .and_then(|k| ctx.deck.agent(k))
+            .cloned()
+        else {
+            return Feedback::None;
+        };
+        let fb = focus_agent(ctx, &a);
+        if fb != Feedback::None || a.state != core::State::Question {
+            return fb;
+        }
+        match ctx
+            .deck
+            .orca
+            .call("terminal.send", json!({ "terminal": a.handle, "enter": true }))
+        {
+            Ok(r) if r["send"]["accepted"] != false => Feedback::Ok,
+            r => {
+                ctx.deck.last_error = Some(format!("enter failed {}: {r:?}", a.label));
+                Feedback::Alert
+            }
+        }
     }
     fn activity(&self, deck: &Deck, context: &str, now: i64) -> (bool, bool) {
         let Some(k) = self.slots.get(context) else {
@@ -412,6 +444,7 @@ impl Registry {
             Box::new(QuotaAction::default()),
             Box::new(ClockAction),
             Box::new(SummaryAction),
+            Box::new(crate::weather::WeatherAction),
         ];
         list.extend(sys::actions());
         Registry {
@@ -486,7 +519,12 @@ impl Registry {
     }
 
     /// Handles a press (keyDown: Stream Dock delivers keyUp late). Call `tick` afterwards to repaint.
+    /// `c,r:L` with no key of its own is the built-in long press of the key at `c,r` (`on_long`).
     pub fn key_down(&mut self, context: &str, now: i64) -> Feedback {
+        let (context, long) = match context.strip_suffix(":L") {
+            Some(base) if !self.keys.iter().any(|k| k.context == context) => (base, true),
+            _ => (context, false),
+        };
         let Some(uuid) = self
             .keys
             .iter()
@@ -505,14 +543,16 @@ impl Registry {
             .actions
             .get_mut(uuid.as_str())
             .expect("appear checks the uuid");
-        action.on_key(
-            &mut Ctx {
-                deck: &mut self.deck,
-                keys: &ctxs,
-                now,
-            },
-            context,
-        )
+        let mut ctx = Ctx {
+            deck: &mut self.deck,
+            keys: &ctxs,
+            now,
+        };
+        if long {
+            action.on_long(&mut ctx, context)
+        } else {
+            action.on_key(&mut ctx, context)
+        }
     }
 
     /// Checks all currently visible keys and returns `(has_working_or_blinking, has_timer)`.

@@ -12,6 +12,7 @@ pub mod orca;
 pub mod raster;
 pub mod strip;
 pub mod sys;
+pub mod weather;
 
 pub use actions::{
     blink_ms, frame, next_wait_ms, now_ms, BuiltinAction, Ctx, Deck, Feedback, Key, Registry,

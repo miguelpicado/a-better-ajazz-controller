@@ -89,13 +89,20 @@ impl Scene {
     /// usually without extension. Absolute paths and `..` never leave either folder. Plugins repaint
     /// keys at runtime; this is the placeholder.
     pub fn image_of(&self, a: &Action, plugins: &Path) -> Option<PathBuf> {
-        let s = a.states.get(a.state).or_else(|| a.states.first())?;
-        let img = s.image.as_str();
-        if !plain_relative(img) {
-            return None;
-        }
-        if let Some(p) = inside(&self.dir.join("Images"), img) {
-            return Some(p);
+        self.image_at(a, plugins, if a.state < a.states.len() { a.state } else { 0 })
+    }
+
+    /// Image of state `i`. A state with no `Image` (Stream Dock then shows the plugin's own) falls back to
+    /// `States[i].Image` of the action in the plugin's manifest. `@2x` files win over the 72 px ones.
+    pub fn image_at(&self, a: &Action, plugins: &Path, i: usize) -> Option<PathBuf> {
+        let img = a.states.get(i).map(|s| s.image.as_str()).unwrap_or("");
+        if !img.is_empty() {
+            if !plain_relative(img) {
+                return None;
+            }
+            if let Some(p) = inside(&self.dir.join("Images"), img) {
+                return Some(p);
+            }
         }
         let plugin = fs::read_dir(plugins)
             .ok()?
@@ -107,10 +114,26 @@ impl Scene {
                     .and_then(|n| n.strip_suffix(".sdPlugin"))
                     .is_some_and(|stem| a.uuid.starts_with(&format!("{stem}.")))
             })?;
-        ["", ".png", ".jpg", ".jpeg"]
+        let img = match img {
+            "" => manifest_image(&plugin, &a.uuid, i)?,
+            s => s.to_string(),
+        };
+        if !plain_relative(&img) {
+            return None;
+        }
+        ["", "@2x.png", ".png", ".jpg", ".jpeg"]
             .iter()
             .find_map(|e| inside(&plugin, &format!("{img}{e}")))
     }
+}
+
+/// `States[i].Image` (or the first state's) of action `uuid` in a plugin's manifest.
+fn manifest_image(plugin: &Path, uuid: &str, i: usize) -> Option<String> {
+    let txt = fs::read_to_string(plugin.join("manifest.json")).ok()?;
+    let m: serde_json::Value = serde_json::from_str(txt.trim_start_matches('\u{feff}')).ok()?;
+    let a = m["Actions"].as_array()?.iter().find(|a| a["UUID"] == uuid)?;
+    let s = &a["States"];
+    s.get(i).or_else(|| s.get(0))?["Image"].as_str().map(str::to_string)
 }
 
 /// Re-reads `manifest`, sets only `Actions["<col>,<row>"].Settings` and writes it back atomically
@@ -272,5 +295,29 @@ mod manifest_image_containment {
 
         let found = scene(&profile).image_of(&action("../../secret.png"), &plugins);
         assert_eq!(found, None, "resolved outside the plugin: {found:?}");
+    }
+
+    #[test]
+    fn empty_state_image_falls_back_to_the_plugin_manifest() {
+        let t = tmp("manifest-fallback");
+        let profile = t.join("profiles/S.sdProfile");
+        fs::create_dir_all(profile.join("Images")).unwrap();
+        let plugin = t.join("plugins/com.test.demo.sdPlugin");
+        fs::create_dir_all(&plugin).unwrap();
+        fs::write(
+            plugin.join("manifest.json"),
+            "\u{feff}{\"Actions\":[{\"UUID\":\"com.test.demo.one\",\"States\":[{\"Image\":\"a\"},{\"Image\":\"b\"}]}]}",
+        )
+        .unwrap();
+        for f in ["a.png", "a@2x.png", "b.png"] {
+            fs::write(plugin.join(f), b"img").unwrap();
+        }
+        let s = scene(&profile);
+        let a = action("");
+        let plugins = t.join("plugins");
+        assert_eq!(s.image_of(&a, &plugins), Some(plugin.join("a@2x.png")));
+        assert_eq!(s.image_at(&a, &plugins, 1), Some(plugin.join("b.png")));
+        let none = Action { uuid: "com.test.demo.other".into(), ..action("") };
+        assert_eq!(s.image_of(&none, &plugins), None, "action missing from the manifest");
     }
 }

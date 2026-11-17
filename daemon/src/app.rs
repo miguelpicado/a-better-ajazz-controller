@@ -380,19 +380,6 @@ fn compose_feedback(base: &DynamicImage, ok: bool, px: u32) -> DynamicImage {
 
 /// Image of one manifest state, resolved exactly like the scene placeholders (`Images/` of the
 /// profile first, then the owning plugin).
-fn state_path(scene: &Scene, a: &profile::Action, plugins: &Path, state: usize) -> Option<PathBuf> {
-    let image = a.states.get(state)?.image.clone();
-    let probe = profile::Action {
-        uuid: a.uuid.clone(),
-        name: a.name.clone(),
-        state: 0,
-        states: vec![profile::State { image }],
-        settings: a.settings.clone(),
-        long: None,
-    };
-    scene.image_of(&probe, plugins)
-}
-
 /// Last image per key, its cached title bar, and the per-state images from the profile.
 #[derive(Default)]
 struct ViewState {
@@ -1105,7 +1092,7 @@ fn place_scene(
         view.states.insert(
             key,
             (0..a.states.len())
-                .map(|i| state_path(scene, a, plugins, i))
+                .map(|i| scene.image_at(a, plugins, i))
                 .collect(),
         );
         view.state.insert(key, a.state as u32);
@@ -1409,7 +1396,7 @@ fn reload_cell(
     let states = action
         .map(|a| {
             (0..a.states.len())
-                .map(|i| state_path(&scene, a, plugins, i))
+                .map(|i| scene.image_at(a, plugins, i))
                 .collect()
         })
         .unwrap_or_default();
@@ -2012,7 +1999,11 @@ fn long_of(
     builtins: &HashSet<&'static str>,
     manifest_id: &str,
 ) -> Option<(Target, Option<bi::Key>)> {
-    let l = a.long.as_deref()?;
+    let Some(l) = a.long.as_deref() else {
+        // agent keys have a built-in long press (focus + Enter while it asks), run by the agent action itself
+        return (a.uuid == "com.miguelpicado.orcadock.agent" && builtins.contains(a.uuid.as_str()))
+            .then(|| (Target::Builtin(format!("{},{}:L", cell.0, cell.1)), None));
+    };
     if let Some(t) = scenes::target_of(l) {
         return Some((Target::Scene(t), None));
     }
@@ -2410,9 +2401,10 @@ mod tests {
             "0,0":{"UUID":"com.x.a","Long":{"UUID":"com.hotspot.streamdock.profile.rotate","Settings":{"ProfileUUID":"S2"}}},
             "1,0":{"UUID":"com.x.a","Long":{"UUID":"com.b.lock"}},
             "2,0":{"UUID":"com.x.a","Long":{"UUID":"com.unknown.thing"}},
+            "5,0":{"UUID":"com.miguelpicado.orcadock.agent"},
             "3,0":{"UUID":"com.x.a"}}}"#;
         let scene = Scene::parse(dir, json).unwrap();
-        let builtins: HashSet<&'static str> = HashSet::from(["com.b.lock"]);
+        let builtins: HashSet<&'static str> = HashSet::from(["com.b.lock", "com.miguelpicado.orcadock.agent"]);
         let at = |c: u8| {
             let (cell, a) = scene.actions.iter().find(|((x, _), _)| *x == c).unwrap();
             long_of(a, *cell, &builtins, "AKP153E")
@@ -2425,6 +2417,10 @@ mod tests {
         assert_eq!(k.unwrap().context, "1,0:L");
         assert!(at(2).is_none()); // plugins and unknown ids are not long destinations
         assert!(at(3).is_none());
+        // agent keys without `Long`: built-in long press, nothing to register
+        let (t, k) = at(5).unwrap();
+        assert_eq!(t, Target::Builtin("5,0:L".into()));
+        assert!(k.is_none());
     }
 
     #[test]

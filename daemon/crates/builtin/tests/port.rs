@@ -324,6 +324,28 @@ fn registry_with_mocked_orca() {
         ["raise", r#"terminal.focus {"terminal":"h1"}"#]
     );
     assert!(!reg.deck.is_blinking("t1:l1", t1));
+
+    // Long press (`a2:L`, no key of its own): focus, and Enter only while the agent asks.
+    calls.lock().unwrap().clear();
+    assert_eq!(reg.key_down("a2:L", t1), Feedback::None, "done agent: focus only");
+    assert_eq!(*calls.lock().unwrap(), ["raise", r#"terminal.focus {"terminal":"h1"}"#]);
+    replies.lock().unwrap().get_mut("worktree.ps").unwrap()["worktrees"][0]["agents"][0]["state"] =
+        json!("waiting");
+    replies
+        .lock()
+        .unwrap()
+        .insert("terminal.send".into(), json!({ "send": { "accepted": true } }));
+    reg.tick(t1 + 2000);
+    calls.lock().unwrap().clear();
+    assert_eq!(reg.key_down("a2:L", t1 + 2000), Feedback::Ok);
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [
+            "raise",
+            r#"terminal.focus {"terminal":"h1"}"#,
+            r#"terminal.send {"enter":true,"terminal":"h1"}"#
+        ]
+    );
     replies.lock().unwrap().remove("terminal.focus");
     assert_eq!(
         reg.key_down("a1", t1),
