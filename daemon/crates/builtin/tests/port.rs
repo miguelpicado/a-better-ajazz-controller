@@ -325,10 +325,10 @@ fn registry_with_mocked_orca() {
     );
     assert!(!reg.deck.is_blinking("t1:l1", t1));
 
-    // Long press (`a2:L`, no key of its own): focus, and Enter only while the agent asks.
+    // Asking agent: 1st press only opens it, 2nd press on the same question sends Enter, 3rd only opens.
     calls.lock().unwrap().clear();
     assert_eq!(
-        reg.key_down("a2:L", t1),
+        reg.key_down("a2", t1),
         Feedback::None,
         "done agent: focus only"
     );
@@ -338,13 +338,30 @@ fn registry_with_mocked_orca() {
     );
     replies.lock().unwrap().get_mut("worktree.ps").unwrap()["worktrees"][0]["agents"][0]["state"] =
         json!("waiting");
+    // the question start tells one question from the next (2nd press only accepts the one it opened)
+    replies.lock().unwrap().get_mut("worktree.ps").unwrap()["worktrees"][0]["agents"][0]
+        ["stateStartedAt"] = json!(5000);
     replies.lock().unwrap().insert(
         "terminal.send".into(),
         json!({ "send": { "accepted": true } }),
     );
     reg.tick(t1 + 2000);
     calls.lock().unwrap().clear();
-    assert_eq!(reg.key_down("a2:L", t1 + 2000), Feedback::Ok);
+    assert_eq!(
+        reg.key_down("a2", t1 + 2000),
+        Feedback::None,
+        "1st press: open only"
+    );
+    assert_eq!(
+        *calls.lock().unwrap(),
+        ["raise", r#"terminal.focus {"terminal":"h1"}"#]
+    );
+    calls.lock().unwrap().clear();
+    assert_eq!(
+        reg.key_down("a2", t1 + 2000),
+        Feedback::Ok,
+        "2nd press: Enter"
+    );
     // key order of the params depends on serde_json's preserve_order (on in the workspace build): build it the same way
     let send = format!(
         "terminal.send {}",
@@ -357,6 +374,16 @@ fn registry_with_mocked_orca() {
             r#"terminal.focus {"terminal":"h1"}"#,
             send.as_str()
         ]
+    );
+    calls.lock().unwrap().clear();
+    assert_eq!(
+        reg.key_down("a2", t1 + 2000),
+        Feedback::None,
+        "3rd press: no second Enter"
+    );
+    assert_eq!(
+        *calls.lock().unwrap(),
+        ["raise", r#"terminal.focus {"terminal":"h1"}"#]
     );
     replies.lock().unwrap().remove("terminal.focus");
     assert_eq!(

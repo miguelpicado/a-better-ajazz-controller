@@ -2096,11 +2096,7 @@ fn long_of(
     builtins: &HashSet<&'static str>,
     manifest_id: &str,
 ) -> Option<(Target, Option<bi::Key>)> {
-    let Some(l) = a.long.as_deref() else {
-        // agent keys have a built-in long press (focus + Enter while it asks), run by the agent action itself
-        return (a.uuid == "com.miguelpicado.orcadock.agent" && builtins.contains(a.uuid.as_str()))
-            .then(|| (Target::Builtin(format!("{},{}:L", cell.0, cell.1)), None));
-    };
+    let l = a.long.as_deref()?;
     if let Some(t) = scenes::target_of(l) {
         return Some((Target::Scene(t), None));
     }
@@ -2531,10 +2527,7 @@ mod tests {
         assert_eq!(k.unwrap().context, "1,0:L");
         assert!(at(2).is_none()); // plugins and unknown ids are not long destinations
         assert!(at(3).is_none());
-        // agent keys without `Long`: built-in long press, nothing to register
-        let (t, k) = at(5).unwrap();
-        assert_eq!(t, Target::Builtin("5,0:L".into()));
-        assert!(k.is_none());
+        assert!(at(5).is_none()); // agent keys have no built-in long press
     }
 
     #[test]

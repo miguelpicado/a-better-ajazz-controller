@@ -48,6 +48,9 @@ pub struct Deck {
     /// Agent key -> blink end (ms). Set when an agent turns waiting/done; cleared on press,
     /// next change or timeout.
     pub blinking: HashMap<String, i64>,
+    /// Question the deck last opened: (agent key, question start). Pressing that agent's key again while
+    /// the same question is still open accepts its selected option (Enter).
+    pub shown: Option<(String, i64)>,
     pub quota: Vec<QuotaItem>,
     pub quota_stale: bool,
     /// Last failure of a poll, cleared by the next success. The daemon may log it.
@@ -75,6 +78,7 @@ impl Deck {
             agents: Vec::new(),
             counts: Counts::default(),
             blinking: HashMap::new(),
+            shown: None,
             quota: Vec::new(),
             quota_stale: false,
             last_error: None,
@@ -244,11 +248,6 @@ pub trait BuiltinAction: Send {
     fn on_key(&mut self, _ctx: &mut Ctx, _context: &str) -> Feedback {
         Feedback::None
     }
-    /// Long press on a key whose scene sets no `Long` destination; only reached for actions the daemon
-    /// gives a built-in long press (see `long_of` in the daemon). Default: same as a short press.
-    fn on_long(&mut self, ctx: &mut Ctx, context: &str) -> Feedback {
-        self.on_key(ctx, context)
-    }
     /// Returns (has_working_or_blinking, has_timer) for this key context.
     fn activity(&self, _deck: &Deck, _context: &str, _now: i64) -> (bool, bool) {
         (false, false)
@@ -261,15 +260,25 @@ pub fn frame(now: i64) -> u32 {
     (now.rem_euclid(2000) / 100 * 100) as u32
 }
 
+/// Question start of an agent that is asking something, or None.
+fn question(a: &core::Agent) -> Option<i64> {
+    a.since
+        .filter(|s| *s != 0 && a.state == core::State::Question)
+}
+
 fn focus_agent(ctx: &mut Ctx, a: &core::Agent) -> Feedback {
     ctx.deck.blinking.remove(&a.key);
+    ctx.deck.shown = None;
     ctx.deck.orca.raise();
     match ctx
         .deck
         .orca
         .call("terminal.focus", json!({ "terminal": a.handle }))
     {
-        Ok(_) => Feedback::None,
+        Ok(_) => {
+            ctx.deck.shown = question(a).map(|s| (a.key.clone(), s));
+            Feedback::None
+        }
         Err(e) => {
             ctx.deck.last_error = Some(format!("focus failed {}: {e}", a.label));
             Feedback::Alert
@@ -277,7 +286,8 @@ fn focus_agent(ctx: &mut Ctx, a: &core::Agent) -> Feedback {
     }
 }
 
-/// One main Orca agent per key; press = focus its pane.
+/// One main Orca agent per key; press = focus its pane. A second press on the same open question (the deck
+/// focused it, nothing else was focused since) accepts its selected option with Enter.
 #[derive(Default)]
 pub struct AgentAction {
     slots: HashMap<String, String>,
@@ -306,23 +316,12 @@ impl BuiltinAction for AgentAction {
         else {
             return Feedback::None;
         };
-        focus_agent(ctx, &a)
-    }
-    /// Long press = quick OK: focus the agent and, only while it asks something, press Enter in its terminal
-    /// (accepts the option it has selected).
-    fn on_long(&mut self, ctx: &mut Ctx, context: &str) -> Feedback {
-        let Some(a) = self
-            .slots
-            .get(context)
-            .and_then(|k| ctx.deck.agent(k))
-            .cloned()
-        else {
-            return Feedback::None;
-        };
+        let seen = question(&a).is_some_and(|s| ctx.deck.shown == Some((a.key.clone(), s)));
         let fb = focus_agent(ctx, &a);
-        if fb != Feedback::None || a.state != core::State::Question {
+        if fb != Feedback::None || !seen {
             return fb;
         }
+        ctx.deck.shown = None; // one Enter per question
         match ctx.deck.orca.call(
             "terminal.send",
             json!({ "terminal": a.handle, "enter": true }),
@@ -518,12 +517,7 @@ impl Registry {
     }
 
     /// Handles a press (keyDown: Stream Dock delivers keyUp late). Call `tick` afterwards to repaint.
-    /// `c,r:L` with no key of its own is the built-in long press of the key at `c,r` (`on_long`).
     pub fn key_down(&mut self, context: &str, now: i64) -> Feedback {
-        let (context, long) = match context.strip_suffix(":L") {
-            Some(base) if !self.keys.iter().any(|k| k.context == context) => (base, true),
-            _ => (context, false),
-        };
         let Some(uuid) = self
             .keys
             .iter()
@@ -547,11 +541,7 @@ impl Registry {
             keys: &ctxs,
             now,
         };
-        if long {
-            action.on_long(&mut ctx, context)
-        } else {
-            action.on_key(&mut ctx, context)
-        }
+        action.on_key(&mut ctx, context)
     }
 
     /// Checks all currently visible keys and returns `(has_working_or_blinking, has_timer)`.

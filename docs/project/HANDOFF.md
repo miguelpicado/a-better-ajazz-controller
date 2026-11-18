@@ -1,3 +1,10 @@
+# Handoff 2026-11-18 (léelo primero)
+
+- CI otra vez en verde (commit `5a9d3d6`): el job `lint` fallaba desde el 2026-11-13 por `cargo fmt` y clippy. rustfmt y clippy ya están instalados en el toolchain gnullvm local: pasar `cargo fmt --all` y `cargo clippy --workspace --all-targets -- -D warnings` antes de cada push.
+- Probado en el dispositivo el 2026-11-18: imágenes de Zoom, barra del tiempo y sobrebarrido de las barras laterales, todo correcto.
+- **OK rápido de las teclas de agente**: ya no es una pulsación larga. Con la larga no se podía leer la pregunta antes de aceptarla ni cancelarla. Ahora, con el agente preguntando, la 1.ª pulsación corta lo abre y la 2.ª, sobre la misma pregunta (`Deck::shown` guarda la tecla y el `stateStartedAt`), manda Enter. Si entre medias se abre otro agente desde el deck, no se manda Enter. Probado en el dispositivo. La pulsación larga genérica (campo `Long`) sigue igual.
+- **Pendiente: responsive con la CPU al 100 %.** Con la CPU muy cargada el dispositivo a veces se bloquea o tarda bastante en responder. Por investigar: prioridad de los hilos de `run` (lector HID, builtin, escritura USB), coste del render de la barra del tiempo (~150-300 ms) y si las pulsaciones esperan detrás de un lote de pintado.
+
 # Handoff 2026-11-17 (léelo primero)
 
 Hecho hoy (tests verdes, SIN probar en dispositivo ni reinstalado):
