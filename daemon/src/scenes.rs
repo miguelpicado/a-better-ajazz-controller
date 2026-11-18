@@ -85,7 +85,9 @@ impl SceneSet {
             .filter(|s| {
                 s.id == current
                     || std::fs::read_to_string(
-                        profiles.join(format!("{}.sdProfile", s.id)).join("manifest.json"),
+                        profiles
+                            .join(format!("{}.sdProfile", s.id))
+                            .join("manifest.json"),
                     )
                     .is_ok_and(|m| m.contains(ROTATE)) // ponytail: substring, not a parsed Actions walk
             })
@@ -163,8 +165,7 @@ mod tests {
     use serde_json::json;
 
     fn fixture(name: &str) -> (PathBuf, PathBuf) {
-        let root =
-            std::env::temp_dir().join(format!("abac-scenes-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("abac-scenes-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let (profiles, data) = (root.join("profiles"), root.join("data"));
         std::fs::create_dir_all(&data).unwrap();

@@ -89,7 +89,11 @@ impl Scene {
     /// usually without extension. Absolute paths and `..` never leave either folder. Plugins repaint
     /// keys at runtime; this is the placeholder.
     pub fn image_of(&self, a: &Action, plugins: &Path) -> Option<PathBuf> {
-        self.image_at(a, plugins, if a.state < a.states.len() { a.state } else { 0 })
+        self.image_at(
+            a,
+            plugins,
+            if a.state < a.states.len() { a.state } else { 0 },
+        )
     }
 
     /// Image of state `i`. A state with no `Image` (Stream Dock then shows the plugin's own) falls back to
@@ -131,9 +135,14 @@ impl Scene {
 fn manifest_image(plugin: &Path, uuid: &str, i: usize) -> Option<String> {
     let txt = fs::read_to_string(plugin.join("manifest.json")).ok()?;
     let m: serde_json::Value = serde_json::from_str(txt.trim_start_matches('\u{feff}')).ok()?;
-    let a = m["Actions"].as_array()?.iter().find(|a| a["UUID"] == uuid)?;
+    let a = m["Actions"]
+        .as_array()?
+        .iter()
+        .find(|a| a["UUID"] == uuid)?;
     let s = &a["States"];
-    s.get(i).or_else(|| s.get(0))?["Image"].as_str().map(str::to_string)
+    s.get(i).or_else(|| s.get(0))?["Image"]
+        .as_str()
+        .map(str::to_string)
 }
 
 /// Re-reads `manifest`, sets only `Actions["<col>,<row>"].Settings` and writes it back atomically
@@ -171,8 +180,7 @@ mod tests {
     use serde_json::json;
 
     fn tmp(name: &str) -> PathBuf {
-        let d =
-            std::env::temp_dir().join(format!("abac-profile-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("abac-profile-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -230,8 +238,7 @@ mod manifest_image_containment {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d =
-            std::env::temp_dir().join(format!("abac-profile-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("abac-profile-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -317,7 +324,14 @@ mod manifest_image_containment {
         let plugins = t.join("plugins");
         assert_eq!(s.image_of(&a, &plugins), Some(plugin.join("a@2x.png")));
         assert_eq!(s.image_at(&a, &plugins, 1), Some(plugin.join("b.png")));
-        let none = Action { uuid: "com.test.demo.other".into(), ..action("") };
-        assert_eq!(s.image_of(&none, &plugins), None, "action missing from the manifest");
+        let none = Action {
+            uuid: "com.test.demo.other".into(),
+            ..action("")
+        };
+        assert_eq!(
+            s.image_of(&none, &plugins),
+            None,
+            "action missing from the manifest"
+        );
     }
 }

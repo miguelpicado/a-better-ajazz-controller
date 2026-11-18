@@ -327,22 +327,36 @@ fn registry_with_mocked_orca() {
 
     // Long press (`a2:L`, no key of its own): focus, and Enter only while the agent asks.
     calls.lock().unwrap().clear();
-    assert_eq!(reg.key_down("a2:L", t1), Feedback::None, "done agent: focus only");
-    assert_eq!(*calls.lock().unwrap(), ["raise", r#"terminal.focus {"terminal":"h1"}"#]);
+    assert_eq!(
+        reg.key_down("a2:L", t1),
+        Feedback::None,
+        "done agent: focus only"
+    );
+    assert_eq!(
+        *calls.lock().unwrap(),
+        ["raise", r#"terminal.focus {"terminal":"h1"}"#]
+    );
     replies.lock().unwrap().get_mut("worktree.ps").unwrap()["worktrees"][0]["agents"][0]["state"] =
         json!("waiting");
-    replies
-        .lock()
-        .unwrap()
-        .insert("terminal.send".into(), json!({ "send": { "accepted": true } }));
+    replies.lock().unwrap().insert(
+        "terminal.send".into(),
+        json!({ "send": { "accepted": true } }),
+    );
     reg.tick(t1 + 2000);
     calls.lock().unwrap().clear();
     assert_eq!(reg.key_down("a2:L", t1 + 2000), Feedback::Ok);
     // key order of the params depends on serde_json's preserve_order (on in the workspace build): build it the same way
-    let send = format!("terminal.send {}", json!({ "terminal": "h1", "enter": true }));
+    let send = format!(
+        "terminal.send {}",
+        json!({ "terminal": "h1", "enter": true })
+    );
     assert_eq!(
         *calls.lock().unwrap(),
-        ["raise", r#"terminal.focus {"terminal":"h1"}"#, send.as_str()]
+        [
+            "raise",
+            r#"terminal.focus {"terminal":"h1"}"#,
+            send.as_str()
+        ]
     );
     replies.lock().unwrap().remove("terminal.focus");
     assert_eq!(

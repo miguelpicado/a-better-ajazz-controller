@@ -229,7 +229,12 @@ pub fn centred_rect(cx: i32, cy: i32, w: u16, h: u16, off: (i16, i16)) -> Rect {
     let h = h.clamp(1, PANEL_H);
     let x = (cx - w as i32 / 2 + off.0 as i32).clamp(0, (PANEL_W - w) as i32);
     let y = (cy - h as i32 / 2 + off.1 as i32).clamp(0, (PANEL_H - h) as i32);
-    Rect { x: x as u16, y: y as u16, w, h }
+    Rect {
+        x: x as u16,
+        y: y as u16,
+        w,
+        h,
+    }
 }
 
 /// DRA tile of a key 1..=15: `tile` px square centred on the BAT tile centre, plus `off` (panel dx, dy), clamped.
@@ -251,7 +256,10 @@ pub fn parse_offsets(s: &str) -> std::collections::HashMap<u8, (i16, i16)> {
         .filter_map(|e| {
             let (k, v) = e.split_once(':')?;
             let (dx, dy) = v.split_once(',')?;
-            Some((k.trim().parse().ok()?, (dx.trim().parse().ok()?, dy.trim().parse().ok()?)))
+            Some((
+                k.trim().parse().ok()?,
+                (dx.trim().parse().ok()?, dy.trim().parse().ok()?),
+            ))
         })
         .collect()
 }
@@ -265,7 +273,10 @@ pub fn dra_packets(n: usize, r: Rect, jpeg: &[u8]) -> Result<Vec<Vec<u8>>, Strin
         return Err(format!("DRA width {} outside 1..={DRA_MAX_W}", r.w));
     }
     if jpeg.is_empty() || jpeg.len() > DRA_MAX_JPEG {
-        return Err(format!("DRA jpeg {} B outside 1..={DRA_MAX_JPEG}", jpeg.len()));
+        return Err(format!(
+            "DRA jpeg {} B outside 1..={DRA_MAX_JPEG}",
+            jpeg.len()
+        ));
     }
     let mut hdr = crt(n, "DRA", &[]);
     hdr[9..12].copy_from_slice(&(jpeg.len() as u32).to_be_bytes()[1..]);
@@ -395,18 +406,58 @@ mod tests {
     #[test]
     fn dra_tile_centres_on_bat_cell_and_clamps() {
         // key 1: BAT (49,146) 85 -> centre (91,188); 98 px tile -> (42,139)
-        assert_eq!(dra_tile(1, 98, (0, 0)), Some(Rect { x: 42, y: 139, w: 98, h: 98 }));
+        assert_eq!(
+            dra_tile(1, 98, (0, 0)),
+            Some(Rect {
+                x: 42,
+                y: 139,
+                w: 98,
+                h: 98
+            })
+        );
         // key 8 (i=7): x 198, y 442 -> centre (240,484)
-        assert_eq!(dra_tile(8, 98, (0, 0)), Some(Rect { x: 191, y: 435, w: 98, h: 98 }));
-        assert_eq!(dra_tile(8, 98, (-3, 5)), Some(Rect { x: 188, y: 440, w: 98, h: 98 }));
+        assert_eq!(
+            dra_tile(8, 98, (0, 0)),
+            Some(Rect {
+                x: 191,
+                y: 435,
+                w: 98,
+                h: 98
+            })
+        );
+        assert_eq!(
+            dra_tile(8, 98, (-3, 5)),
+            Some(Rect {
+                x: 188,
+                y: 440,
+                w: 98,
+                h: 98
+            })
+        );
         // offset pushes past the panel edge -> clamped
-        assert_eq!(dra_tile(1, 98, (-500, -500)), Some(Rect { x: 0, y: 0, w: 98, h: 98 }));
+        assert_eq!(
+            dra_tile(1, 98, (-500, -500)),
+            Some(Rect {
+                x: 0,
+                y: 0,
+                w: 98,
+                h: 98
+            })
+        );
         let r = dra_tile(15, 98, (500, 500)).unwrap();
         assert_eq!((r.x + r.w, r.y + r.h), (PANEL_W, PANEL_H));
         // oversized tile clamps to the DRA width limit
         assert_eq!(dra_tile(5, 480, (0, 0)).unwrap().w, DRA_MAX_W);
         // keys 0 and 16+ have no BAT cell
-        assert_eq!(dra_key_rect(1, 60, 98, (0, 0)), Some(Rect { x: 61, y: 139, w: 60, h: 98 }));
+        assert_eq!(
+            dra_key_rect(1, 60, 98, (0, 0)),
+            Some(Rect {
+                x: 61,
+                y: 139,
+                w: 60,
+                h: 98
+            })
+        );
         assert_eq!(dra_tile(0, 98, (0, 0)), None);
         assert_eq!(dra_tile(16, 98, (0, 0)), None);
         // every key tile stays inside the panel
@@ -427,7 +478,12 @@ mod tests {
     #[test]
     fn dra_header_bytes() {
         let jpeg = vec![9u8; 1300];
-        let r = Rect { x: 0x0123, y: 0x0345, w: 98, h: 99 };
+        let r = Rect {
+            x: 0x0123,
+            y: 0x0345,
+            w: 98,
+            h: 99,
+        };
         let pk = dra_packets(512, r, &jpeg).unwrap();
         assert_eq!(pk.len(), 1 + 3);
         assert!(pk.iter().all(|p| p.len() == 512));
@@ -442,7 +498,12 @@ mod tests {
 
     #[test]
     fn dra_rejects_unsafe_inputs() {
-        let r = Rect { x: 0, y: 0, w: 98, h: 98 };
+        let r = Rect {
+            x: 0,
+            y: 0,
+            w: 98,
+            h: 98,
+        };
         assert!(dra_packets(512, Rect { w: 385, ..r }, &[1]).is_err());
         assert!(dra_packets(512, Rect { w: 0, ..r }, &[1]).is_err());
         assert!(dra_packets(512, r, &[]).is_err());

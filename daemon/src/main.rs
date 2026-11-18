@@ -213,7 +213,8 @@ fn run(args: &[String]) -> Result<(), String> {
             let usage = "dra <jpeg> <x> <y> <w> <h> [key]";
             let jpeg = std::fs::read(a(1).ok_or(usage)?).map_err(|e| e.to_string())?;
             let v = |i: usize| -> Result<u16, String> {
-                a(i).and_then(|s| s.parse().ok()).ok_or_else(|| usage.to_string())
+                a(i).and_then(|s| s.parse().ok())
+                    .ok_or_else(|| usage.to_string())
             };
             let (x, y, w, h) = (v(2)?, v(3)?, v(4)?, v(5)?);
             let key = a(6).and_then(|s| s.parse().ok()).unwrap_or(0u8);
@@ -235,11 +236,18 @@ fn run(args: &[String]) -> Result<(), String> {
         Some("drapaint") => {
             let usage = "drapaint <x> <y> <w> <h> <r,g,b>";
             let v = |i: usize| -> Result<u16, String> {
-                a(i).and_then(|s| s.parse().ok()).ok_or_else(|| usage.to_string())
+                a(i).and_then(|s| s.parse().ok())
+                    .ok_or_else(|| usage.to_string())
             };
             let (x, y, w, h) = (v(1)?, v(2)?, v(3)?, v(4)?);
-            let c: Vec<u8> = a(5).ok_or(usage)?.split(',').filter_map(|s| s.parse().ok()).collect();
-            let [r, g, b] = c[..] else { return Err(usage.into()) };
+            let c: Vec<u8> = a(5)
+                .ok_or(usage)?
+                .split(',')
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            let [r, g, b] = c[..] else {
+                return Err(usage.into());
+            };
             let img = image::RgbImage::from_pixel(w as u32, h as u32, image::Rgb([r, g, b]));
             let mut jpeg = Vec::new();
             image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 90)
@@ -266,7 +274,9 @@ fn run(args: &[String]) -> Result<(), String> {
             let t0 = Instant::now();
             let mut prev: std::collections::BTreeMap<(u16, u16), usize> = Default::default();
             let mut polls = 0u32;
-            while t0.elapsed() < Duration::from_secs(if a(1) == Some("noreset") { 20 } else { secs }) {
+            while t0.elapsed()
+                < Duration::from_secs(if a(1) == Some("noreset") { 20 } else { secs })
+            {
                 api.refresh_devices().map_err(|e| e.to_string())?;
                 polls += 1;
                 let mut cur: std::collections::BTreeMap<(u16, u16), usize> = Default::default();
@@ -276,7 +286,11 @@ fn run(args: &[String]) -> Result<(), String> {
                     }
                 }
                 if cur != prev {
-                    println!("{:>7}ms poll#{polls} {:04x?}", t0.elapsed().as_millis(), cur);
+                    println!(
+                        "{:>7}ms poll#{polls} {:04x?}",
+                        t0.elapsed().as_millis(),
+                        cur
+                    );
                     prev = cur;
                 }
             }

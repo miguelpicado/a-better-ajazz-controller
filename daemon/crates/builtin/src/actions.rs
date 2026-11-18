@@ -323,11 +323,10 @@ impl BuiltinAction for AgentAction {
         if fb != Feedback::None || a.state != core::State::Question {
             return fb;
         }
-        match ctx
-            .deck
-            .orca
-            .call("terminal.send", json!({ "terminal": a.handle, "enter": true }))
-        {
+        match ctx.deck.orca.call(
+            "terminal.send",
+            json!({ "terminal": a.handle, "enter": true }),
+        ) {
             Ok(r) if r["send"]["accepted"] != false => Feedback::Ok,
             r => {
                 ctx.deck.last_error = Some(format!("enter failed {}: {r:?}", a.label));

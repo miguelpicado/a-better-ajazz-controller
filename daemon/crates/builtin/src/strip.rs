@@ -25,7 +25,12 @@ pub struct StripCfg {
 
 impl Default for StripCfg {
     fn default() -> Self {
-        StripCfg { w: 378, h: 80, bat: true, pad: 0 }
+        StripCfg {
+            w: 378,
+            h: 80,
+            bat: true,
+            pad: 0,
+        }
     }
 }
 
@@ -108,17 +113,52 @@ impl Text {
 
 impl Scene {
     fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, rx: f64, fill: &'static str) {
-        self.items.push(Item::R(Rect { x, y, w, h, rx, fill }));
+        self.items.push(Item::R(Rect {
+            x,
+            y,
+            w,
+            h,
+            rx,
+            fill,
+        }));
     }
     #[allow(clippy::too_many_arguments)]
-    fn text(&mut self, x: f64, y: f64, fs: f64, anchor: char, s: &str, fill: &'static str, bold: bool) {
-        self.items.push(Item::T(Text { x, y, fs, anchor, s: s.to_string(), fill, bold }));
+    fn text(
+        &mut self,
+        x: f64,
+        y: f64,
+        fs: f64,
+        anchor: char,
+        s: &str,
+        fill: &'static str,
+        bold: bool,
+    ) {
+        self.items.push(Item::T(Text {
+            x,
+            y,
+            fs,
+            anchor,
+            s: s.to_string(),
+            fill,
+            bold,
+        }));
     }
 
     /// Label at the left, value at the right of the same baseline; the value shrinks (never below 60 % of
     /// `max_fs`) so the two never touch.
     #[allow(clippy::too_many_arguments)]
-    fn row(&mut self, x0: f64, x1: f64, y: f64, label: &str, lfs: f64, lcol: &'static str, value: &str, max_fs: f64, vcol: &'static str) {
+    fn row(
+        &mut self,
+        x0: f64,
+        x1: f64,
+        y: f64,
+        label: &str,
+        lfs: f64,
+        lcol: &'static str,
+        value: &str,
+        max_fs: f64,
+        vcol: &'static str,
+    ) {
         let room = x1 - x0 - em(label) * lfs - 4.0;
         let fs = max_fs.min(room / em(value).max(0.1)).max(max_fs * 0.6);
         self.text(x0, y, lfs, 's', label, lcol, true);
@@ -137,25 +177,69 @@ fn fill_of(l: Level) -> &'static str {
 /// One usage block: label + value row, then a `bh` tall bar (height 19 k + bh, returned). `pct` None = N/D.
 /// Danger paints the block red.
 #[allow(clippy::too_many_arguments)]
-fn meter(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, pct: Option<f64>, warn: f64, danger: f64, bh: f64) -> f64 {
+fn meter(
+    sc: &mut Scene,
+    top: f64,
+    k: f64,
+    m: f64,
+    name: &str,
+    pct: Option<f64>,
+    warn: f64,
+    danger: f64,
+    bh: f64,
+) -> f64 {
     let lv = pct.map(|p| level(p, warn, danger));
     let red = lv == Some(Level::Danger);
     let h = 19.0 * k + bh;
     if red {
-        sc.rect(2.0, top - 3.0 * k, sc.dw - 4.0, h + 6.0 * k, 6.0 * k, "#991b1b");
+        sc.rect(
+            2.0,
+            top - 3.0 * k,
+            sc.dw - 4.0,
+            h + 6.0 * k,
+            6.0 * k,
+            "#991b1b",
+        );
     }
     let (value, vcol) = match pct {
-        Some(p) => (format!("{}%", p.clamp(0.0, 100.0).round() as i64), "#ffffff"),
+        Some(p) => (
+            format!("{}%", p.clamp(0.0, 100.0).round() as i64),
+            "#ffffff",
+        ),
         None => ("N/D".to_string(), DIM),
     };
     let (x0, x1) = (m, sc.dw - m);
-    sc.row(x0, x1, top + 13.0 * k, name, 11.0 * k, if red { "#fecaca" } else { MUTED }, &value, 17.0 * k, vcol);
+    sc.row(
+        x0,
+        x1,
+        top + 13.0 * k,
+        name,
+        11.0 * k,
+        if red { "#fecaca" } else { MUTED },
+        &value,
+        17.0 * k,
+        vcol,
+    );
     let (bw, by) = (x1 - x0, top + 19.0 * k);
-    sc.rect(x0, by, bw, bh, bh / 2.0, if red { "#450a0a" } else { TRACK });
+    sc.rect(
+        x0,
+        by,
+        bw,
+        bh,
+        bh / 2.0,
+        if red { "#450a0a" } else { TRACK },
+    );
     if let Some(p) = pct {
         let f = (p / 100.0).clamp(0.0, 1.0);
         if f > 0.0 {
-            sc.rect(x0, by, (bw * f).round().max(bh), bh, bh / 2.0, fill_of(lv.unwrap_or(Level::Ok)));
+            sc.rect(
+                x0,
+                by,
+                (bw * f).round().max(bh),
+                bh,
+                bh / 2.0,
+                fill_of(lv.unwrap_or(Level::Ok)),
+            );
         }
     }
     h
@@ -163,7 +247,16 @@ fn meter(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, pct: Option<f64>,
 
 /// Temperature row: `name` (with its unit) at the left, the number at the right, coloured by level. Height 18 k.
 #[allow(clippy::too_many_arguments)]
-fn temp(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, t: Option<f64>, warn: f64, danger: f64) -> f64 {
+fn temp(
+    sc: &mut Scene,
+    top: f64,
+    k: f64,
+    m: f64,
+    name: &str,
+    t: Option<f64>,
+    warn: f64,
+    danger: f64,
+) -> f64 {
     let (v, c) = match t {
         Some(t) => (
             format!("{}", t.round() as i64),
@@ -175,12 +268,24 @@ fn temp(sc: &mut Scene, top: f64, k: f64, m: f64, name: &str, t: Option<f64>, wa
         ),
         None => ("N/D".to_string(), DIM),
     };
-    sc.row(m, sc.dw - m, top + 13.0 * k, name, 11.0 * k, MUTED, &v, 17.0 * k, c);
+    sc.row(
+        m,
+        sc.dw - m,
+        top + 13.0 * k,
+        name,
+        11.0 * k,
+        MUTED,
+        &v,
+        17.0 * k,
+        c,
+    );
     18.0 * k
 }
 
 const WD: [&str; 7] = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
-const MO: [&str; 12] = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+const MO: [&str; 12] = [
+    "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC",
+];
 
 /// Clock block drawn from `top` (time, weekday + day, month, tight); returns its height.
 fn clock(sc: &mut Scene, top: f64, k: f64, m: f64, t: LocalTime) -> f64 {
@@ -211,20 +316,56 @@ pub fn build(t: LocalTime, s: &Sample, dw: u32, dh: u32, bat: bool) -> Scene {
         k = k.min(1.0);
     }
     let m = 5.0 * k;
-    let mut sc = Scene { dw, dh, items: vec![Rect { x: 0.0, y: 0.0, w: dw, h: dh, rx: 0.0, fill: "#000000" }.into()] };
+    let mut sc = Scene {
+        dw,
+        dh,
+        items: vec![Rect {
+            x: 0.0,
+            y: 0.0,
+            w: dw,
+            h: dh,
+            rx: 0.0,
+            fill: "#000000",
+        }
+        .into()],
+    };
     let (cpu_t, gpu_t) = (s.hw.cpu_temp, s.gpu.map(|g| g.temp));
     let bh0 = 9.0 * k;
     if bat {
         // cell 0: clock; cell 1: CPU + GPU; cell 2: RAM + both temperatures
-        let mut ch = Scene { dw, dh, items: vec![] };
+        let mut ch = Scene {
+            dw,
+            dh,
+            items: vec![],
+        };
         let hc = clock(&mut ch, 0.0, k, m, t);
         clock(&mut sc, (CELL - hc) / 2.0, k, m, t);
         let hm = 19.0 * k + bh0;
         let c1 = PITCH + (CELL - (2.0 * hm + 4.0 * k)) / 2.0;
         meter(&mut sc, c1, k, m, "CPU", s.cpu, 70.0, 90.0, bh0);
-        meter(&mut sc, c1 + hm + 4.0 * k, k, m, "GPU", s.gpu.map(|g| g.util), 70.0, 90.0, bh0);
+        meter(
+            &mut sc,
+            c1 + hm + 4.0 * k,
+            k,
+            m,
+            "GPU",
+            s.gpu.map(|g| g.util),
+            70.0,
+            90.0,
+            bh0,
+        );
         let c2 = 2.0 * PITCH + (CELL - (hm + 2.0 * 18.0 * k + 2.0 * k)) / 2.0;
-        meter(&mut sc, c2, k, m, "RAM", s.ram.map(|r| r.0), 80.0, 92.0, bh0);
+        meter(
+            &mut sc,
+            c2,
+            k,
+            m,
+            "RAM",
+            s.ram.map(|r| r.0),
+            80.0,
+            92.0,
+            bh0,
+        );
         let y = c2 + hm + 2.0 * k;
         temp(&mut sc, y, k, m, "CPU °C", cpu_t, 75.0, 90.0);
         temp(&mut sc, y + 18.0 * k, k, m, "GPU °C", gpu_t, 70.0, 83.0);
@@ -232,7 +373,11 @@ pub fn build(t: LocalTime, s: &Sample, dw: u32, dh: u32, bat: bool) -> Scene {
     }
     // continuous bar: measure the clock, then spread what is left over 5 even gaps (a little goes into thicker bars)
     let edge = 3.0 * k;
-    let mut probe = Scene { dw, dh, items: vec![] };
+    let mut probe = Scene {
+        dw,
+        dh,
+        items: vec![],
+    };
     let hc = clock(&mut probe, 0.0, k, m, t);
     let free = dh - 2.0 * edge - hc - 3.0 * (19.0 * k + bh0) - 2.0 * 18.0 * k;
     let grow = (free * 0.45 / 3.0).clamp(0.0, 1.5 * k);
@@ -241,7 +386,11 @@ pub fn build(t: LocalTime, s: &Sample, dw: u32, dh: u32, bat: bool) -> Scene {
     let mut y = edge;
     clock(&mut sc, y, k, m, t);
     y += hc + g;
-    for (name, pct, warn, danger) in [("CPU", s.cpu, 70.0, 90.0), ("GPU", s.gpu.map(|g| g.util), 70.0, 90.0), ("RAM", s.ram.map(|r| r.0), 80.0, 92.0)] {
+    for (name, pct, warn, danger) in [
+        ("CPU", s.cpu, 70.0, 90.0),
+        ("GPU", s.gpu.map(|g| g.util), 70.0, 90.0),
+        ("RAM", s.ram.map(|r| r.0), 80.0, 92.0),
+    ] {
         y += meter(&mut sc, y, k, m, name, pct, warn, danger, bh) + g;
     }
     y += temp(&mut sc, y, k, m, "CPU °C", cpu_t, 75.0, 90.0) + g;
@@ -297,7 +446,14 @@ impl Scene {
 /// SVG of the bar for a panel-px request (`cfg.w` x `cfg.h`); the canvas is device-oriented (`h` x `w`).
 pub fn render_strip(t: LocalTime, s: &Sample, cfg: StripCfg) -> String {
     let pad = cfg.pad as u32;
-    let inner = build(t, s, cfg.h as u32, (cfg.w as u32).saturating_sub(2 * pad), cfg.bat).svg();
+    let inner = build(
+        t,
+        s,
+        cfg.h as u32,
+        (cfg.w as u32).saturating_sub(2 * pad),
+        cfg.bat,
+    )
+    .svg();
     pad_svg(&inner, pad, "#000", "#000")
 }
 
@@ -321,7 +477,11 @@ pub fn pad_svg(inner: &str, pad: u32, top: &str, bottom: &str) -> String {
 
 /// `(dw, dh)` of a strip SVG made by [`Scene::svg`]; None for every other SVG (keys are square 144).
 pub fn strip_dims(svg: &str) -> Option<(u32, u32)> {
-    let (w, h) = svg.strip_prefix("<!--strip ")?.split_once("-->")?.0.split_once('x')?;
+    let (w, h) = svg
+        .strip_prefix("<!--strip ")?
+        .split_once("-->")?
+        .0
+        .split_once('x')?;
     Some((w.parse().ok()?, h.parse().ok()?))
 }
 
@@ -342,7 +502,11 @@ impl BuiltinAction for StripAction {
         ctx.deck.sys.poll(ctx.now);
     }
     fn render(&self, ctx: &Ctx, _context: &str) -> String {
-        render_strip(crate::orca::local_time(), &ctx.deck.sys.last, ctx.deck.strip)
+        render_strip(
+            crate::orca::local_time(),
+            &ctx.deck.sys.last,
+            ctx.deck.strip,
+        )
     }
 }
 
@@ -351,37 +515,91 @@ mod tests {
     use super::*;
     use crate::sys::Gpu;
 
-    const T: LocalTime = LocalTime { hour: 9, minute: 5, day: 13, month: 11, weekday: 5 };
+    const T: LocalTime = LocalTime {
+        hour: 9,
+        minute: 5,
+        day: 13,
+        month: 11,
+        weekday: 5,
+    };
 
     fn full() -> Sample {
         Sample {
             cpu: Some(23.4),
             ram: Some((61.0, 20_000_000_000, 32_000_000_000)),
-            gpu: Some(Gpu { temp: 58.0, util: 12.0, mem_used: 2_400_000_000, mem_total: 8_000_000_000, clock_mhz: 1500.0 }),
+            gpu: Some(Gpu {
+                temp: 58.0,
+                util: 12.0,
+                mem_used: 2_400_000_000,
+                mem_total: 8_000_000_000,
+                clock_mhz: 1500.0,
+            }),
             ..Default::default()
         }
     }
 
-    const SIZES: [(u32, u32, bool); 6] = [(80, 378, true), (80, 378, false), (95, 378, false), (95, 480, false), (200, 480, false), (56, 300, false)];
+    const SIZES: [(u32, u32, bool); 6] = [
+        (80, 378, true),
+        (80, 378, false),
+        (95, 378, false),
+        (95, 480, false),
+        (200, 480, false),
+        (56, 300, false),
+    ];
 
     fn texts(sc: &Scene) -> Vec<&Text> {
-        sc.items.iter().filter_map(|i| if let Item::T(t) = i { Some(t) } else { None }).collect()
+        sc.items
+            .iter()
+            .filter_map(|i| if let Item::T(t) = i { Some(t) } else { None })
+            .collect()
     }
 
     #[test]
     fn nothing_overflows_the_canvas_in_any_state() {
-        let hot = Sample { cpu: Some(100.0), ram: Some((100.0, 32_000_000_000, 32_000_000_000)), gpu: Some(Gpu { temp: 99.0, util: 100.0, mem_used: 24_000_000_000, mem_total: 24_000_000_000, clock_mhz: 2800.0 }), ..Default::default() };
-        let late = LocalTime { hour: 23, minute: 59, day: 31, month: 12, weekday: 3 };
+        let hot = Sample {
+            cpu: Some(100.0),
+            ram: Some((100.0, 32_000_000_000, 32_000_000_000)),
+            gpu: Some(Gpu {
+                temp: 99.0,
+                util: 100.0,
+                mem_used: 24_000_000_000,
+                mem_total: 24_000_000_000,
+                clock_mhz: 2800.0,
+            }),
+            ..Default::default()
+        };
+        let late = LocalTime {
+            hour: 23,
+            minute: 59,
+            day: 31,
+            month: 12,
+            weekday: 3,
+        };
         for (dw, dh, bat) in SIZES {
             for (t, s) in [(T, full()), (late, hot.clone()), (T, Sample::default())] {
                 let sc = build(t, &s, dw, dh, bat);
                 for it in &sc.items {
                     match it {
-                        Item::R(r) => assert!(r.x >= -0.01 && r.y >= -0.01 && r.x + r.w <= sc.dw + 0.01 && r.y + r.h <= sc.dh + 0.01, "{dw}x{dh} bat={bat} rect {r:?}"),
+                        Item::R(r) => assert!(
+                            r.x >= -0.01
+                                && r.y >= -0.01
+                                && r.x + r.w <= sc.dw + 0.01
+                                && r.y + r.h <= sc.dh + 0.01,
+                            "{dw}x{dh} bat={bat} rect {r:?}"
+                        ),
                         Item::T(x) => {
                             let (l, rr) = x.span();
-                            assert!(l >= 0.0 && rr <= sc.dw, "{dw}x{dh} bat={bat} text {:?} spans {l}..{rr}", x.s);
-                            assert!(x.y - x.fs * 0.72 >= 0.0 && x.y + x.fs * 0.25 <= sc.dh, "{dw}x{dh} text {:?} y {}", x.s, x.y);
+                            assert!(
+                                l >= 0.0 && rr <= sc.dw,
+                                "{dw}x{dh} bat={bat} text {:?} spans {l}..{rr}",
+                                x.s
+                            );
+                            assert!(
+                                x.y - x.fs * 0.72 >= 0.0 && x.y + x.fs * 0.25 <= sc.dh,
+                                "{dw}x{dh} text {:?} y {}",
+                                x.s,
+                                x.y
+                            );
                         }
                     }
                 }
@@ -391,13 +609,31 @@ mod tests {
 
     #[test]
     fn label_and_value_of_a_row_never_overlap() {
-        let hot = Sample { cpu: Some(100.0), gpu: Some(Gpu { temp: 100.0, util: 100.0, mem_used: 24_000_000_000, mem_total: 24_000_000_000, clock_mhz: 0.0 }), ..Default::default() };
+        let hot = Sample {
+            cpu: Some(100.0),
+            gpu: Some(Gpu {
+                temp: 100.0,
+                util: 100.0,
+                mem_used: 24_000_000_000,
+                mem_total: 24_000_000_000,
+                clock_mhz: 0.0,
+            }),
+            ..Default::default()
+        };
         for (dw, dh, bat) in SIZES {
             let sc = build(T, &hot, dw, dh, bat);
             let ts = texts(&sc);
             for pair in ts.windows(2) {
-                if pair[0].anchor == 's' && pair[1].anchor == 'e' && (pair[0].y - pair[1].y).abs() < 0.01 {
-                    assert!(pair[0].span().1 < pair[1].span().0, "{dw}x{dh}: {:?} touches {:?}", pair[0].s, pair[1].s);
+                if pair[0].anchor == 's'
+                    && pair[1].anchor == 'e'
+                    && (pair[0].y - pair[1].y).abs() < 0.01
+                {
+                    assert!(
+                        pair[0].span().1 < pair[1].span().0,
+                        "{dw}x{dh}: {:?} touches {:?}",
+                        pair[0].s,
+                        pair[1].s
+                    );
                 }
             }
         }
@@ -406,16 +642,37 @@ mod tests {
     #[test]
     fn bars_clamp_to_the_track() {
         for p in [-20.0, 0.0, 50.0, 100.0, 180.0] {
-            let sc = build(T, &Sample { cpu: Some(p), ..Default::default() }, 80, 378, false);
-            let rects: Vec<&Rect> = sc.items.iter().filter_map(|i| if let Item::R(r) = i { Some(r) } else { None }).collect();
+            let sc = build(
+                T,
+                &Sample {
+                    cpu: Some(p),
+                    ..Default::default()
+                },
+                80,
+                378,
+                false,
+            );
+            let rects: Vec<&Rect> = sc
+                .items
+                .iter()
+                .filter_map(|i| if let Item::R(r) = i { Some(r) } else { None })
+                .collect();
             // CPU track = the first 9-px-tall rounded rect, its fill (if any) follows
-            let i = rects.iter().position(|r| r.fill == TRACK && r.h > 8.0).expect("track");
+            let i = rects
+                .iter()
+                .position(|r| r.fill == TRACK && r.h > 8.0)
+                .expect("track");
             let track = rects[i];
             if p <= 0.0 {
                 assert_ne!(rects[i + 1].fill, "#22c55e", "no fill at {p}");
             } else {
                 let fill = rects[i + 1];
-                assert!(fill.w <= track.w + 0.01 && fill.w >= track.h - 0.01, "fill {} of {} at {p}", fill.w, track.w);
+                assert!(
+                    fill.w <= track.w + 0.01 && fill.w >= track.h - 0.01,
+                    "fill {} of {} at {p}",
+                    fill.w,
+                    track.w
+                );
             }
         }
     }
@@ -423,12 +680,27 @@ mod tests {
     #[test]
     fn levels_follow_sys_thresholds() {
         let svg = |s: Sample| build(T, &s, 80, 378, false).svg();
-        assert!(svg(Sample { cpu: Some(50.0), ..Default::default() }).contains("#22c55e"));
-        assert!(svg(Sample { cpu: Some(75.0), ..Default::default() }).contains("#f59e0b"));
-        let red = svg(Sample { cpu: Some(95.0), ..Default::default() });
+        assert!(svg(Sample {
+            cpu: Some(50.0),
+            ..Default::default()
+        })
+        .contains("#22c55e"));
+        assert!(svg(Sample {
+            cpu: Some(75.0),
+            ..Default::default()
+        })
+        .contains("#f59e0b"));
+        let red = svg(Sample {
+            cpu: Some(95.0),
+            ..Default::default()
+        });
         assert!(red.contains("#991b1b") && red.contains("#fca5a5"));
         // RAM: warn 80, danger 92
-        assert!(svg(Sample { ram: Some((85.0, 1, 1)), ..Default::default() }).contains("#f59e0b"));
+        assert!(svg(Sample {
+            ram: Some((85.0, 1, 1)),
+            ..Default::default()
+        })
+        .contains("#f59e0b"));
     }
 
     #[test]
@@ -442,8 +714,17 @@ mod tests {
     #[test]
     fn clock_text_and_wrap() {
         let s = build(T, &full(), 80, 378, false).svg();
-        assert!(s.contains(">09:05<") && s.contains(">VIE 13<") && s.contains(">NOV<"), "{s}");
-        let wrap = LocalTime { hour: 0, minute: 0, day: 1, month: 1, weekday: 0 };
+        assert!(
+            s.contains(">09:05<") && s.contains(">VIE 13<") && s.contains(">NOV<"),
+            "{s}"
+        );
+        let wrap = LocalTime {
+            hour: 0,
+            minute: 0,
+            day: 1,
+            month: 1,
+            weekday: 0,
+        };
         let s = build(wrap, &full(), 80, 378, false).svg();
         assert!(s.contains(">00:00<") && s.contains(">DOM 1<") && s.contains(">ENE<"));
     }
@@ -454,17 +735,61 @@ mod tests {
         // a new minute or a new percent = a different one. Seconds are never drawn.
         let a = render_strip(T, &full(), StripCfg::default());
         assert_eq!(a, render_strip(T, &full(), StripCfg::default()));
-        assert_ne!(a, render_strip(LocalTime { minute: 6, ..T }, &full(), StripCfg::default()));
-        assert_ne!(a, render_strip(T, &Sample { cpu: Some(24.0), ..full() }, StripCfg::default()));
-        assert_ne!(a, render_strip(T, &full(), StripCfg { bat: false, ..Default::default() }));
+        assert_ne!(
+            a,
+            render_strip(LocalTime { minute: 6, ..T }, &full(), StripCfg::default())
+        );
+        assert_ne!(
+            a,
+            render_strip(
+                T,
+                &Sample {
+                    cpu: Some(24.0),
+                    ..full()
+                },
+                StripCfg::default()
+            )
+        );
+        assert_ne!(
+            a,
+            render_strip(
+                T,
+                &full(),
+                StripCfg {
+                    bat: false,
+                    ..Default::default()
+                }
+            )
+        );
     }
 
     #[test]
     fn marker_round_trips_and_other_svgs_are_not_strips() {
-        let svg = render_strip(T, &full(), StripCfg { w: 480, h: 95, bat: false, pad: 0 });
+        let svg = render_strip(
+            T,
+            &full(),
+            StripCfg {
+                w: 480,
+                h: 95,
+                bat: false,
+                pad: 0,
+            },
+        );
         assert_eq!(strip_dims(&svg), Some((95, 480)));
-        assert_eq!(strip_dims(&render_strip(T, &full(), StripCfg::default())), Some((80, 378)));
-        let padded = render_strip(T, &full(), StripCfg { w: 410, h: 80, bat: false, pad: 16 });
+        assert_eq!(
+            strip_dims(&render_strip(T, &full(), StripCfg::default())),
+            Some((80, 378))
+        );
+        let padded = render_strip(
+            T,
+            &full(),
+            StripCfg {
+                w: 410,
+                h: 80,
+                bat: false,
+                pad: 16,
+            },
+        );
         assert_eq!(strip_dims(&padded), Some((80, 410)));
         assert!(padded.contains(r#"translate(0 16)"#) && padded.contains(r#"<!--strip 80x410-->"#));
         assert_eq!(strip_dims("<svg width=\"144\"/>"), None);
@@ -475,11 +800,19 @@ mod tests {
     fn bat_content_sits_inside_the_cells() {
         let sc = build(T, &full(), 80, 378, true);
         let rows = cell_rows();
-        let inside = |y0: f64, y1: f64| rows.iter().any(|&(a, b)| y0 >= a as f64 - 3.0 && y1 <= b as f64 + 3.0);
+        let inside = |y0: f64, y1: f64| {
+            rows.iter()
+                .any(|&(a, b)| y0 >= a as f64 - 3.0 && y1 <= b as f64 + 3.0)
+        };
         for it in &sc.items {
             match it {
                 Item::R(r) if r.fill != "#000000" => assert!(inside(r.y, r.y + r.h), "rect {r:?}"),
-                Item::T(t) => assert!(inside(t.y - 0.72 * t.fs, t.y + 0.25 * t.fs), "text {:?} y {}", t.s, t.y),
+                Item::T(t) => assert!(
+                    inside(t.y - 0.72 * t.fs, t.y + 0.25 * t.fs),
+                    "text {:?} y {}",
+                    t.s,
+                    t.y
+                ),
                 _ => {}
             }
         }

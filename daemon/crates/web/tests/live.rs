@@ -42,11 +42,17 @@ fn live(s: &Server) -> String {
 #[test]
 fn wait_idle_returns_after_the_tab_stops_polling() {
     let s = start();
-    assert!(live(&s).starts_with("HTTP/1.1 200"), "live answers an empty frame set");
+    assert!(
+        live(&s).starts_with("HTTP/1.1 200"),
+        "live answers an empty frame set"
+    );
     let t0 = Instant::now();
     s.wait_idle(Duration::from_secs(60), || false);
     let e = t0.elapsed();
-    assert!(e > Duration::from_secs(4) && e < Duration::from_secs(8), "idle after ~5 s, got {e:?}");
+    assert!(
+        e > Duration::from_secs(4) && e < Duration::from_secs(8),
+        "idle after ~5 s, got {e:?}"
+    );
 }
 
 #[test]

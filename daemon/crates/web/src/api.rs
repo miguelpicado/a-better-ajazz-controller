@@ -265,7 +265,10 @@ fn api(ctx: &Ctx, req: &Request) -> Result<Response> {
 }
 
 fn no_calibration() -> Error {
-    Error::new(501, "el daemon no está en marcha: no hay calibración en vivo")
+    Error::new(
+        501,
+        "el daemon no está en marcha: no hay calibración en vivo",
+    )
 }
 
 fn calibration_bridge(store: &dyn Store) -> Result<&dyn crate::InspectorBridge> {

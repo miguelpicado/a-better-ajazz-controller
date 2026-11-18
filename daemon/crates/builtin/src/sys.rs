@@ -212,15 +212,17 @@ pub fn parse_hwinfo(b: &[u8]) -> Hw {
     let (mut t_rank, mut c_rank) = (usize::MAX, usize::MAX);
     for i in 0..n as usize {
         let at = ofs as usize + i * size as usize;
-        let (Some(kind), Some(v), Some(label)) = (
-            u32_at(b, at),
-            f64_at(b, at + 284),
-            b.get(at + 12..at + 140),
-        ) else {
+        let (Some(kind), Some(v), Some(label)) =
+            (u32_at(b, at), f64_at(b, at + 284), b.get(at + 12..at + 140))
+        else {
             break;
         };
         let label = cstr(label);
-        let rank = |names: &[&str]| names.iter().position(|n| label == *n || label.starts_with(n));
+        let rank = |names: &[&str]| {
+            names
+                .iter()
+                .position(|n| label == *n || label.starts_with(n))
+        };
         match kind {
             1 => {
                 if let Some(r) = rank(&["CPU Package", "CPU (Tctl/Tdie)", "Core Max"]) {
@@ -294,14 +296,40 @@ fn tile(
     let bg = if danger { "#991b1b" } else { "#000" };
     let n = value.chars().count() as f64 + unit.chars().count() as f64 * 0.55;
     let (vs, y) = if bar.is_some() {
-        (if n <= 3.0 { 56 } else if n <= 4.0 { 50 } else if n <= 6.0 { 42 } else { 34 }, 80)
+        (
+            if n <= 3.0 {
+                56
+            } else if n <= 4.0 {
+                50
+            } else if n <= 6.0 {
+                42
+            } else {
+                34
+            },
+            80,
+        )
     } else {
-        (if n <= 3.0 { 56 } else if n <= 5.0 { 46 } else if n <= 7.0 { 40 } else { 32 }, 94)
+        (
+            if n <= 3.0 {
+                56
+            } else if n <= 5.0 {
+                46
+            } else if n <= 7.0 {
+                40
+            } else {
+                32
+            },
+            94,
+        )
     };
     let unit = if unit.is_empty() {
         String::new()
     } else {
-        format!(r##"<tspan font-size="{}" font-weight="700" fill="#d4d4d4" dx="5">{}</tspan>"##, vs * 2 / 5, esc(unit))
+        format!(
+            r##"<tspan font-size="{}" font-weight="700" fill="#d4d4d4" dx="5">{}</tspan>"##,
+            vs * 2 / 5,
+            esc(unit)
+        )
     };
     let bar = bar
         .map(|(f, l)| {
@@ -337,7 +365,14 @@ pub fn render_metric(m: Metric, s: &Sample) -> String {
     let none = |label: &str, why: &str| tile(label, "N/D", "", why, None, false);
     match m {
         Metric::Cpu => match s.cpu {
-            Some(p) => tile("CPU", &pct(p), "", "", Some((p / 100.0, level(p, 70.0, 90.0))), true),
+            Some(p) => tile(
+                "CPU",
+                &pct(p),
+                "",
+                "",
+                Some((p / 100.0, level(p, 70.0, 90.0))),
+                true,
+            ),
             None => tile("CPU", "--", "", "", None, false),
         },
         Metric::Ram => match s.ram {
@@ -366,27 +401,69 @@ pub fn render_metric(m: Metric, s: &Sample) -> String {
             None => tile("DISCO C:", "--", "", "", None, false),
         },
         Metric::Net => match s.net {
-            Some((d, u)) => tile("RED", &format!("↓{}", rate(d)), "", &format!("↑{}", rate(u)), None, true),
+            Some((d, u)) => tile(
+                "RED",
+                &format!("↓{}", rate(d)),
+                "",
+                &format!("↑{}", rate(u)),
+                None,
+                true,
+            ),
             None => tile("RED", "--", "", "", None, false),
         },
         Metric::CpuTemp => match s.hw.cpu_temp {
-            Some(t) => tile("CPU TEMP", &format!("{}°", t.round() as i64), "", "", Some((t / 100.0, level(t, 75.0, 90.0))), true),
+            Some(t) => tile(
+                "CPU TEMP",
+                &format!("{}°", t.round() as i64),
+                "",
+                "",
+                Some((t / 100.0, level(t, 75.0, 90.0))),
+                true,
+            ),
             None => none("CPU TEMP", "falta HWiNFO"),
         },
         Metric::CpuClock => match s.hw.cpu_clock_mhz {
-            Some(c) => tile("RELOJ CPU", &format!("{:.1}", c / 1000.0), "", "GHz", None, true),
+            Some(c) => tile(
+                "RELOJ CPU",
+                &format!("{:.1}", c / 1000.0),
+                "",
+                "GHz",
+                None,
+                true,
+            ),
             None => none("RELOJ CPU", "falta HWiNFO"),
         },
         Metric::CpuPower => match s.hw.cpu_power_w {
-            Some(w) => tile("CPU POT.", &format!("{}", w.round() as i64), "W", "", None, true),
+            Some(w) => tile(
+                "CPU POT.",
+                &format!("{}", w.round() as i64),
+                "W",
+                "",
+                None,
+                true,
+            ),
             None => none("CPU POT.", "falta HWiNFO"),
         },
         Metric::GpuTemp => match s.gpu {
-            Some(g) => tile("GPU TEMP", &format!("{}°", g.temp.round() as i64), "", "", Some((g.temp / 100.0, level(g.temp, 70.0, 83.0))), true),
+            Some(g) => tile(
+                "GPU TEMP",
+                &format!("{}°", g.temp.round() as i64),
+                "",
+                "",
+                Some((g.temp / 100.0, level(g.temp, 70.0, 83.0))),
+                true,
+            ),
             None => none("GPU TEMP", "sin NVIDIA"),
         },
         Metric::GpuUtil => match s.gpu {
-            Some(g) => tile("GPU", &pct(g.util), "", "", Some((g.util / 100.0, level(g.util, 70.0, 90.0))), true),
+            Some(g) => tile(
+                "GPU",
+                &pct(g.util),
+                "",
+                "",
+                Some((g.util / 100.0, level(g.util, 70.0, 90.0))),
+                true,
+            ),
             None => none("GPU", "sin NVIDIA"),
         },
         Metric::GpuMem => match s.gpu {
@@ -396,7 +473,11 @@ pub fn render_metric(m: Metric, s: &Sample) -> String {
                     "VRAM",
                     &pct(100.0 * f),
                     "",
-                    &format!("{:.1}/{:.0}G", g.mem_used as f64 / 1e9, g.mem_total as f64 / 1e9),
+                    &format!(
+                        "{:.1}/{:.0}G",
+                        g.mem_used as f64 / 1e9,
+                        g.mem_total as f64 / 1e9
+                    ),
                     Some((f, level(f, 0.8, 0.92))),
                     true,
                 )
@@ -404,7 +485,14 @@ pub fn render_metric(m: Metric, s: &Sample) -> String {
             None => none("VRAM", "sin NVIDIA"),
         },
         Metric::GpuClock => match s.gpu {
-            Some(g) => tile("RELOJ GPU", &format!("{:.1}", g.clock_mhz / 1000.0), "", "GHz", None, true),
+            Some(g) => tile(
+                "RELOJ GPU",
+                &format!("{:.1}", g.clock_mhz / 1000.0),
+                "",
+                "GHz",
+                None,
+                true,
+            ),
             None => none("RELOJ GPU", "sin NVIDIA"),
         },
     }
@@ -414,7 +502,11 @@ pub fn render_metric(m: Metric, s: &Sample) -> String {
 /// Danger paints the half red, like the full-size tiles.
 fn half(y0: i32, label: &str, value: &str, bar: Option<(f64, Level)>) -> String {
     let danger = bar.is_some_and(|(_, l)| l == Level::Danger);
-    let bg = if danger { format!(r##"<rect y="{y0}" width="144" height="72" fill="#991b1b"/>"##) } else { String::new() };
+    let bg = if danger {
+        format!(r##"<rect y="{y0}" width="144" height="72" fill="#991b1b"/>"##)
+    } else {
+        String::new()
+    };
     let bar = bar
         .map(|(f, l)| {
             let fill = match l {
@@ -453,7 +545,11 @@ pub fn render_panel_time(t: crate::core::LocalTime) -> String {
         "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC",
     ];
     let hm = format!("{:02}:{:02}", t.hour, t.minute);
-    let label = format!("{} {}", WD[t.weekday as usize % 7], MO[(t.month as usize + 11) % 12]);
+    let label = format!(
+        "{} {}",
+        WD[t.weekday as usize % 7],
+        MO[(t.month as usize + 11) % 12]
+    );
     panel_body(
         format!(
             r##"<text x="72" y="56" text-anchor="middle" {SANS} font-weight="800" font-size="46" fill="#fff">{hm}</text>"##
@@ -464,14 +560,25 @@ pub fn render_panel_time(t: crate::core::LocalTime) -> String {
 
 pub fn render_panel(p: Panel, s: &Sample) -> String {
     let pct = |p: f64| format!("{}%", p.round() as i64);
-    let temp = |t: f64, warn: f64, danger: f64| (format!("{}°", t.round() as i64), Some((t / 100.0, level(t, warn, danger))));
+    let temp = |t: f64, warn: f64, danger: f64| {
+        (
+            format!("{}°", t.round() as i64),
+            Some((t / 100.0, level(t, warn, danger))),
+        )
+    };
     let (a, b) = match p {
         Panel::Cpu => (
-            s.cpu.map(|c| (pct(c), Some((c / 100.0, level(c, 70.0, 90.0))))),
+            s.cpu
+                .map(|c| (pct(c), Some((c / 100.0, level(c, 70.0, 90.0))))),
             s.hw.cpu_temp.map(|t| temp(t, 75.0, 90.0)),
         ),
         Panel::Gpu => (
-            s.gpu.map(|g| (pct(g.util), Some((g.util / 100.0, level(g.util, 70.0, 90.0))))),
+            s.gpu.map(|g| {
+                (
+                    pct(g.util),
+                    Some((g.util / 100.0, level(g.util, 70.0, 90.0))),
+                )
+            }),
             s.gpu.map(|g| temp(g.temp, 70.0, 83.0)),
         ),
         Panel::Time => (None, None),
@@ -486,13 +593,32 @@ pub fn render_panel(p: Panel, s: &Sample) -> String {
 
 fn render_power(p: Power, armed: bool) -> String {
     let (icon, label) = match p {
-        Power::Lock => (r##"<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>"##, "Bloquear"),
-        Power::Logoff => (r##"<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>"##, "Cerrar sesión"),
-        Power::Restart => (r##"<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>"##, "Reiniciar"),
-        Power::Shutdown => (r##"<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>"##, "Apagar"),
-        Power::TaskManager => (r##"<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>"##, "Administrador"),
+        Power::Lock => (
+            r##"<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>"##,
+            "Bloquear",
+        ),
+        Power::Logoff => (
+            r##"<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>"##,
+            "Cerrar sesión",
+        ),
+        Power::Restart => (
+            r##"<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>"##,
+            "Reiniciar",
+        ),
+        Power::Shutdown => (
+            r##"<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>"##,
+            "Apagar",
+        ),
+        Power::TaskManager => (
+            r##"<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>"##,
+            "Administrador",
+        ),
     };
-    let (bg, ink) = if armed { ("#b91c1c", "#fff") } else { ("#000", "#e5e7eb") };
+    let (bg, ink) = if armed {
+        ("#b91c1c", "#fff")
+    } else {
+        ("#000", "#e5e7eb")
+    };
     let label = if armed { "¿Seguro?" } else { label };
     svg(&format!(
         r##"<rect width="144" height="144" fill="{bg}"/><g transform="translate(36 22) scale(3)" fill="none" stroke="{ink}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon}</g><text x="72" y="124" text-anchor="middle" {SANS} font-weight="700" font-size="20" fill="{ink}">{}</text>"##,
@@ -556,7 +682,10 @@ impl BuiltinAction for PowerAction {
         self.armed.retain(|_, end| *end > ctx.now);
     }
     fn render(&self, ctx: &Ctx, context: &str) -> String {
-        render_power(self.power, self.armed.get(context).is_some_and(|&e| e > ctx.now))
+        render_power(
+            self.power,
+            self.armed.get(context).is_some_and(|&e| e > ctx.now),
+        )
     }
     fn on_key(&mut self, ctx: &mut Ctx, context: &str) -> Feedback {
         // Lock and Task Manager are harmless; the rest need a second press.
@@ -614,7 +743,12 @@ mod win {
     extern "system" {
         fn GetSystemTimes(idle: *mut FileTime, kernel: *mut FileTime, user: *mut FileTime) -> i32;
         fn GlobalMemoryStatusEx(s: *mut MemStatus) -> i32;
-        fn GetDiskFreeSpaceExW(dir: *const u16, avail: *mut u64, total: *mut u64, free: *mut u64) -> i32;
+        fn GetDiskFreeSpaceExW(
+            dir: *const u16,
+            avail: *mut u64,
+            total: *mut u64,
+            free: *mut u64,
+        ) -> i32;
         fn LoadLibraryW(name: *const u16) -> Handle;
         fn GetProcAddress(m: Handle, name: *const u8) -> *mut c_void;
         fn OpenFileMappingA(access: u32, inherit: i32, name: *const u8) -> Handle;
@@ -646,13 +780,24 @@ mod win {
 
     /// (idle, kernel + user) in 100 ns ticks. Kernel time already includes idle.
     pub fn cpu_times() -> Option<(u64, u64)> {
-        let (mut i, mut k, mut u) = (FileTime::default(), FileTime::default(), FileTime::default());
-        (unsafe { GetSystemTimes(&mut i, &mut k, &mut u) } != 0).then(|| (i.ticks(), k.ticks() + u.ticks()))
+        let (mut i, mut k, mut u) = (
+            FileTime::default(),
+            FileTime::default(),
+            FileTime::default(),
+        );
+        (unsafe { GetSystemTimes(&mut i, &mut k, &mut u) } != 0)
+            .then(|| (i.ticks(), k.ticks() + u.ticks()))
     }
 
     /// (used %, used bytes, total bytes)
     pub fn memory() -> Option<(f64, u64, u64)> {
-        let mut s = MemStatus { len: std::mem::size_of::<MemStatus>() as u32, load: 0, total: 0, avail: 0, rest: [0; 5] };
+        let mut s = MemStatus {
+            len: std::mem::size_of::<MemStatus>() as u32,
+            load: 0,
+            total: 0,
+            avail: 0,
+            rest: [0; 5],
+        };
         (unsafe { GlobalMemoryStatusEx(&mut s) } != 0)
             .then(|| (s.load as f64, s.total - s.avail, s.total))
     }
@@ -697,7 +842,7 @@ mod win {
     /// Bytes of the HWiNFO shared-memory block, or None when HWiNFO is not publishing it.
     pub fn hwinfo() -> Option<Vec<u8>> {
         unsafe {
-            let h = OpenFileMappingA(4, 0, b"Global\\HWiNFO_SENS_SM2\0".as_ptr());
+            let h = OpenFileMappingA(4, 0, c"Global\\HWiNFO_SENS_SM2".as_ptr().cast());
             if h.is_null() {
                 return None;
             }
@@ -742,12 +887,16 @@ mod win {
                 return;
             }
             self.lib = Some(lib);
-            let (Some(init), Some(by_index)) = (self.proc(b"nvmlInit_v2\0"), self.proc(b"nvmlDeviceGetHandleByIndex_v2\0")) else {
+            let (Some(init), Some(by_index)) = (
+                self.proc(b"nvmlInit_v2\0"),
+                self.proc(b"nvmlDeviceGetHandleByIndex_v2\0"),
+            ) else {
                 return;
             };
             unsafe {
                 let init: unsafe extern "C" fn() -> i32 = std::mem::transmute(init);
-                let by_index: unsafe extern "C" fn(u32, *mut Handle) -> i32 = std::mem::transmute(by_index);
+                let by_index: unsafe extern "C" fn(u32, *mut Handle) -> i32 =
+                    std::mem::transmute(by_index);
                 let mut d: Handle = std::ptr::null_mut();
                 if init() == 0 && by_index(0, &mut d) == 0 {
                     self.dev = Some(d);
@@ -763,7 +912,8 @@ mod win {
             unsafe {
                 let k: NvmlGetK = std::mem::transmute(self.proc(b"nvmlDeviceGetTemperature\0")?);
                 let clk: NvmlGetK = std::mem::transmute(self.proc(b"nvmlDeviceGetClockInfo\0")?);
-                let util: NvmlGet = std::mem::transmute(self.proc(b"nvmlDeviceGetUtilizationRates\0")?);
+                let util: NvmlGet =
+                    std::mem::transmute(self.proc(b"nvmlDeviceGetUtilizationRates\0")?);
                 let mem: NvmlGet = std::mem::transmute(self.proc(b"nvmlDeviceGetMemoryInfo\0")?);
                 let (mut t, mut c) = (0u32, 0u32);
                 let (mut u, mut m) = ([0u32; 2], [0u64; 3]);
@@ -774,14 +924,22 @@ mod win {
                 {
                     return None;
                 }
-                Some(super::Gpu { temp: t as f64, util: u[0] as f64, mem_used: m[2], mem_total: m[0], clock_mhz: c as f64 })
+                Some(super::Gpu {
+                    temp: t as f64,
+                    util: u[0] as f64,
+                    mem_used: m[2],
+                    mem_total: m[0],
+                    clock_mhz: c as f64,
+                })
             }
         }
     }
 
     pub fn run(p: Power) -> Result<(), String> {
         if p == Power::Lock {
-            return (unsafe { LockWorkStation() } != 0).then_some(()).ok_or_else(|| "LockWorkStation".into());
+            return (unsafe { LockWorkStation() } != 0)
+                .then_some(())
+                .ok_or_else(|| "LockWorkStation".into());
         }
         let (exe, args): (&str, &[&str]) = match p {
             Power::Logoff => ("shutdown.exe", &["/l"]),
@@ -801,17 +959,31 @@ mod win {
 #[cfg(not(windows))]
 mod win {
     use super::Power;
-    pub fn cpu_times() -> Option<(u64, u64)> { None }
-    pub fn memory() -> Option<(f64, u64, u64)> { None }
-    pub fn system_drive() -> Option<(u64, u64)> { None }
-    pub fn net_octets() -> Option<(u64, u64)> { None }
-    pub fn hwinfo() -> Option<Vec<u8>> { None }
+    pub fn cpu_times() -> Option<(u64, u64)> {
+        None
+    }
+    pub fn memory() -> Option<(f64, u64, u64)> {
+        None
+    }
+    pub fn system_drive() -> Option<(u64, u64)> {
+        None
+    }
+    pub fn net_octets() -> Option<(u64, u64)> {
+        None
+    }
+    pub fn hwinfo() -> Option<Vec<u8>> {
+        None
+    }
     #[derive(Default)]
     pub struct GpuHandle;
     impl GpuHandle {
-        pub fn read(&mut self) -> Option<super::Gpu> { None }
+        pub fn read(&mut self) -> Option<super::Gpu> {
+            None
+        }
     }
-    pub fn run(_: Power) -> Result<(), String> { Err("Windows only".into()) }
+    pub fn run(_: Power) -> Result<(), String> {
+        Err("Windows only".into())
+    }
 }
 
 #[cfg(test)]
@@ -851,7 +1023,10 @@ mod tests {
 
     #[test]
     fn tiles_render_with_and_without_data() {
-        let s = Sample { cpu: Some(23.4), ..Default::default() };
+        let s = Sample {
+            cpu: Some(23.4),
+            ..Default::default()
+        };
         assert!(render_metric(Metric::Cpu, &s).contains("23%"));
         assert!(render_metric(Metric::CpuTemp, &s).contains("N/D"));
         assert!(render_power(Power::Shutdown, true).contains("Seguro"));

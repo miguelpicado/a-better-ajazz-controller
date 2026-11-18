@@ -15,10 +15,7 @@ const REC: &str = "H33G4VTZ-25Z8-PYN7-R34M-ST39SX8TRT2Q";
 const ZZZ: &str = "ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ";
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "abac-sqlite-busy-{name}-{}",
-        std::process::id()
-    ));
+    let d = std::env::temp_dir().join(format!("abac-sqlite-busy-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d

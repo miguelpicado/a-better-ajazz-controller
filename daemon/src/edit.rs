@@ -277,14 +277,18 @@ pub fn run(args: &[String]) -> Result<(), String> {
     );
     match reply {
         Some(Ok(session)) => {
-            println!(
-                "ABAC editor (dentro de abac run): {}",
-                session.url()
-            );
+            println!("ABAC editor (dentro de abac run): {}", session.url());
             println!("Presiona Ctrl+C para detener el servidor.");
             if !no_open {
                 let r = open_browser(session.url());
-                tlog(t0, if r.is_ok() { "browser spawned" } else { "browser spawn failed" });
+                tlog(
+                    t0,
+                    if r.is_ok() {
+                        "browser spawned"
+                    } else {
+                        "browser spawn failed"
+                    },
+                );
                 if let Err(e) = r {
                     eprintln!(
                         "aviso: no se pudo abrir el navegador ({e}); abre {} a mano",

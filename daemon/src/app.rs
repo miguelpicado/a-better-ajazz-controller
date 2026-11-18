@@ -15,11 +15,11 @@ use crate::{
     scenes::{self, SceneSet, SceneTarget},
     Dock,
 };
+use abac_builtin as bi;
+use abac_host as host;
 use base64::Engine;
 use hidapi::{HidApi, HidDevice};
 use image::{imageops, DynamicImage};
-use abac_builtin as bi;
-use abac_host as host;
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
@@ -40,8 +40,8 @@ static BRIGHTNESS: AtomicU8 = AtomicU8::new(255);
 
 /// Last JPEG painted on each key (upright, full pipeline size) and the `MIRROR_GEN` it got, for the
 /// editor's live view.
-static MIRROR: LazyLock<Mutex<HashMap<u8, (u64, Arc<[u8]>)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+type Mirror = HashMap<u8, (u64, Arc<[u8]>)>;
+static MIRROR: LazyLock<Mutex<Mirror>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 static MIRROR_GEN: AtomicU64 = AtomicU64::new(0);
 
 fn mirror_put(key: u8, jpeg: &[u8]) {
@@ -118,10 +118,19 @@ fn strip_cfg() -> bi::StripCfg {
         Some(_) => {
             // overscan at each end of the bar (the panel showed it cut), `ABAC_STRIP_PAD` px, default 16
             static PAD: LazyLock<u16> = LazyLock::new(|| {
-                std::env::var("ABAC_STRIP_PAD").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(16u16).min(40)
+                std::env::var("ABAC_STRIP_PAD")
+                    .ok()
+                    .and_then(|v| v.trim().parse().ok())
+                    .unwrap_or(16u16)
+                    .min(40)
             });
             let pad = *PAD;
-            bi::StripCfg { w: 378 + 2 * pad, h: calib::with(|s| s.eff(16)).h.min(200), bat: false, pad }
+            bi::StripCfg {
+                w: 378 + 2 * pad,
+                h: calib::with(|s| s.eff(16)).h.min(200),
+                bat: false,
+                pad,
+            }
         }
     }
 }
@@ -129,7 +138,14 @@ fn strip_cfg() -> bi::StripCfg {
 /// Paints a rendered `panel_strip`: the whole image goes to the DRA slot, and the three cell slices go through the
 /// normal key path (they ARE the picture in BAT mode, and in DRA mode they only mark keys 16..18 as changed).
 /// Cells (5,1),(5,2) are not painted when a builtin of the scene owns them.
-fn paint_strip(rt: &Runtime, gen: u64, ctx: &str, key: u8, img: DynamicImage, owned: &HashMap<String, u8>) {
+fn paint_strip(
+    rt: &Runtime,
+    gen: u64,
+    ctx: &str,
+    key: u8,
+    img: DynamicImage,
+    owned: &HashMap<String, u8>,
+) {
     if key != 16 {
         rt.paint_at(gen, ctx, key, img); // placed elsewhere: squashed into the key, nothing smarter
         return;
@@ -161,7 +177,11 @@ fn calib_sync(rt: &Runtime, pending: &mut HashMap<u8, (DynamicImage, u64)>) {
                     render::calib_pattern(k, c.h as u32, c.w as u32)
                 }
             }
-            _ => rt.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k),
+            _ => rt
+                .view
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .effective(k),
         };
         pending.insert(k, (img, gen));
     }
@@ -187,7 +207,11 @@ fn paint_dra<W: DockWriter>(
         n += 1;
     }
     if std::env::var_os("ABAC_TRACE").is_some() {
-        eprintln!("DRA pass: {n} draws in {} ms (gap {} ms)", t.elapsed().as_millis(), cfg.gap.as_millis());
+        eprintln!(
+            "DRA pass: {n} draws in {} ms (gap {} ms)",
+            t.elapsed().as_millis(),
+            cfg.gap.as_millis()
+        );
     }
     Ok(())
 }
@@ -199,7 +223,9 @@ fn paint_dra_one<W: DockWriter>(
     pending: &mut HashMap<u8, (DynamicImage, u64)>,
     dock: &mut W,
 ) -> Result<(), String> {
-    let Some(&key) = pending.keys().min() else { return Ok(()) };
+    let Some(&key) = pending.keys().min() else {
+        return Ok(());
+    };
     if key <= 15 {
         let (img, _) = pending.remove(&key).expect("key just found");
         mirror_put(key, &render::mirror_jpeg(&img));
@@ -215,7 +241,10 @@ fn paint_dra_one<W: DockWriter>(
         }
         mirror_put(16, &render::mirror_jpeg(&strip)); // the editor shows the whole bar as one tall cell
         let c = calib::with(|s| s.eff(16));
-        for (i, (r, j)) in render::dra_strip_jpegs(&strip, c.h.min(200), (c.dx, c.dy)).iter().enumerate() {
+        for (i, (r, j)) in render::dra_strip_jpegs(&strip, c.h.min(200), (c.dx, c.dy))
+            .iter()
+            .enumerate()
+        {
             if i > 0 {
                 thread::sleep(cfg.gap);
             }
@@ -229,14 +258,25 @@ fn paint_dra_one<W: DockWriter>(
                 mirror_put(k, &render::mirror_jpeg(&img));
                 img
             } else {
-                rt.view.lock().unwrap_or_else(|e| e.into_inner()).effective(k)
+                rt.view
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .effective(k)
             }
         })
         .collect();
     pending.retain(|k, _| *k <= 15);
     let c = calib::with(|s| s.eff(16));
-    let side = if c.h == cfg.side { cfg.side } else { c.h.min(200) };
-    let pieces = render::dra_side_jpegs([Some(&imgs[0]), Some(&imgs[1]), Some(&imgs[2])], side, (c.dx, c.dy));
+    let side = if c.h == cfg.side {
+        cfg.side
+    } else {
+        c.h.min(200)
+    };
+    let pieces = render::dra_side_jpegs(
+        [Some(&imgs[0]), Some(&imgs[1]), Some(&imgs[2])],
+        side,
+        (c.dx, c.dy),
+    );
     for (i, (r, j)) in pieces.iter().enumerate() {
         if i > 0 {
             thread::sleep(cfg.gap); // ponytail: only if a strip ever needs >1 piece (not with 3 cells)
@@ -445,7 +485,10 @@ struct Paint {
 /// edits to any other scene stay on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReloadCmd {
-    Cell { scene: String, cell: (u8, u8) },
+    Cell {
+        scene: String,
+        cell: (u8, u8),
+    },
     /// The editor's brightness slider moved (see [`BRIGHTNESS`]).
     Brightness(u8),
 }
@@ -939,7 +982,10 @@ impl abac_web::InspectorBridge for RunInspector {
         use base64::engine::general_purpose::STANDARD;
         let gen = MIRROR_GEN.load(Ordering::Relaxed);
         if gen == since {
-            return abac_web::Mirror { gen, ..Default::default() };
+            return abac_web::Mirror {
+                gen,
+                ..Default::default()
+            };
         }
         let cells = MIRROR
             .lock()
@@ -947,17 +993,23 @@ impl abac_web::InspectorBridge for RunInspector {
             .iter()
             .filter(|(_, (g, _))| *g > since)
             .filter_map(|(k, (_, j))| {
-                Some((key_cell(*k)?, format!("data:image/jpeg;base64,{}", STANDARD.encode(j))))
+                Some((
+                    key_cell(*k)?,
+                    format!("data:image/jpeg;base64,{}", STANDARD.encode(j)),
+                ))
             })
             .collect();
-        abac_web::Mirror { gen, scene: current_scene(&self.rt), cells }
+        abac_web::Mirror {
+            gen,
+            scene: current_scene(&self.rt),
+            cells,
+        }
     }
 }
 
 /// `%APPDATA%\ABAC\globals\<plugin>.json`, or `None` for an id unsafe as a file name.
 fn globals_path(data: &Path, plugin: &str) -> Option<PathBuf> {
-    abac_web::store::safe_id(plugin)
-        .then(|| data.join("globals").join(format!("{plugin}.json")))
+    abac_web::store::safe_id(plugin).then(|| data.join("globals").join(format!("{plugin}.json")))
 }
 
 fn save_global(data: &Path, plugin: &str, settings: &Value) {
@@ -1224,7 +1276,13 @@ fn switch_scene(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .values()
-        .filter_map(|t| if let Target::Builtin(c) = t { Some(c.clone()) } else { None })
+        .filter_map(|t| {
+            if let Target::Builtin(c) = t {
+                Some(c.clone())
+            } else {
+                None
+            }
+        })
         .collect();
     for t in by_key.values() {
         match t {
@@ -1367,7 +1425,9 @@ fn reload_cell(
     let old_long = LONG.lock().unwrap_or_else(|e| e.into_inner()).remove(&key);
     let new_long = action.and_then(|a| long_of(a, cell, builtins, manifest_id));
     if let Some((t, _)) = &new_long {
-        LONG.lock().unwrap_or_else(|e| e.into_inner()).insert(key, t.clone());
+        LONG.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key, t.clone());
     }
     ARMED.lock().unwrap_or_else(|e| e.into_inner()).remove(&key);
     let old_long_ctx = match old_long {
@@ -1755,7 +1815,11 @@ fn compute_next_wake(
     now: Instant,
 ) -> Instant {
     let mut wake = hb + Duration::from_secs(HEARTBEAT_SECS);
-    let gap = if dra_cfg().is_some() && calib::with(|s| s.on()) { calib::gap() } else { gap };
+    let gap = if dra_cfg().is_some() && calib::with(|s| s.on()) {
+        calib::gap()
+    } else {
+        gap
+    };
     if !pending.is_empty() {
         wake = wake.min(last_batch + gap);
     }
@@ -1812,13 +1876,20 @@ fn handle_input_packet<W: DockWriter>(
             }
             let now = Instant::now();
             let short = by_key.get(&key).cloned();
-            let long = LONG.lock().unwrap_or_else(|e| e.into_inner()).get(&key).cloned();
+            let long = LONG
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&key)
+                .cloned();
             let mut acts: Vec<(Target, Phase)> = Vec::new();
             match (phase, long) {
                 (Phase::Ignore, _) => {}
                 // a key with a long destination decides on release (or when the timer fires)
                 (Phase::Down, Some(_)) => {
-                    ARMED.lock().unwrap_or_else(|e| e.into_inner()).insert(key, (now, false));
+                    ARMED
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(key, (now, false));
                 }
                 (Phase::Up, Some(l)) => {
                     let r = release_press(
@@ -1837,7 +1908,8 @@ fn handle_input_packet<W: DockWriter>(
             }
             for (t, p) in acts {
                 run_target(
-                    t, p, msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins, pending,
+                    t, p, msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins,
+                    pending,
                 );
             }
         }
@@ -1913,13 +1985,31 @@ fn check_long(
     );
     for key in keys {
         // a scene switch fired by an earlier key clears ARMED: later keys belong to the old scene
-        if !ARMED.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&key) {
+        if !ARMED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&key)
+        {
             continue;
         }
-        let t = LONG.lock().unwrap_or_else(|e| e.into_inner()).get(&key).cloned();
+        let t = LONG
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&key)
+            .cloned();
         if let Some(t) = t {
             run_target(
-                t, Phase::Click, msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins,
+                t,
+                Phase::Click,
+                msg_tx,
+                host,
+                scenes,
+                plugins,
+                by_key,
+                found,
+                running,
+                rt,
+                builtins,
                 pending,
             );
         }
@@ -2036,7 +2126,10 @@ const HELD_MAX: Duration = Duration::from_secs(10);
 fn key_phase(held: &mut HashMap<u8, Instant>, key: u8, state: u8, now: Instant) -> Phase {
     if state == 1 {
         // a repeated state 1 (ACK sent by the USB ISR while the key is down) is not a new press
-        if held.get(&key).is_some_and(|t| now.duration_since(*t) < HELD_MAX) {
+        if held
+            .get(&key)
+            .is_some_and(|t| now.duration_since(*t) < HELD_MAX)
+        {
             return Phase::Ignore;
         }
         held.insert(key, now);
@@ -2164,7 +2257,9 @@ fn session_loop_threaded<W: DockWriter>(
             }
         }
 
-        check_long(msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins, pending);
+        check_long(
+            msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins, pending,
+        );
         rt.tick();
         retire_due(rt, host, running, Instant::now());
 
@@ -2258,7 +2353,18 @@ fn session(
                     t0,
                 )?;
             }
-            check_long(msg_tx, host, scenes, plugins, by_key, found, running, rt, builtins, &mut pending);
+            check_long(
+                msg_tx,
+                host,
+                scenes,
+                plugins,
+                by_key,
+                found,
+                running,
+                rt,
+                builtins,
+                &mut pending,
+            );
             rt.tick();
             retire_due(rt, host, running, Instant::now());
             // Editor saves: repaint just that key, through the same pending batch as everything else.
@@ -2411,7 +2517,8 @@ mod tests {
             "5,0":{"UUID":"com.miguelpicado.orcadock.agent"},
             "3,0":{"UUID":"com.x.a"}}}"#;
         let scene = Scene::parse(dir, json).unwrap();
-        let builtins: HashSet<&'static str> = HashSet::from(["com.b.lock", "com.miguelpicado.orcadock.agent"]);
+        let builtins: HashSet<&'static str> =
+            HashSet::from(["com.b.lock", "com.miguelpicado.orcadock.agent"]);
         let at = |c: u8| {
             let (cell, a) = scene.actions.iter().find(|((x, _), _)| *x == c).unwrap();
             long_of(a, *cell, &builtins, "AKP153E")
@@ -2436,7 +2543,10 @@ mod tests {
         let mut a = HashMap::new();
         // quick release = short; unarmed release = nothing
         a.insert(1u8, (t, false));
-        assert_eq!(release_press(&mut a, 1, t + Duration::from_millis(100), long), Some(Press::Short));
+        assert_eq!(
+            release_press(&mut a, 1, t + Duration::from_millis(100), long),
+            Some(Press::Short)
+        );
         assert_eq!(release_press(&mut a, 1, t, long), None);
         // release of a key that was never armed (or was cleared) does nothing
         assert_eq!(release_press(&mut a, 9, t, long), None);
@@ -3269,7 +3379,9 @@ mod tests {
     #[test]
     fn cached_raster_reuses_and_bounds_the_cache() {
         let svg = |c: &str| {
-            format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144"><rect width="144" height="144" fill="{c}"/></svg>"#)
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144"><rect width="144" height="144" fill="{c}"/></svg>"#
+            )
         };
         let mut cache = HashMap::new();
         let a = cached_raster(&mut cache, svg("#f00"), 72).unwrap();
@@ -3289,7 +3401,10 @@ mod tests {
         rt.gen.fetch_add(1, Ordering::SeqCst); // a scene switch happened
         rt.paint_at(0, "old", 3, white(KEY_PX));
         assert!(rx.try_recv().is_err(), "nothing is sent");
-        assert!(!rt.view.lock().unwrap().base.contains_key(&3), "view untouched");
+        assert!(
+            !rt.view.lock().unwrap().base.contains_key(&3),
+            "view untouched"
+        );
         rt.paint_at(1, "new", 3, white(KEY_PX));
         assert!(rx.try_recv().is_ok());
         assert!(rt.view.lock().unwrap().base.contains_key(&3));

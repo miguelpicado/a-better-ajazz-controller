@@ -37,7 +37,11 @@ impl KeyCal {
 
 /// Keys 16..=18 are one strip drawn as a whole: they share the slot of key 16 (dx, dy and `h` = strip size).
 pub fn slot(key: u8) -> u8 {
-    if key >= 16 { 16 } else { key }
+    if key >= 16 {
+        16
+    } else {
+        key
+    }
 }
 
 /// The file: `{"enabled":bool,"keys":{"1":{"dx":..,"dy":..,"w":..,"h":..},..}}`.
@@ -51,7 +55,8 @@ impl File {
     /// Unknown/out-of-range keys are skipped; a missing field takes the factory default; values are clamped.
     /// Anything that is not the documented shape is an error (the caller then starts from defaults).
     pub fn parse(s: &str) -> Result<File, String> {
-        let v: Value = serde_json::from_str(s.trim_start_matches('\u{feff}')).map_err(|e| format!("bad JSON: {e}"))?;
+        let v: Value = serde_json::from_str(s.trim_start_matches('\u{feff}'))
+            .map_err(|e| format!("bad JSON: {e}"))?;
         let o = v.as_object().ok_or("expected a JSON object")?;
         let enabled = match o.get("enabled") {
             None => false,
@@ -63,12 +68,18 @@ impl File {
             None => {}
             Some(Value::Object(m)) => {
                 for (k, e) in m {
-                    let Some(k) = k.parse::<u8>().ok().filter(|k| (1..=KEYS).contains(k)) else { continue };
-                    let e = e.as_object().ok_or_else(|| format!("key {k}: expected an object"))?;
+                    let Some(k) = k.parse::<u8>().ok().filter(|k| (1..=KEYS).contains(k)) else {
+                        continue;
+                    };
+                    let e = e
+                        .as_object()
+                        .ok_or_else(|| format!("key {k}: expected an object"))?;
                     let d = factory(k);
                     let num = |f: &str, d: i64| match e.get(f) {
                         None => Ok(d),
-                        Some(n) => n.as_i64().ok_or_else(|| format!("key {k}: {f} must be an integer")),
+                        Some(n) => n
+                            .as_i64()
+                            .ok_or_else(|| format!("key {k}: {f} must be an integer")),
                     };
                     let c = |v: i64| v.clamp(-10_000, 10_000) as i32;
                     keys.insert(
@@ -92,18 +103,35 @@ impl File {
         let keys: Map<String, Value> = self
             .keys
             .iter()
-            .map(|(k, c)| (k.to_string(), json!({ "dx": c.dx, "dy": c.dy, "w": c.w, "h": c.h })))
+            .map(|(k, c)| {
+                (
+                    k.to_string(),
+                    json!({ "dx": c.dx, "dy": c.dy, "w": c.w, "h": c.h }),
+                )
+            })
             .collect();
-        serde_json::to_string_pretty(&json!({ "enabled": self.enabled, "keys": keys })).expect("json") + "\n"
+        serde_json::to_string_pretty(&json!({ "enabled": self.enabled, "keys": keys }))
+            .expect("json")
+            + "\n"
     }
 }
 
 /// Factory value without env: centred 98 px tile (side cells 80 px).
 fn factory(key: u8) -> KeyCal {
     if key >= 16 {
-        KeyCal { dx: 0, dy: 0, w: SIDE_CELL, h: SIDE_CELL }
+        KeyCal {
+            dx: 0,
+            dy: 0,
+            w: SIDE_CELL,
+            h: SIDE_CELL,
+        }
     } else {
-        KeyCal { dx: 0, dy: 0, w: DRA_TILE_PX, h: DRA_TILE_PX }
+        KeyCal {
+            dx: 0,
+            dy: 0,
+            w: DRA_TILE_PX,
+            h: DRA_TILE_PX,
+        }
     }
 }
 
@@ -111,7 +139,13 @@ fn factory(key: u8) -> KeyCal {
 pub fn file_path() -> Option<PathBuf> {
     std::env::var_os("ABAC_CALIBRATION")
         .map(PathBuf::from)
-        .or_else(|| Some(PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("ABAC").join("calibration.json")))
+        .or_else(|| {
+            Some(
+                PathBuf::from(std::env::var_os("LOCALAPPDATA")?)
+                    .join("ABAC")
+                    .join("calibration.json"),
+            )
+        })
 }
 
 /// Temp file + rename, so a crash never leaves a half-written file.
@@ -144,19 +178,42 @@ impl State {
         let defaults = (1..=KEYS)
             .map(|k| {
                 let (dx, dy) = off.get(&k).copied().unwrap_or_default();
-                let mut c = if k >= 16 { KeyCal { h: side, ..factory(k) } } else { KeyCal { w: tile, h: tile, ..factory(k) } };
+                let mut c = if k >= 16 {
+                    KeyCal {
+                        h: side,
+                        ..factory(k)
+                    }
+                } else {
+                    KeyCal {
+                        w: tile,
+                        h: tile,
+                        ..factory(k)
+                    }
+                };
                 c.dx = dx;
                 c.dy = dy;
                 c.clamped()
             })
             .collect();
-        State { file, defaults, path, on: false, selected: 0, dirty: BTreeSet::new(), saved: true }
+        State {
+            file,
+            defaults,
+            path,
+            on: false,
+            selected: 0,
+            dirty: BTreeSet::new(),
+            saved: true,
+        }
     }
 
     /// What is drawn for `key` now: the calibrated entry, else the env/factory default.
     pub fn eff(&self, key: u8) -> KeyCal {
         let s = slot(key);
-        self.file.keys.get(&s).copied().unwrap_or(self.defaults[s as usize - 1])
+        self.file
+            .keys
+            .get(&s)
+            .copied()
+            .unwrap_or(self.defaults[s as usize - 1])
     }
 
     pub fn on(&self) -> bool {
@@ -169,7 +226,9 @@ impl State {
     }
 
     fn need_on(&self) -> Result<(), String> {
-        self.on.then_some(()).ok_or_else(|| "calibration mode is off".to_string())
+        self.on
+            .then_some(())
+            .ok_or_else(|| "calibration mode is off".to_string())
     }
 
     fn mark(&mut self, key: u8) {
@@ -237,7 +296,10 @@ impl State {
     fn target(&self, key: Option<u8>) -> Result<u8, String> {
         self.need_on()?;
         let k = key.or_else(|| self.selected()).ok_or("no key selected")?;
-        (1..=KEYS).contains(&k).then_some(k).ok_or_else(|| format!("key {k} outside 1..={KEYS}"))
+        (1..=KEYS)
+            .contains(&k)
+            .then_some(k)
+            .ok_or_else(|| format!("key {k} outside 1..={KEYS}"))
     }
 
     fn put(&mut self, k: u8, v: KeyCal) -> Result<KeyCal, String> {
@@ -273,7 +335,10 @@ impl State {
     }
 
     pub fn save(&mut self) -> Result<(), String> {
-        let path = self.path.as_ref().ok_or("no calibration path (LOCALAPPDATA unset)")?;
+        let path = self
+            .path
+            .as_ref()
+            .ok_or("no calibration path (LOCALAPPDATA unset)")?;
         write_atomic(path, &self.file.to_json())?;
         self.saved = true;
         Ok(())
@@ -309,7 +374,13 @@ static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
     let num = |k: &str, d: u64| env(k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
     let tile = num("ABAC_DRA_TILE_PX", DRA_TILE_PX as u64).clamp(1, DRA_MAX_W as u64) as u16;
     let side = num("ABAC_DRA_SIDE_PX", SIDE_CELL as u64).clamp(1, 200) as u16;
-    Mutex::new(State::new(file, tile, side, &env("ABAC_DRA_OFFSETS").unwrap_or_default(), path))
+    Mutex::new(State::new(
+        file,
+        tile,
+        side,
+        &env("ABAC_DRA_OFFSETS").unwrap_or_default(),
+        path,
+    ))
 });
 
 /// Runs `f` on the shared state.
@@ -325,7 +396,11 @@ pub fn file_enabled() -> bool {
 /// Gap between redraws while calibrating (`ABAC_CALIB_GAP_MS`, default 150, at least 20).
 pub fn gap() -> Duration {
     Duration::from_millis(
-        std::env::var("ABAC_CALIB_GAP_MS").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(150u64).max(20),
+        std::env::var("ABAC_CALIB_GAP_MS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(150u64)
+            .max(20),
     )
 }
 
@@ -333,14 +408,20 @@ pub fn gap() -> Duration {
 /// in that order. Returns the new state, or the first error.
 pub fn apply(s: &mut State, cmd: &Value, dra: bool) -> Result<Value, String> {
     let int = |v: &Value, f: &str| v.get(f).and_then(Value::as_i64).map(|n| n as i32);
-    let key = |v: &Value| v.get("key").and_then(Value::as_u64).map(|k| k.min(255) as u8);
+    let key = |v: &Value| {
+        v.get("key")
+            .and_then(Value::as_u64)
+            .map(|k| k.min(255) as u8)
+    };
     if let Some(b) = cmd.get("enabled").and_then(Value::as_bool) {
         s.file.enabled = b;
         s.saved = false;
     }
     if let Some(b) = cmd.get("on").and_then(Value::as_bool) {
         if b && !dra {
-            return Err("calibration needs DRA mode: set ABAC_DRA=1 (or enable it here and restart)".into());
+            return Err(
+                "calibration needs DRA mode: set ABAC_DRA=1 (or enable it here and restart)".into(),
+            );
         }
         s.set_on(b)?;
     }
@@ -384,10 +465,29 @@ mod tests {
 
     #[test]
     fn parse_serialise_roundtrip_and_defaults() {
-        let f = File::parse(r#"{"enabled":true,"keys":{"1":{"dx":-3,"dy":4,"w":90,"h":92},"7":{"dx":2}}}"#).unwrap();
+        let f = File::parse(
+            r#"{"enabled":true,"keys":{"1":{"dx":-3,"dy":4,"w":90,"h":92},"7":{"dx":2}}}"#,
+        )
+        .unwrap();
         assert!(f.enabled);
-        assert_eq!(f.keys[&1], KeyCal { dx: -3, dy: 4, w: 90, h: 92 });
-        assert_eq!(f.keys[&7], KeyCal { dx: 2, dy: 0, w: 98, h: 98 }); // missing fields = factory default
+        assert_eq!(
+            f.keys[&1],
+            KeyCal {
+                dx: -3,
+                dy: 4,
+                w: 90,
+                h: 92
+            }
+        );
+        assert_eq!(
+            f.keys[&7],
+            KeyCal {
+                dx: 2,
+                dy: 0,
+                w: 98,
+                h: 98
+            }
+        ); // missing fields = factory default
         assert_eq!(File::parse(&f.to_json()).unwrap(), f);
         assert_eq!(File::parse("{}").unwrap(), File::default());
         assert_eq!(File::parse("\u{feff}{}").unwrap(), File::default());
@@ -395,12 +495,21 @@ mod tests {
 
     #[test]
     fn parse_clamps_skips_and_rejects_invalid() {
-        let f = File::parse(r#"{"keys":{"0":{},"19":{},"x":{},"2":{"w":9999,"h":0,"dx":99999}}}"#).unwrap();
+        let f = File::parse(r#"{"keys":{"0":{},"19":{},"x":{},"2":{"w":9999,"h":0,"dx":99999}}}"#)
+            .unwrap();
         assert_eq!(f.keys.len(), 1);
         let c = f.keys[&2];
         assert_eq!((c.w, c.h), (DRA_MAX_W, MIN_PX));
         assert!(c.dx.abs() <= PANEL_H as i16);
-        for bad in ["", "nope", "[]", r#"{"enabled":1}"#, r#"{"keys":[]}"#, r#"{"keys":{"1":5}}"#, r#"{"keys":{"1":{"dx":"a"}}}"#] {
+        for bad in [
+            "",
+            "nope",
+            "[]",
+            r#"{"enabled":1}"#,
+            r#"{"keys":[]}"#,
+            r#"{"keys":{"1":5}}"#,
+            r#"{"keys":{"1":{"dx":"a"}}}"#,
+        ] {
             assert!(File::parse(bad).is_err(), "{bad}");
         }
     }
@@ -408,8 +517,24 @@ mod tests {
     #[test]
     fn env_defaults_fill_uncalibrated_keys() {
         let s = State::new(File::default(), 90, 70, "3:5,-6;16:1,2", None);
-        assert_eq!(s.eff(3), KeyCal { dx: 5, dy: -6, w: 90, h: 90 });
-        assert_eq!(s.eff(4), KeyCal { dx: 0, dy: 0, w: 90, h: 90 });
+        assert_eq!(
+            s.eff(3),
+            KeyCal {
+                dx: 5,
+                dy: -6,
+                w: 90,
+                h: 90
+            }
+        );
+        assert_eq!(
+            s.eff(4),
+            KeyCal {
+                dx: 0,
+                dy: 0,
+                w: 90,
+                h: 90
+            }
+        );
         assert_eq!(s.eff(17), s.eff(16)); // strip shares one slot
         assert_eq!((s.eff(18).dx, s.eff(18).dy, s.eff(18).h), (1, 2, 70));
     }
@@ -417,20 +542,38 @@ mod tests {
     #[test]
     fn selection_adjust_reset_need_mode_on() {
         let mut s = st();
-        assert!(s.select(3).is_err() && s.adjust(None, [1, 0, 0, 0]).is_err() && s.reset(None).is_err());
+        assert!(
+            s.select(3).is_err() && s.adjust(None, [1, 0, 0, 0]).is_err() && s.reset(None).is_err()
+        );
         s.set_on(true).unwrap();
         assert!(s.adjust(None, [1, 0, 0, 0]).is_err()); // nothing selected
         s.select(3).unwrap();
         assert_eq!(s.take_dirty(), vec![3]);
         let c = s.adjust(None, [5, -2, 4, 0]).unwrap();
-        assert_eq!(c, KeyCal { dx: 5, dy: -2, w: 102, h: 98 });
+        assert_eq!(
+            c,
+            KeyCal {
+                dx: 5,
+                dy: -2,
+                w: 102,
+                h: 98
+            }
+        );
         assert_eq!(s.take_dirty(), vec![3]);
         s.select(5).unwrap();
         assert_eq!(s.take_dirty(), vec![3, 5]); // old goes back to content, new gets the pattern
         s.adjust(Some(3), [0, 0, 1000, 1000]).unwrap(); // explicit key, clamps
         assert_eq!((s.eff(3).w, s.eff(3).h), (DRA_MAX_W, DRA_MAX_W));
         s.reset(Some(3)).unwrap();
-        assert_eq!(s.eff(3), KeyCal { dx: 0, dy: 0, w: 98, h: 98 });
+        assert_eq!(
+            s.eff(3),
+            KeyCal {
+                dx: 0,
+                dy: 0,
+                w: 98,
+                h: 98
+            }
+        );
         assert!(s.select(0).is_err() && s.select(19).is_err() && s.reset(Some(40)).is_err());
     }
 
@@ -475,16 +618,34 @@ mod tests {
         let mut s = st();
         let e = apply(&mut s, &json!({"on": true}), false).unwrap_err();
         assert!(e.contains("DRA"));
-        let v = apply(&mut s, &json!({"on": true, "select": 4, "adjust": {"dx": 2, "dy": -1}}), true).unwrap();
-        assert_eq!((v["on"].as_bool(), v["selected"].as_u64()), (Some(true), Some(4)));
+        let v = apply(
+            &mut s,
+            &json!({"on": true, "select": 4, "adjust": {"dx": 2, "dy": -1}}),
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            (v["on"].as_bool(), v["selected"].as_u64()),
+            (Some(true), Some(4))
+        );
         assert_eq!(v["keys"][3]["dx"], 2);
         let v = apply(&mut s, &json!({"set": {"w": 60, "h": 70}}), true).unwrap();
-        assert_eq!((v["keys"][3]["w"].as_u64(), v["keys"][3]["h"].as_u64(), v["keys"][3]["custom"].as_bool()), (Some(60), Some(70), Some(true)));
+        assert_eq!(
+            (
+                v["keys"][3]["w"].as_u64(),
+                v["keys"][3]["h"].as_u64(),
+                v["keys"][3]["custom"].as_bool()
+            ),
+            (Some(60), Some(70), Some(true))
+        );
         let v = apply(&mut s, &json!({"reset": 4}), true).unwrap();
         assert_eq!(v["keys"][3]["custom"], false);
         apply(&mut s, &json!({"adjust": {"dx": 1}}), true).unwrap();
         let v = apply(&mut s, &json!({"reset": "all", "enabled": true}), true).unwrap();
-        assert_eq!((v["enabled"].as_bool(), v["keys"][3]["custom"].as_bool()), (Some(true), Some(false)));
+        assert_eq!(
+            (v["enabled"].as_bool(), v["keys"][3]["custom"].as_bool()),
+            (Some(true), Some(false))
+        );
         // save without a path reports instead of panicking
         assert!(apply(&mut s, &json!({"save": true}), true).is_err());
     }

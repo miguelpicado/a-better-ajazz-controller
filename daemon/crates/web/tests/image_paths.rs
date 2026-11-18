@@ -19,10 +19,7 @@ fn w(p: impl AsRef<Path>, b: impl AsRef<[u8]>) {
 }
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "abac-image-paths-{name}-{}",
-        std::process::id()
-    ));
+    let d = std::env::temp_dir().join(format!("abac-image-paths-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d

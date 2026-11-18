@@ -235,10 +235,7 @@ fn pi_static_serves_files_and_injects_the_bootstrap() {
     assert!(html.has("connect-src ws://127.0.0.1:18618"));
     assert!(html.has("default-src 'none'"));
     assert!(!html.has("https:") && !html.text().contains("https:"));
-    assert!(
-        html.text().contains("abac-pi-ready"),
-        "bootstrap injected"
-    );
+    assert!(html.text().contains("abac-pi-ready"), "bootstrap injected");
 
     let js = get_pi(
         &s,

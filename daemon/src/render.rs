@@ -1,7 +1,7 @@
 //! Key image pipeline: any image -> resize -> rotate 270 -> JPEG <= 9000 bytes (quality 85 down by 4).
-use crate::proto::{DeviceSpec, DEFAULT_DEVICE};
 #[cfg(test)]
 use crate::proto::{image_px, MAX_JPEG};
+use crate::proto::{DeviceSpec, DEFAULT_DEVICE};
 use image::{imageops, DynamicImage, ImageEncoder};
 
 fn scale_key(img: &DynamicImage, px: u32) -> DynamicImage {
@@ -32,7 +32,12 @@ pub fn mirror_jpeg(img: &DynamicImage) -> Vec<u8> {
     let rgb = img.to_rgb8();
     let mut out = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 88)
-        .write_image(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+        .write_image(
+            rgb.as_raw(),
+            rgb.width(),
+            rgb.height(),
+            image::ExtendedColorType::Rgb8,
+        )
         .expect("jpeg encode");
     out
 }
@@ -77,7 +82,12 @@ fn encode_rgb(rgb: &image::RgbImage, max: usize) -> Vec<u8> {
         let mut out = Vec::new();
         // image's encoder writes baseline, 4:4:4 (no subsampling), which the firmware's libjpeg heap needs
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, q.max(1) as u8)
-            .write_image(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+            .write_image(
+                rgb.as_raw(),
+                rgb.width(),
+                rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            )
             .expect("jpeg encode");
         if out.len() <= max || q <= 1 {
             return out;
@@ -100,7 +110,9 @@ pub fn dra_rect_jpeg(img: &DynamicImage, w: u16, h: u16) -> Vec<u8> {
         return dra_tile_jpeg(img, w);
     }
     // device view is the panel rotated 90 deg: device width = panel h, device height = panel w
-    let dev = img.resize_exact(h as u32, w as u32, imageops::FilterType::Triangle).to_rgb8();
+    let dev = img
+        .resize_exact(h as u32, w as u32, imageops::FilterType::Triangle)
+        .to_rgb8();
     encode_rgb(&imageops::rotate270(&dev), crate::proto::DRA_MAX_JPEG)
 }
 
@@ -108,8 +120,16 @@ pub fn dra_rect_jpeg(img: &DynamicImage, w: u16, h: u16) -> Vec<u8> {
 /// number in the middle and a red square in the top-left corner (to tell the orientation).
 pub fn calib_pattern(key: u8, dw: u32, dh: u32) -> DynamicImage {
     const DIGITS: [[u8; 5]; 10] = [
-        [7, 5, 5, 5, 7], [2, 6, 2, 2, 7], [7, 1, 7, 4, 7], [7, 1, 7, 1, 7], [5, 5, 7, 1, 1],
-        [7, 4, 7, 1, 7], [7, 4, 7, 5, 7], [7, 1, 1, 1, 1], [7, 5, 7, 5, 7], [7, 5, 7, 1, 7],
+        [7, 5, 5, 5, 7],
+        [2, 6, 2, 2, 7],
+        [7, 1, 7, 4, 7],
+        [7, 1, 7, 1, 7],
+        [5, 5, 7, 1, 1],
+        [7, 4, 7, 1, 7],
+        [7, 4, 7, 5, 7],
+        [7, 1, 1, 1, 1],
+        [7, 5, 7, 5, 7],
+        [7, 5, 7, 1, 7],
     ];
     let (dw, dh) = (dw.max(1), dh.max(1));
     let white = image::Rgb([255u8, 255, 255]);
@@ -125,7 +145,10 @@ pub fn calib_pattern(key: u8, dw: u32, dh: u32) -> DynamicImage {
     let text = key.to_string();
     let units = 4 * text.len() as u32 - 1; // 3 wide + 1 gap per digit
     let sc = (dw * 6 / 10 / units).min(dh * 5 / 10 / 5).max(1);
-    let (x0, y0) = ((dw.saturating_sub(units * sc)) / 2, (dh.saturating_sub(5 * sc)) / 2);
+    let (x0, y0) = (
+        (dw.saturating_sub(units * sc)) / 2,
+        (dh.saturating_sub(5 * sc)) / 2,
+    );
     for (i, ch) in text.bytes().enumerate() {
         for (r, bits) in DIGITS[(ch - b'0') as usize].iter().enumerate() {
             for c in 0..3u32 {
@@ -164,7 +187,9 @@ pub fn dra_side_jpegs(
     let mut dev = image::RgbImage::new(w, h);
     for (i, c) in cells.iter().enumerate() {
         if let Some(img) = c {
-            let t = img.resize_exact(w, CELL, imageops::FilterType::Lanczos3).to_rgb8();
+            let t = img
+                .resize_exact(w, CELL, imageops::FilterType::Lanczos3)
+                .to_rgb8();
             imageops::replace(&mut dev, &t, 0, (i as u32 * PITCH) as i64);
         }
     }
@@ -180,14 +205,25 @@ pub fn dra_side_jpegs(
         }
     }
     let panel = DynamicImage::ImageRgb8(imageops::rotate270(&dev)); // (h wide) x (w tall)
-    // BAT side cells: panel x 49.., y 12, 80 px; centre the strip on that row.
-    let base = centred_rect(49 + panel.width() as i32 / 2, 12 + CELL as i32 / 2, panel.width() as u16, side_px, off);
+                                                                    // BAT side cells: panel x 49.., y 12, 80 px; centre the strip on that row.
+    let base = centred_rect(
+        49 + panel.width() as i32 / 2,
+        12 + CELL as i32 / 2,
+        panel.width() as u16,
+        side_px,
+        off,
+    );
     let mut out = Vec::new();
     let mut x0 = 0;
     while x0 < panel.width() {
         let pw = (panel.width() - x0).min(DRA_MAX_W as u32);
         let piece = panel.crop_imm(x0, 0, pw, panel.height()).to_rgb8();
-        let r = crate::proto::Rect { x: base.x + x0 as u16, y: base.y, w: pw as u16, h: base.h };
+        let r = crate::proto::Rect {
+            x: base.x + x0 as u16,
+            y: base.y,
+            w: pw as u16,
+            h: base.h,
+        };
         out.push((r, encode_rgb(&piece, crate::proto::DRA_MAX_JPEG)));
         x0 += pw;
     }
@@ -212,7 +248,12 @@ pub fn strip_slices(strip2x: &DynamicImage) -> [DynamicImage; 3] {
         let (y0, w) = (y0 * 2, W.min(rgb.width()));
         if y0 < rgb.height() {
             let h = W.min(rgb.height() - y0);
-            imageops::replace(&mut cell, &imageops::crop_imm(&rgb, x0, y0, w, h).to_image(), 0, 0);
+            imageops::replace(
+                &mut cell,
+                &imageops::crop_imm(&rgb, x0, y0, w, h).to_image(),
+                0,
+                0,
+            );
         }
         DynamicImage::ImageRgb8(cell)
     })
@@ -221,11 +262,19 @@ pub fn strip_slices(strip2x: &DynamicImage) -> [DynamicImage; 3] {
 /// DRA draw of the whole strip: `strip2x` (device orientation, 2x) fitted to `h` px across and its own length
 /// along, rotated like key images, centred on the BAT side cells (panel x 238, y 52) + `off`, clamped to the
 /// panel, split into equal pieces of at most `DRA_MAX_W` px (a 378 px strip is one piece).
-pub fn dra_strip_jpegs(strip2x: &DynamicImage, h: u16, off: (i16, i16)) -> Vec<(crate::proto::Rect, Vec<u8>)> {
+pub fn dra_strip_jpegs(
+    strip2x: &DynamicImage,
+    h: u16,
+    off: (i16, i16),
+) -> Vec<(crate::proto::Rect, Vec<u8>)> {
     use crate::proto::{Rect, DRA_MAX_JPEG, DRA_MAX_W, PANEL_H, PANEL_W};
     let w = (strip2x.height() / 2).clamp(1, PANEL_W as u32);
     let h = (h as u32).clamp(1, PANEL_H as u32);
-    let panel = DynamicImage::ImageRgb8(imageops::rotate270(&strip2x.resize_exact(h, w, imageops::FilterType::Lanczos3).to_rgb8()));
+    let panel = DynamicImage::ImageRgb8(imageops::rotate270(
+        &strip2x
+            .resize_exact(h, w, imageops::FilterType::Lanczos3)
+            .to_rgb8(),
+    ));
     let x = (238 - w as i32 / 2 + off.0 as i32).clamp(0, (PANEL_W as u32 - w) as i32) as u32;
     let y = (52 - h as i32 / 2 + off.1 as i32).clamp(0, (PANEL_H as u32 - h) as i32) as u32;
     let pw = w.div_ceil(w.div_ceil(DRA_MAX_W as u32));
@@ -234,7 +283,15 @@ pub fn dra_strip_jpegs(strip2x: &DynamicImage, h: u16, off: (i16, i16)) -> Vec<(
         .map(|x0| {
             let cw = pw.min(w - x0);
             let piece = panel.crop_imm(x0, 0, cw, h).to_rgb8();
-            (Rect { x: (x + x0) as u16, y: y as u16, w: cw as u16, h: h as u16 }, encode_rgb(&piece, DRA_MAX_JPEG))
+            (
+                Rect {
+                    x: (x + x0) as u16,
+                    y: y as u16,
+                    w: cw as u16,
+                    h: h as u16,
+                },
+                encode_rgb(&piece, DRA_MAX_JPEG),
+            )
         })
         .collect()
 }
@@ -245,14 +302,23 @@ mod tests {
 
     /// (components, [sampling bytes]) of the first baseline SOF0 marker.
     fn sof0(j: &[u8]) -> (u16, u16, Vec<u8>) {
-        let i = j.windows(2).position(|w| w == [0xFF, 0xC0]).expect("SOF0 (baseline)");
-        let (h, w, n) = (u16::from_be_bytes([j[i + 5], j[i + 6]]), u16::from_be_bytes([j[i + 7], j[i + 8]]), j[i + 9] as usize);
+        let i = j
+            .windows(2)
+            .position(|w| w == [0xFF, 0xC0])
+            .expect("SOF0 (baseline)");
+        let (h, w, n) = (
+            u16::from_be_bytes([j[i + 5], j[i + 6]]),
+            u16::from_be_bytes([j[i + 7], j[i + 8]]),
+            j[i + 9] as usize,
+        );
         (w, h, (0..n).map(|c| j[i + 11 + 3 * c]).collect())
     }
 
     #[test]
     fn dra_tile_is_baseline_444_panel_oriented() {
-        let img = DynamicImage::ImageRgb8(image::RgbImage::from_fn(200, 100, |x, y| image::Rgb([x as u8, y as u8, 7])));
+        let img = DynamicImage::ImageRgb8(image::RgbImage::from_fn(200, 100, |x, y| {
+            image::Rgb([x as u8, y as u8, 7])
+        }));
         let j = dra_tile_jpeg(&img, 98);
         assert_eq!(sof0(&j), (98, 98, vec![0x11, 0x11, 0x11]));
         assert!(j.len() < crate::proto::DRA_MAX_JPEG);
@@ -260,9 +326,16 @@ mod tests {
 
     #[test]
     fn dra_rect_non_square_is_panel_sized_baseline_444() {
-        let img = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(80, 80, image::Rgb([9, 9, 9])));
-        assert_eq!(sof0(&dra_rect_jpeg(&img, 60, 100)), (60, 100, vec![0x11, 0x11, 0x11]));
-        assert_eq!(sof0(&dra_rect_jpeg(&img, 98, 98)), (98, 98, vec![0x11, 0x11, 0x11]));
+        let img =
+            DynamicImage::ImageRgb8(image::RgbImage::from_pixel(80, 80, image::Rgb([9, 9, 9])));
+        assert_eq!(
+            sof0(&dra_rect_jpeg(&img, 60, 100)),
+            (60, 100, vec![0x11, 0x11, 0x11])
+        );
+        assert_eq!(
+            sof0(&dra_rect_jpeg(&img, 98, 98)),
+            (98, 98, vec![0x11, 0x11, 0x11])
+        );
     }
 
     #[test]
@@ -270,7 +343,15 @@ mod tests {
         let p = calib_pattern(12, 98, 60).to_rgb8();
         assert_eq!((p.width(), p.height()), (98, 60));
         let w = image::Rgb([255, 255, 255]);
-        assert_eq!((*p.get_pixel(0, 30), *p.get_pixel(97, 30), *p.get_pixel(40, 0), *p.get_pixel(40, 59)), (w, w, w, w));
+        assert_eq!(
+            (
+                *p.get_pixel(0, 30),
+                *p.get_pixel(97, 30),
+                *p.get_pixel(40, 0),
+                *p.get_pixel(40, 59)
+            ),
+            (w, w, w, w)
+        );
         assert_eq!(*p.get_pixel(2, 2), image::Rgb([255, 0, 0]));
         assert!(p.pixels().filter(|px| **px == w).count() > 300);
         // tiny sizes and 3-digit-wide cells must not panic
@@ -281,7 +362,11 @@ mod tests {
 
     #[test]
     fn dra_side_is_one_piece_under_the_width_limit() {
-        let img = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(80, 80, image::Rgb([200, 30, 30])));
+        let img = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            80,
+            80,
+            image::Rgb([200, 30, 30]),
+        ));
         let v = dra_side_jpegs([Some(&img), None, Some(&img)], 80, (0, 0));
         assert_eq!(v.len(), 1);
         let (r, j) = &v[0];
@@ -355,12 +440,24 @@ mod tests {
         Sample {
             cpu: Some(cpu),
             ram: Some((ram, (ram * 3.2e8) as u64, 32_000_000_000)),
-            gpu: gpu.map(|u| Gpu { temp: 40.0 + u * 0.4, util: u, mem_used: (u * 8e7) as u64 + 900_000_000, mem_total: 8_000_000_000, clock_mhz: 1800.0 }),
+            gpu: gpu.map(|u| Gpu {
+                temp: 40.0 + u * 0.4,
+                util: u,
+                mem_used: (u * 8e7) as u64 + 900_000_000,
+                mem_total: 8_000_000_000,
+                clock_mhz: 1800.0,
+            }),
             ..Default::default()
         }
     }
 
-    const T: LocalTime = LocalTime { hour: 14, minute: 37, day: 13, month: 11, weekday: 5 };
+    const T: LocalTime = LocalTime {
+        hour: 14,
+        minute: 37,
+        day: 13,
+        month: 11,
+        weekday: 5,
+    };
 
     fn strip(t: LocalTime, s: &Sample, w: u16, h: u16, bat: bool) -> DynamicImage {
         let svg = render_strip(t, s, StripCfg { w, h, bat, pad: 0 });
@@ -380,11 +477,21 @@ mod tests {
         }
         // BAT layout puts content in every cell: none of the slices is blank
         for (i, c) in cells.iter().enumerate() {
-            assert!(c.to_rgb8().pixels().any(|p| p.0.iter().any(|&v| v > 60)), "cell {i} blank");
+            assert!(
+                c.to_rgb8().pixels().any(|p| p.0.iter().any(|&v| v > 60)),
+                "cell {i} blank"
+            );
         }
         // a small canvas must not panic and stays black where it has no rows
         let small = DynamicImage::ImageRgb8(image::RgbImage::new(100, 200));
-        assert_eq!(strip_slices(&small)[2].to_rgb8().pixels().filter(|p| p.0 != [0, 0, 0]).count(), 0);
+        assert_eq!(
+            strip_slices(&small)[2]
+                .to_rgb8()
+                .pixels()
+                .filter(|p| p.0 != [0, 0, 0])
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -396,10 +503,24 @@ mod tests {
             (480, 95, vec![(0, 5, 240, 95), (240, 5, 240, 95)]),
         ] {
             let v = dra_strip_jpegs(&strip(T, &s, w, h, false), h, (0, 0));
-            assert_eq!(v.iter().map(|(r, _)| (r.x, r.y, r.w, r.h)).collect::<Vec<_>>(), want, "{w}x{h}");
+            assert_eq!(
+                v.iter()
+                    .map(|(r, _)| (r.x, r.y, r.w, r.h))
+                    .collect::<Vec<_>>(),
+                want,
+                "{w}x{h}"
+            );
             for (r, j) in &v {
-                assert!(r.w <= crate::proto::DRA_MAX_W && j.len() < crate::proto::DRA_MAX_JPEG, "{} bytes", j.len());
-                assert_eq!(sof0(j), (r.w, r.h, vec![0x11, 0x11, 0x11]), "baseline 4:4:4");
+                assert!(
+                    r.w <= crate::proto::DRA_MAX_W && j.len() < crate::proto::DRA_MAX_JPEG,
+                    "{} bytes",
+                    j.len()
+                );
+                assert_eq!(
+                    sof0(j),
+                    (r.w, r.h, vec![0x11, 0x11, 0x11]),
+                    "baseline 4:4:4"
+                );
             }
         }
         // calibration offset moves it, the panel clamps it
@@ -417,18 +538,31 @@ mod tests {
         let mut panel = image::RgbImage::new(w, pieces[0].0.h as u32);
         let mut x = 0;
         for (r, j) in pieces {
-            imageops::replace(&mut panel, &image::load_from_memory(j).unwrap().to_rgb8(), x, 0);
+            imageops::replace(
+                &mut panel,
+                &image::load_from_memory(j).unwrap().to_rgb8(),
+                x,
+                0,
+            );
             x += r.w as i64;
         }
         imageops::rotate90(&panel)
     }
 
     fn up(im: &image::RgbImage, n: u32) -> image::RgbImage {
-        imageops::resize(im, im.width() * n, im.height() * n, imageops::FilterType::Nearest)
+        imageops::resize(
+            im,
+            im.width() * n,
+            im.height() * n,
+            imageops::FilterType::Nearest,
+        )
     }
 
     fn sheet(cols: &[image::RgbImage]) -> image::RgbImage {
-        let (w, h) = (cols.iter().map(|c| c.width() + 16).sum::<u32>() + 16, cols.iter().map(|c| c.height()).max().unwrap() + 32);
+        let (w, h) = (
+            cols.iter().map(|c| c.width() + 16).sum::<u32>() + 16,
+            cols.iter().map(|c| c.height()).max().unwrap() + 32,
+        );
         let mut out = image::RgbImage::from_pixel(w, h, image::Rgb([48, 48, 52]));
         let mut x = 16;
         for c in cols {
@@ -441,9 +575,17 @@ mod tests {
     /// Offline previews. `STRIP_PREVIEW_DIR=<dir> cargo test -p abac strip_previews` writes them; otherwise a no-op.
     #[test]
     fn strip_previews() {
-        let Some(dir) = std::env::var_os("STRIP_PREVIEW_DIR").map(std::path::PathBuf::from) else { return };
+        let Some(dir) = std::env::var_os("STRIP_PREVIEW_DIR").map(std::path::PathBuf::from) else {
+            return;
+        };
         std::fs::create_dir_all(&dir).unwrap();
-        let wrap = LocalTime { hour: 0, minute: 0, day: 1, month: 1, weekday: 0 };
+        let wrap = LocalTime {
+            hour: 0,
+            minute: 0,
+            day: 1,
+            month: 1,
+            weekday: 0,
+        };
         let states: [(&str, LocalTime, Sample); 4] = [
             ("idle", T, state(8.0, 41.0, Some(3.0))),
             ("high-cpu", T, state(96.0, 88.0, Some(74.0))),
@@ -455,22 +597,43 @@ mod tests {
         for (name, t, s) in &states {
             let v = device_view(&dra_strip_jpegs(&strip(*t, s, 378, 80, false), 80, (0, 0)));
             assert_eq!((v.width(), v.height()), (80, 378));
-            up(&v, 3).save(dir.join(format!("strip-378x80-{name}.png"))).unwrap();
+            up(&v, 3)
+                .save(dir.join(format!("strip-378x80-{name}.png")))
+                .unwrap();
             cols.push(up(&v, 2));
             // BAT: three cell images (what the device gets through key_jpeg) at the BAT pitch
             let mut bat = image::RgbImage::new(80, 378);
-            for (i, c) in strip_slices(&strip(*t, s, 378, 80, true)).iter().enumerate() {
-                imageops::replace(&mut bat, &c.resize_exact(80, 80, imageops::FilterType::Lanczos3).to_rgb8(), 0, 149 * i as i64);
+            for (i, c) in strip_slices(&strip(*t, s, 378, 80, true))
+                .iter()
+                .enumerate()
+            {
+                imageops::replace(
+                    &mut bat,
+                    &c.resize_exact(80, 80, imageops::FilterType::Lanczos3)
+                        .to_rgb8(),
+                    0,
+                    149 * i as i64,
+                );
             }
             bat_cols.push(up(&bat, 2));
         }
         let idle = &states[0];
         for (w, h) in [(378u16, 95u16), (480, 95)] {
-            let v = device_view(&dra_strip_jpegs(&strip(idle.1, &idle.2, w, h, false), h, (0, 0)));
-            up(&v, 3).save(dir.join(format!("strip-{w}x{h}-idle.png"))).unwrap();
+            let v = device_view(&dra_strip_jpegs(
+                &strip(idle.1, &idle.2, w, h, false),
+                h,
+                (0, 0),
+            ));
+            up(&v, 3)
+                .save(dir.join(format!("strip-{w}x{h}-idle.png")))
+                .unwrap();
             cols.push(up(&v, 2));
         }
-        sheet(&cols).save(dir.join("side-strip-preview.png")).unwrap();
-        sheet(&bat_cols).save(dir.join("side-strip-bat-preview.png")).unwrap();
+        sheet(&cols)
+            .save(dir.join("side-strip-preview.png"))
+            .unwrap();
+        sheet(&bat_cols)
+            .save(dir.join("side-strip-bat-preview.png"))
+            .unwrap();
     }
 }

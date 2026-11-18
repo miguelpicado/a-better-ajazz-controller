@@ -5,8 +5,8 @@ mod proto;
 #[path = "../src/render.rs"]
 mod render;
 
-use image::{GenericImage, Rgba, RgbaImage};
 use abac_builtin::core::{render_agent, Agent, State};
+use image::{GenericImage, Rgba, RgbaImage};
 use std::fs;
 
 fn render_label(text: &str, w: u32, h: u32, font_size: u32, color: &str) -> RgbaImage {
